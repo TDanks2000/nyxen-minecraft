@@ -1,4 +1,4 @@
-import { createRootRoute, Link, Outlet } from "@tanstack/react-router";
+import { createRootRoute, Outlet } from "@tanstack/react-router";
 import {
   BellIcon,
   ChevronDownIcon,
@@ -10,9 +10,12 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Toaster } from "@/views/main/components/ui/sonner";
+import { NewInstanceDialog } from "@/views/main/features/instances/components/new-instance-dialog";
 import { AppSidebar } from "@/views/main/features/layout/app-sidebar";
 import { RightSidebar } from "@/views/main/features/layout/right-sidebar";
+import { useProfiles } from "@/views/main/hooks/use-profiles";
 import { rpc } from "@/views/main/lib/rpc";
+import { APP_NAME } from "../../../shared/constants";
 
 const NO_DRAG_CLASS = "electrobun-webkit-app-region-no-drag";
 
@@ -35,8 +38,18 @@ function AppIcon() {
   );
 }
 
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return (parts[0]?.slice(0, 2) ?? "?").toUpperCase();
+  return ((parts[0]?.[0] ?? "") + (parts[parts.length - 1]?.[0] ?? "")).toUpperCase();
+}
+
 function Titlebar() {
   const [isMaximized, setIsMaximized] = useState(false);
+  const [newInstanceOpen, setNewInstanceOpen] = useState(false);
+  const profiles = useProfiles();
+
+  const activeProfile = profiles.data?.[0] ?? null;
 
   const syncWindowState = useCallback(async () => {
     const state = await rpc.requestProxy.getWindowState(null);
@@ -61,13 +74,14 @@ function Titlebar() {
   }, []);
 
   return (
-    <div className="electrobun-webkit-app-region-drag flex h-12 shrink-0 select-none items-center border-sidebar-border border-b bg-sidebar px-4">
+    <>
+    <div className="electrobun-webkit-app-region-drag relative z-[9999] flex h-12 shrink-0 select-none items-center border-sidebar-border border-b bg-sidebar px-4">
       {/* Logo – aligns with sidebar width */}
       <div className="flex items-center gap-2.5 w-52 shrink-0">
         <AppIcon />
         <div className="flex flex-col leading-none">
           <span className="font-black text-[0.68rem] tracking-[0.18em] text-foreground uppercase">
-            GDLauncher
+            {APP_NAME}
           </span>
           <span className="text-[0.52rem] text-muted-foreground tracking-wide uppercase mt-0.5">
             Next Generation Minecraft Launcher
@@ -79,13 +93,14 @@ function Titlebar() {
 
       {/* Titlebar actions */}
       <div className={`${NO_DRAG_CLASS} flex items-center gap-1.5`}>
-        <Link
-          to="/instances"
-          className="flex items-center gap-1.5 h-9 px-3.5 bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold rounded-md transition-colors no-underline"
+        <button
+          type="button"
+          onClick={() => setNewInstanceOpen(true)}
+          className="flex items-center gap-1.5 h-9 px-3.5 bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold rounded-md transition-colors"
         >
           <PlusIcon className="size-3.5" />
           Add Instance
-        </Link>
+        </button>
 
         <button
           type="button"
@@ -108,17 +123,17 @@ function Titlebar() {
           <div className="relative size-7 shrink-0">
             <div className="size-7 rounded overflow-hidden bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center">
               <span className="text-[0.55rem] font-black text-white select-none">
-                GD
+                {activeProfile ? initials(activeProfile.displayName) : "?"}
               </span>
             </div>
-            <span className="absolute bottom-0 right-0 size-2 rounded-full bg-green-400 ring-1 ring-sidebar" />
+            <span className={`absolute bottom-0 right-0 size-2 rounded-full ring-1 ring-sidebar ${activeProfile?.kind === "microsoft" ? "bg-green-400" : "bg-slate-400"}`} />
           </div>
           <div className="flex flex-col leading-none">
             <span className="text-xs font-semibold text-foreground">
-              GorillaDev
+              {activeProfile?.displayName ?? (profiles.loading ? "Loading…" : "No profile")}
             </span>
             <span className="text-[0.6rem] text-primary font-medium">
-              Online
+              {activeProfile?.kind === "microsoft" ? "Online" : activeProfile ? "Offline" : "—"}
             </span>
           </div>
           <ChevronDownIcon className="size-3 text-muted-foreground ml-0.5" />
@@ -155,6 +170,12 @@ function Titlebar() {
         </button>
       </div>
     </div>
+    <NewInstanceDialog
+      open={newInstanceOpen}
+      onOpenChange={setNewInstanceOpen}
+      onCreated={() => {}}
+    />
+    </>
   );
 }
 

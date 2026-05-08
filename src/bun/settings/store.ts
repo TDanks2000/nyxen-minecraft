@@ -11,6 +11,7 @@ import type {
   SettingsStatus,
   SettingValue,
 } from "../../shared/types";
+import { getDataRoot } from "../launcher/paths";
 
 const defaultSettings: AppSettings = {
   "app.theme": "system",
@@ -18,7 +19,7 @@ const defaultSettings: AppSettings = {
   "launcher.showSnapshots": false,
 };
 
-export const settingsPath = join(process.cwd(), "data", "settings.json");
+export const settingsPath = join(getDataRoot(), "settings.json");
 
 const isSettingValue = (value: unknown): value is SettingValue =>
   value === null ||

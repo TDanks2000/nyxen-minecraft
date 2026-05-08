@@ -171,11 +171,25 @@ export const createLaunchPlan = async (
     instance.id,
     versionDetails.id,
   );
-  const profile = await ensureMicrosoftProfileLaunchAuth(
-    resolveProfile(input.profileId, instance.profileId),
-  );
   const missingArtifacts: Array<LaunchPlanMissingArtifact> = [];
+  const nativeArtifactPaths: Array<string> = [];
   const warnings: Array<string> = [];
+
+  let profile: LauncherProfile | null = resolveProfile(
+    input.profileId,
+    instance.profileId,
+  );
+
+  try {
+    profile = await ensureMicrosoftProfileLaunchAuth(profile);
+  } catch (error) {
+    profile = resolveProfile(input.profileId, instance.profileId);
+    warnings.push(
+      error instanceof Error
+        ? error.message
+        : "Profile authentication failed.",
+    );
+  }
 
   mkdirSync(instance.gameDirectory, { recursive: true });
   mkdirSync(nativesDirectory, { recursive: true });
@@ -210,18 +224,22 @@ export const createLaunchPlan = async (
     });
   }
 
+  const classpathLibraries: Array<string> = [];
+
   for (const library of versionDetails.libraries.filter(isLibraryAllowed)) {
     const artifact = library.downloads?.artifact;
     const artifactPath = libraryArtifactPath(library, artifact);
 
     if (artifactPath) {
+      const fullPath = join(directories.libraries, artifactPath);
       addMissingArtifact(missingArtifacts, {
         id: library.name,
         kind: "library",
-        path: join(directories.libraries, artifactPath),
+        path: fullPath,
         sha1: artifact?.sha1,
         url: artifact?.url,
       });
+      classpathLibraries.push(fullPath);
     }
 
     const classifierKey = nativeClassifierKey(library);
@@ -231,15 +249,19 @@ export const createLaunchPlan = async (
     const nativePath = libraryArtifactPath(library, nativeArtifact);
 
     if (classifierKey && nativePath) {
+      const fullNativePath = join(directories.libraries, nativePath);
       addMissingArtifact(missingArtifacts, {
         id: `${library.name}:${classifierKey}`,
         kind: "nativeLibrary",
-        path: join(directories.libraries, nativePath),
+        path: fullNativePath,
         sha1: nativeArtifact?.sha1,
         url: nativeArtifact?.url,
       });
+      nativeArtifactPaths.push(fullNativePath);
     }
   }
+
+  const classpath = [...classpathLibraries, clientJarPath];
 
   if (!versionDetails.mainClass) {
     warnings.push("Version metadata does not include a main class.");
@@ -271,6 +293,7 @@ export const createLaunchPlan = async (
       ],
       jvm: [...(versionDetails.arguments?.jvm ?? []), ...instance.javaArgs],
     },
+    classpath,
     createdAt: new Date().toISOString(),
     directories: {
       ...directories,
@@ -283,12 +306,14 @@ export const createLaunchPlan = async (
       memoryMaxMb: instance.memoryMaxMb,
       memoryMinMb: instance.memoryMinMb,
     },
+    legacyArgFormat: !versionDetails.arguments,
     minecraft: {
       assetIndexId: versionDetails.assetIndex?.id ?? null,
       mainClass: versionDetails.mainClass ?? null,
       versionId: versionDetails.id,
     },
     missingArtifacts,
+    nativeArtifactPaths,
     profile,
     warnings,
   };

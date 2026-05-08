@@ -35,38 +35,65 @@ const getJson = async <T>(url: string): Promise<T> => {
   return r.json() as Promise<T>;
 };
 
+const getJsonOrEmpty = async <T>(
+  url: string,
+  emptyStatuses: number[],
+): Promise<T | null> => {
+  const r = await fetch(url);
+  if (emptyStatuses.includes(r.status)) return null;
+  if (!r.ok) throw new Error(`HTTP ${r.status} fetching ${url}`);
+  return r.json() as Promise<T>;
+};
+
 const xmlVersions = (xml: string): string[] =>
-  [...xml.matchAll(/<version>([\w.+\-]+?)<\/version>/g)]
+  [...xml.matchAll(/<version>([\w.+-]+?)<\/version>/g)]
     .map((m) => m[1])
     .filter((v): v is string => !!v);
 
-const listFabric = async (mcVersion: string): Promise<LoaderVersionSummary[]> => {
+const listFabric = async (
+  mcVersion: string,
+): Promise<LoaderVersionSummary[]> => {
   const key = `fabric:${mcVersion}`;
   const hit = cached(key);
   if (hit) return hit;
 
-  const data = await getJson<Array<{ loader: { version: string; stable: boolean } }>>(
+  const data = await getJsonOrEmpty<
+    Array<{ loader: { version: string; stable: boolean } }>
+  >(
     `${FABRIC_META}/versions/loader/${encodeURIComponent(mcVersion)}`,
+    [400, 404],
   );
-  const versions = data.map((e) => ({ id: e.loader.version, stable: e.loader.stable }));
+  const versions =
+    data?.map((e) => ({ id: e.loader.version, stable: e.loader.stable })) ?? [];
   store(key, versions);
   return versions;
 };
 
-const listQuilt = async (mcVersion: string): Promise<LoaderVersionSummary[]> => {
+const listQuilt = async (
+  mcVersion: string,
+): Promise<LoaderVersionSummary[]> => {
   const key = `quilt:${mcVersion}`;
   const hit = cached(key);
   if (hit) return hit;
 
-  const data = await getJson<Array<{ loader: { version: string } }>>(
+  const data = await getJsonOrEmpty<Array<{ loader: { version: string } }>>(
     `${QUILT_META}/versions/loader/${encodeURIComponent(mcVersion)}`,
+    [400, 404],
   );
-  const versions = data.map((e) => ({ id: e.loader.version, stable: true }));
+  const versions =
+    data?.map((e) => ({
+      id: e.loader.version,
+      stable:
+        !e.loader.version.includes("beta") &&
+        !e.loader.version.includes("alpha"),
+    })) ?? [];
   store(key, versions);
   return versions;
 };
 
-const listForge = async (mcVersion: string): Promise<LoaderVersionSummary[]> => {
+const listForge = async (
+  mcVersion: string,
+): Promise<LoaderVersionSummary[]> => {
   const key = `forge:${mcVersion}`;
   const hit = cached(key);
   if (hit) return hit;
@@ -86,16 +113,27 @@ const listForge = async (mcVersion: string): Promise<LoaderVersionSummary[]> => 
 };
 
 const neoforgePrefix = (mcVersion: string): string | null => {
+  // Old Minecraft versioning: 1.x.y (e.g. 1.21.4)
   const m = mcVersion.match(/^1\.(\d+)(?:\.(\d+))?$/);
-  if (!m) return null;
-  const major = Number(m[1]);
-  const minor = Number(m[2] ?? 0);
-  if (major === 20 && minor === 1) return "47.";
-  if (major >= 20) return `${major}.${minor}.`;
+  if (m) {
+    const major = Number(m[1]);
+    const minor = Number(m[2] ?? 0);
+    if (major === 20 && minor === 1) return "47.";
+    if (major >= 20) return `${major}.${minor}.`;
+    return null;
+  }
+
+  // New Minecraft epoch versioning: e.g. "26.1" or "26.1.2"
+  // NeoForge mirrors the first two version components as prefix (e.g. "26.1.")
+  const m2 = mcVersion.match(/^(\d+)\.(\d+)/);
+  if (m2 && Number(m2[1]) >= 26) return `${m2[1]}.${m2[2]}.`;
+
   return null;
 };
 
-const listNeoForge = async (mcVersion: string): Promise<LoaderVersionSummary[]> => {
+const listNeoForge = async (
+  mcVersion: string,
+): Promise<LoaderVersionSummary[]> => {
   const prefix = neoforgePrefix(mcVersion);
   if (!prefix) return [];
 
@@ -106,7 +144,10 @@ const listNeoForge = async (mcVersion: string): Promise<LoaderVersionSummary[]> 
   const xml = await getText(NEOFORGE_MAVEN);
   const versions = xmlVersions(xml)
     .filter((v) => v.startsWith(prefix))
-    .map((v) => ({ id: v, stable: !v.includes("beta") && !v.includes("alpha") }))
+    .map((v) => ({
+      id: v,
+      stable: !v.includes("beta") && !v.includes("alpha"),
+    }))
     .reverse();
 
   store(key, versions);
@@ -120,10 +161,15 @@ export const listLoaderVersions = async (
   if (loader === "vanilla" || !mcVersion.trim()) return [];
 
   switch (loader) {
-    case "fabric": return listFabric(mcVersion);
-    case "quilt": return listQuilt(mcVersion);
-    case "forge": return listForge(mcVersion);
-    case "neoforge": return listNeoForge(mcVersion);
-    default: return [];
+    case "fabric":
+      return listFabric(mcVersion);
+    case "quilt":
+      return listQuilt(mcVersion);
+    case "forge":
+      return listForge(mcVersion);
+    case "neoforge":
+      return listNeoForge(mcVersion);
+    default:
+      return [];
   }
 };

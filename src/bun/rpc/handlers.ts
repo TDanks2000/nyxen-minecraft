@@ -3,6 +3,11 @@ import { APP_NAME } from "../../shared/constants";
 import type {
   AppEnvironment,
   CompleteMicrosoftProfileLoginInput,
+  CreateLauncherProfileInput,
+  DownloadArtifactsInput,
+  DownloadArtifactsResult,
+  LaunchInstanceInput,
+  LaunchInstanceResult,
   MicrosoftProfileLoginResult,
   MicrosoftProfileLoginStart,
   MicrosoftProfileSignInStatus,
@@ -13,13 +18,15 @@ import {
   listLauncherInstances,
 } from "../launcher/instances";
 import { createLaunchPlan } from "../launcher/launch-plan";
+import { downloadArtifacts as downloadArtifactsFn } from "../launcher/download";
+import { launchMinecraft } from "../launcher/executor";
 import { listLoaderVersions } from "../launcher/loader-versions";
 import {
   completeMicrosoftProfileLogin as completeMicrosoftProfileLoginRequest,
   pollMicrosoftProfileSignIn as pollMicrosoftProfileSignInRequest,
   startMicrosoftProfileLogin as startMicrosoftProfileLoginRequest,
 } from "../launcher/microsoft-auth";
-import { listLauncherProfiles } from "../launcher/profiles";
+import { getLauncherProfileAuthSecrets, listLauncherProfiles } from "../launcher/profiles";
 import { getLauncherStatus } from "../launcher/status";
 import {
   getMinecraftVersionDetails,
@@ -58,7 +65,9 @@ export const getSystemMemory = (): { totalMb: number } => ({
 
 export const refreshMinecraftVersionManifest = () => refreshManifest();
 
-export const createLauncherProfile = (): never => {
+export const createLauncherProfile = (
+  _input: CreateLauncherProfileInput,
+): never => {
   throw new Error(
     "Manual profile creation is disabled. Sign in with a Microsoft account that owns Minecraft.",
   );
@@ -77,6 +86,24 @@ export const pollMicrosoftProfileSignIn = (
   input: CompleteMicrosoftProfileLoginInput,
 ): Promise<MicrosoftProfileSignInStatus> =>
   pollMicrosoftProfileSignInRequest(input);
+
+export const downloadArtifacts = (
+  input: DownloadArtifactsInput,
+): Promise<DownloadArtifactsResult> => downloadArtifactsFn(input.plan);
+
+export const launchInstance = (
+  input: LaunchInstanceInput,
+): LaunchInstanceResult => {
+  const { plan } = input;
+  let accessToken: string | undefined;
+
+  if (plan.profile?.id && plan.profile.kind === "microsoft") {
+    const secrets = getLauncherProfileAuthSecrets(plan.profile.id);
+    accessToken = secrets?.minecraftAccessToken ?? undefined;
+  }
+
+  return launchMinecraft(plan, { accessToken });
+};
 
 export {
   closeWindow,

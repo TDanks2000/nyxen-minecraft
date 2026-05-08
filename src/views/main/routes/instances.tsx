@@ -21,14 +21,12 @@ import { Skeleton } from "@/views/main/components/ui/skeleton";
 import { LaunchPlanSheet } from "@/views/main/features/instances/components/launch-plan-sheet";
 import { NewInstanceDialog } from "@/views/main/features/instances/components/new-instance-dialog";
 import { useInstances } from "@/views/main/hooks/use-instances";
-import { useLauncherStatus } from "@/views/main/hooks/use-launcher-status";
 import { rpc } from "@/views/main/lib/rpc";
 import { cn } from "@/views/main/lib/utils";
 import type { LaunchPlan } from "../../../shared/types";
 
 function InstancesPage() {
   const instancesHook = useInstances();
-  const statusHook = useLauncherStatus();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [activePlan, setActivePlan] = useState<LaunchPlan | null>(null);

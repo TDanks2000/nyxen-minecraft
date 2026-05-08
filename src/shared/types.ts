@@ -245,6 +245,7 @@ export type LaunchPlan = {
     game: Array<unknown>;
     jvm: Array<unknown>;
   };
+  classpath: Array<string>;
   createdAt: string;
   directories: LauncherDirectories & {
     game: string;
@@ -256,14 +257,33 @@ export type LaunchPlan = {
     memoryMaxMb: number;
     memoryMinMb: number;
   };
+  legacyArgFormat: boolean;
   minecraft: {
     assetIndexId: string | null;
     mainClass: string | null;
     versionId: string;
   };
   missingArtifacts: Array<LaunchPlanMissingArtifact>;
+  nativeArtifactPaths: Array<string>;
   profile: LauncherProfile | null;
   warnings: Array<string>;
+};
+
+export type DownloadArtifactsInput = {
+  plan: LaunchPlan;
+};
+
+export type DownloadArtifactsResult = {
+  failed: Array<{ error: string; id: string }>;
+  succeeded: number;
+};
+
+export type LaunchInstanceInput = {
+  plan: LaunchPlan;
+};
+
+export type LaunchInstanceResult = {
+  pid: number;
 };
 
 export type CreateLaunchPlanInput = {

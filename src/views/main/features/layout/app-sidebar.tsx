@@ -5,6 +5,7 @@ import {
   CheckIcon,
   GlobeIcon,
   HomeIcon,
+  Loader2Icon,
   PackageIcon,
   PlayIcon,
   PuzzleIcon,
@@ -12,8 +13,13 @@ import {
   SettingsIcon,
   UserRoundIcon,
 } from "lucide-react";
-import type { ComponentType, SVGProps } from "react";
+import { type ComponentType, type SVGProps, useState } from "react";
+import { toast } from "sonner";
+import { LaunchPlanSheet } from "@/views/main/features/instances/components/launch-plan-sheet";
+import { useInstances } from "@/views/main/hooks/use-instances";
+import { rpc } from "@/views/main/lib/rpc";
 import { cn } from "@/views/main/lib/utils";
+import type { LaunchPlan, ModLoader } from "../../../../shared/types";
 
 type NavItem = {
   label: string;
@@ -39,32 +45,43 @@ const NAV_ITEMS: Array<NavItem> = [
   },
 ];
 
-const QUICK_PLAY = [
-  {
-    id: "survival",
-    name: "Survival World",
-    version: "1.20.4",
-    loader: "Vanilla",
-    colorClass: "bg-emerald-900",
-  },
-  {
-    id: "create",
-    name: "Create Above & Beyond",
-    version: "1.16.5",
-    loader: "Forge",
-    colorClass: "bg-amber-900",
-  },
-  {
-    id: "rlcraft",
-    name: "RLCraft",
-    version: "1.12.2",
-    loader: "Forge",
-    colorClass: "bg-red-950",
-  },
-];
+const LOADER_COLORS: Record<ModLoader, string> = {
+  vanilla: "bg-emerald-900",
+  fabric: "bg-indigo-900",
+  forge: "bg-amber-900",
+  neoforge: "bg-orange-900",
+  quilt: "bg-violet-900",
+};
 
 export function AppSidebar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const instancesHook = useInstances();
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [activePlan, setActivePlan] = useState<LaunchPlan | null>(null);
+  const [planLoadingId, setPlanLoadingId] = useState<string | null>(null);
+
+  const quickPlayInstances = [...(instancesHook.data ?? [])]
+    .sort((a, b) => {
+      if (a.lastLaunchedAt && b.lastLaunchedAt)
+        return new Date(b.lastLaunchedAt).getTime() - new Date(a.lastLaunchedAt).getTime();
+      if (a.lastLaunchedAt) return -1;
+      if (b.lastLaunchedAt) return 1;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    })
+    .slice(0, 3);
+
+  async function handlePlay(instanceId: string) {
+    setPlanLoadingId(instanceId);
+    try {
+      const plan = await rpc.requestProxy.createLaunchPlan({ instanceId });
+      setActivePlan(plan);
+      setSheetOpen(true);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to create launch plan");
+    } finally {
+      setPlanLoadingId(null);
+    }
+  }
 
   return (
     <aside className="flex flex-col w-52 shrink-0 bg-sidebar border-r border-sidebar-border overflow-y-auto">
@@ -100,30 +117,48 @@ export function AppSidebar() {
       </div>
 
       <div className="flex flex-col gap-0.5 px-2">
-        {QUICK_PLAY.map((item) => (
-          <div
-            key={item.id}
-            className="flex items-center gap-2 h-10 px-2 rounded-md hover:bg-sidebar-accent cursor-pointer transition-colors group"
-          >
-            <div
-              className={cn("size-8 rounded-sm shrink-0", item.colorClass)}
-            />
-            <div className="flex-1 min-w-0">
-              <div className="text-xs font-semibold text-sidebar-foreground truncate leading-none">
-                {item.name}
-              </div>
-              <div className="text-[0.62rem] text-muted-foreground mt-0.5 leading-none">
-                {item.version} · {item.loader}
+        {instancesHook.loading ? (
+          Array.from({ length: 3 }).map((_, i) => (
+            <div key={`qs-${i}`} className="flex items-center gap-2 h-10 px-2 rounded-md">
+              <div className="size-8 rounded-sm shrink-0 bg-muted animate-pulse" />
+              <div className="flex-1 min-w-0 flex flex-col gap-1">
+                <div className="h-2.5 w-24 rounded bg-muted animate-pulse" />
+                <div className="h-2 w-16 rounded bg-muted animate-pulse" />
               </div>
             </div>
-            <button
-              type="button"
-              className="size-6 bg-primary hover:bg-primary/80 rounded-sm flex items-center justify-center shrink-0 opacity-40 group-hover:opacity-100 transition-opacity"
+          ))
+        ) : quickPlayInstances.length === 0 ? (
+          <p className="px-2 text-[0.65rem] text-muted-foreground/60">No instances yet.</p>
+        ) : (
+          quickPlayInstances.map((item) => (
+            <div
+              key={item.id}
+              className="flex items-center gap-2 h-10 px-2 rounded-md hover:bg-sidebar-accent cursor-pointer transition-colors group"
             >
-              <PlayIcon className="size-2.5 fill-primary-foreground text-primary-foreground" />
-            </button>
-          </div>
-        ))}
+              <div className={cn("size-8 rounded-sm shrink-0", LOADER_COLORS[item.loader] ?? "bg-slate-800")} />
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-semibold text-sidebar-foreground truncate leading-none">
+                  {item.name}
+                </div>
+                <div className="text-[0.62rem] text-muted-foreground mt-0.5 leading-none">
+                  {item.versionId} · {item.loader}
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={planLoadingId !== null}
+                onClick={() => handlePlay(item.id)}
+                className="size-6 bg-primary hover:bg-primary/80 rounded-sm flex items-center justify-center shrink-0 opacity-40 group-hover:opacity-100 transition-opacity disabled:cursor-wait"
+              >
+                {planLoadingId === item.id ? (
+                  <Loader2Icon className="size-2.5 text-primary-foreground animate-spin" />
+                ) : (
+                  <PlayIcon className="size-2.5 fill-primary-foreground text-primary-foreground" />
+                )}
+              </button>
+            </div>
+          ))
+        )}
       </div>
 
       {/* Bottom – active game */}
@@ -160,6 +195,7 @@ export function AppSidebar() {
           </div>
         </div>
       </div>
+      <LaunchPlanSheet open={sheetOpen} onOpenChange={setSheetOpen} plan={activePlan} />
     </aside>
   );
 }

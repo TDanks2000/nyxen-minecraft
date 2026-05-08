@@ -4,7 +4,6 @@ import {
   CrownIcon,
   PlusIcon,
   ShieldCheckIcon,
-  UserRoundIcon,
 } from "lucide-react";
 import { useState } from "react";
 import { Avatar, AvatarFallback } from "@/views/main/components/ui/avatar";
@@ -12,6 +11,7 @@ import { Badge } from "@/views/main/components/ui/badge";
 import { Button } from "@/views/main/components/ui/button";
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -71,6 +71,26 @@ const getProfileStatus = (
 const formatAccountId = (accountId: string | null): string =>
   accountId ? `${accountId.slice(0, 8)}...${accountId.slice(-4)}` : "No UUID";
 
+function MinecraftCharacter() {
+  return (
+    <div className="flex flex-col items-center gap-0" aria-hidden="true">
+      {/* Head */}
+      <div className="h-16 w-16 rounded-sm border bg-[var(--chart-3)]" />
+      {/* Torso + arms */}
+      <div className="flex items-start">
+        <div className="h-20 w-7 rounded-sm border bg-[var(--chart-3)]/70" />
+        <div className="h-20 w-14 border bg-[color-mix(in_oklch,var(--chart-3)_70%,var(--primary))]" />
+        <div className="h-20 w-7 rounded-sm border bg-[var(--chart-3)]/70" />
+      </div>
+      {/* Legs */}
+      <div className="flex items-start gap-0.5">
+        <div className="h-24 w-7 rounded-b-sm border bg-[var(--chart-3)]/55" />
+        <div className="h-24 w-7 rounded-b-sm border bg-[var(--chart-3)]/55" />
+      </div>
+    </div>
+  );
+}
+
 function ProfilesPage() {
   const profilesHook = useProfiles();
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -110,7 +130,7 @@ function ProfilesPage() {
         </div>
       )}
 
-      <section className="grid grid-cols-[20rem_minmax(0,1fr)_17rem] gap-3 max-xl:grid-cols-[20rem_minmax(0,1fr)] max-lg:grid-cols-1">
+      <section className="grid grid-cols-[20rem_minmax(0,1fr)] gap-3 max-lg:grid-cols-1">
         {/* Profile list */}
         <div className="flex flex-col gap-3">
           {loading ? (
@@ -191,23 +211,17 @@ function ProfilesPage() {
         <Card className="relative min-h-[24rem] overflow-hidden">
           {primaryProfile ? (
             <>
-              <div
-                className="absolute inset-x-0 top-20 grid justify-center"
-                aria-hidden="true"
-              >
-                <span className="h-14 w-16 border bg-[var(--chart-3)]" />
-                <span className="h-24 w-24 border bg-[color-mix(in_oklch,var(--chart-3)_70%,var(--primary))]" />
-                <div className="flex justify-center gap-2">
-                  <span className="h-20 w-8 border bg-[var(--chart-3)]/80" />
-                  <span className="h-20 w-8 border bg-[var(--chart-3)]/80" />
-                </div>
+              <div className="absolute inset-x-0 top-16 flex justify-center">
+                <MinecraftCharacter />
               </div>
-              <CardHeader className="relative has-data-[slot=card-action]:grid-cols-[1fr_auto]">
+              <CardHeader>
                 <div>
                   <CardDescription>Selected player</CardDescription>
                   <CardTitle>{primaryProfile.displayName}</CardTitle>
                 </div>
-                <CrownIcon className="size-5 text-[var(--chart-2)]" />
+                <CardAction>
+                  <CrownIcon className="size-5 text-[var(--chart-2)]" />
+                </CardAction>
               </CardHeader>
               <CardContent className="absolute right-4 bottom-4 left-4 flex flex-wrap gap-2">
                 <Badge variant="outline" className="capitalize">
@@ -227,7 +241,7 @@ function ProfilesPage() {
               </CardContent>
             </>
           ) : (
-            <div className="flex flex-col items-center justify-center h-full py-16 gap-3">
+            <div className="flex h-full flex-col items-center justify-center gap-3 py-16">
               <p className="text-muted-foreground text-sm">
                 No profile selected
               </p>
@@ -240,22 +254,6 @@ function ProfilesPage() {
               </Button>
             </div>
           )}
-        </Card>
-
-        {/* Social — static, no API yet */}
-        <Card className="max-xl:col-span-2 max-lg:col-span-1">
-          <CardHeader className="has-data-[slot=card-action]:grid-cols-[1fr_auto]">
-            <div>
-              <CardDescription>Party</CardDescription>
-              <CardTitle>Online Friends</CardTitle>
-            </div>
-            <UserRoundIcon className="size-5 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground text-sm">
-              Friends list is not available yet.
-            </p>
-          </CardContent>
         </Card>
       </section>
 

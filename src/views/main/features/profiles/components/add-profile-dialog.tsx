@@ -80,7 +80,7 @@ export function AddProfileDialog({ open, onOpenChange, onCreated }: Props) {
   };
 
   async function handleStartLogin() {
-    verificationRunId.current += 1;
+    const runId = ++verificationRunId.current;
     setFlowState("starting");
     setVerificationMessage(null);
     setMicrosoftSignedIn(false);
@@ -88,12 +88,14 @@ export function AddProfileDialog({ open, onOpenChange, onCreated }: Props) {
     try {
       const result = await rpc.requestProxy.startMicrosoftProfileLogin(null);
       setLogin(result);
-      void watchMicrosoftSignIn(result, verificationRunId.current + 1);
+      void watchMicrosoftSignIn(result, runId);
     } catch (e) {
       toast.error(
         e instanceof Error ? e.message : "Failed to start Microsoft sign-in",
       );
-      setFlowState("idle");
+      if (verificationRunId.current === runId) {
+        setFlowState("idle");
+      }
     }
   }
 
@@ -101,7 +103,6 @@ export function AddProfileDialog({ open, onOpenChange, onCreated }: Props) {
     activeLogin: MicrosoftProfileLoginStart,
     runId: number,
   ) {
-    verificationRunId.current = runId;
     setFlowState("waitingForSignIn");
     setVerificationMessage("Waiting for Microsoft sign-in to finish.");
 
@@ -139,7 +140,7 @@ export function AddProfileDialog({ open, onOpenChange, onCreated }: Props) {
         setFlowState("idle");
       }
     } finally {
-      if (verificationRunId.current === runId && !microsoftSignedIn) {
+      if (verificationRunId.current === runId) {
         setFlowState((current) =>
           current === "waitingForSignIn" ? "idle" : current,
         );
@@ -160,8 +161,7 @@ export function AddProfileDialog({ open, onOpenChange, onCreated }: Props) {
 
     setFlowState("verifying");
     setVerificationMessage("Checking Minecraft ownership.");
-    const runId = verificationRunId.current + 1;
-    verificationRunId.current = runId;
+    const runId = ++verificationRunId.current;
 
     try {
       while (verificationRunId.current === runId) {

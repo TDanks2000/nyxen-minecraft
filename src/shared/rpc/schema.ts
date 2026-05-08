@@ -6,10 +6,14 @@ import type {
   CreateLauncherProfileInput,
   CreateLaunchPlanInput,
   DatabaseStatus,
+  DownloadArtifactsInput,
+  DownloadArtifactsResult,
   GetMinecraftVersionDetailsInput,
   LauncherInstance,
   LauncherProfile,
   LauncherStatus,
+  LaunchInstanceInput,
+  LaunchInstanceResult,
   LaunchPlan,
   ListLoaderVersionsInput,
   ListMinecraftVersionsInput,
@@ -95,6 +99,14 @@ export type MainViewRPC = {
       createLaunchPlan: {
         params: CreateLaunchPlanInput;
         response: LaunchPlan;
+      };
+      downloadArtifacts: {
+        params: DownloadArtifactsInput;
+        response: DownloadArtifactsResult;
+      };
+      launchInstance: {
+        params: LaunchInstanceInput;
+        response: LaunchInstanceResult;
       };
       listLoaderVersions: {
         params: ListLoaderVersionsInput;

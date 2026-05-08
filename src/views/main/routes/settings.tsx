@@ -1,23 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
 import {
-  CpuIcon,
   FolderIcon,
   GaugeIcon,
   HardDriveIcon,
   MonitorIcon,
+  PaletteIcon,
   SlidersHorizontalIcon,
   Volume2Icon,
 } from "lucide-react";
+import type { ReactNode } from "react";
 import { useTheme } from "@/views/main/components/theme-provider";
 import { useSettings } from "@/views/main/hooks/use-settings";
 import { useLauncherStatus } from "@/views/main/hooks/use-launcher-status";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/views/main/components/ui/card";
 import { Skeleton } from "@/views/main/components/ui/skeleton";
 import { Switch } from "@/views/main/components/ui/switch";
 import {
@@ -27,13 +21,80 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/views/main/components/ui/select";
-import { Label } from "@/views/main/components/ui/label";
 
-const ALLOCATION = [
-  ["Memory", "—", 0],
-  ["Render distance", "—", 0],
-  ["Download threads", "—", 0],
-] as const;
+function SettingGroup({
+  icon: Icon,
+  title,
+  children,
+}: {
+  icon: React.ElementType;
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-2 px-1">
+        <Icon className="size-3.5 text-primary shrink-0" />
+        <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+          {title}
+        </span>
+        <div className="flex-1 h-px bg-border/60" />
+      </div>
+      <div className="overflow-hidden rounded-lg border border-border/50 bg-card/90 shadow-sm backdrop-blur-sm divide-y divide-border/40">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function SettingRow({
+  label,
+  description,
+  children,
+}: {
+  label: string;
+  description?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-6 px-4 py-3 transition-colors hover:bg-muted/20">
+      <div className="min-w-0">
+        <p className="text-sm font-medium leading-none">{label}</p>
+        {description && (
+          <p className="mt-1 text-xs leading-snug text-muted-foreground">
+            {description}
+          </p>
+        )}
+      </div>
+      <div className="shrink-0">{children}</div>
+    </div>
+  );
+}
+
+function PathRow({
+  icon: Icon,
+  label,
+  path,
+}: {
+  icon: React.ElementType;
+  label: string;
+  path: string;
+}) {
+  return (
+    <div className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/20">
+      <Icon className="size-4 shrink-0 text-muted-foreground/60" />
+      <span className="w-20 shrink-0 text-sm font-medium text-muted-foreground">
+        {label}
+      </span>
+      <span
+        className="min-w-0 flex-1 truncate text-right font-mono text-xs text-foreground/80"
+        title={path}
+      >
+        {path}
+      </span>
+    </div>
+  );
+}
 
 function SettingsPage() {
   const settingsHook = useSettings();
@@ -53,9 +114,9 @@ function SettingsPage() {
   }
 
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-5 p-5">
+    <div className="mx-auto flex max-w-7xl flex-col gap-6 p-5">
       <section>
-        <span className="text-muted-foreground text-xs font-black uppercase">
+        <span className="text-muted-foreground text-xs font-black uppercase tracking-widest">
           Preferences
         </span>
         <h1 className="mt-2 font-heading font-black text-4xl leading-none">
@@ -63,74 +124,45 @@ function SettingsPage() {
         </h1>
       </section>
 
-      <section className="grid grid-cols-3 gap-3 max-lg:grid-cols-1">
-        {/* Runtime allocation — static placeholder for future */}
-        <Card className="min-h-80">
-          <CardHeader className="has-data-[slot=card-action]:grid-cols-[1fr_auto]">
-            <div>
-              <CardDescription>Performance</CardDescription>
-              <CardTitle>Runtime allocation</CardTitle>
-            </div>
-            <CpuIcon className="size-5 text-muted-foreground" />
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            {ALLOCATION.map(([label]) => (
-              <div className="flex flex-col gap-2" key={label}>
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-muted-foreground text-sm font-semibold">
-                    {label}
-                  </span>
-                  <span className="text-sm font-bold text-muted-foreground/40">
-                    —
-                  </span>
-                </div>
-                <div className="h-2 rounded-full bg-muted" />
-              </div>
-            ))}
-            <p className="text-xs text-muted-foreground/60 mt-2">
-              Per-instance memory is configured on each instance.
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Interface toggles — real settings */}
-        <Card className="min-h-80">
-          <CardHeader className="has-data-[slot=card-action]:grid-cols-[1fr_auto]">
-            <div>
-              <CardDescription>Launcher</CardDescription>
-              <CardTitle>Interface</CardTitle>
-            </div>
-            <SlidersHorizontalIcon className="size-5 text-muted-foreground" />
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
+      <div className="grid grid-cols-2 gap-5 max-lg:grid-cols-1">
+        {/* Left column: launcher settings */}
+        <div className="flex flex-col gap-5">
+          <SettingGroup icon={PaletteIcon} title="Appearance">
             {settingsHook.loading ? (
-              Array.from({ length: 3 }).map((_, i) => (
-                <Skeleton key={`ss-${i}`} className="h-12 rounded-md" />
-              ))
+              <div className="px-4 py-3">
+                <Skeleton className="h-8 w-full rounded-md" />
+              </div>
+            ) : (
+              <SettingRow label="Theme" description="Set the application color scheme">
+                <Select value={theme} onValueChange={(v) => v && handleTheme(v)}>
+                  <SelectTrigger className="h-8 w-32">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="system">System</SelectItem>
+                    <SelectItem value="light">Light</SelectItem>
+                    <SelectItem value="dark">Dark</SelectItem>
+                  </SelectContent>
+                </Select>
+              </SettingRow>
+            )}
+          </SettingGroup>
+
+          <SettingGroup icon={SlidersHorizontalIcon} title="Behavior">
+            {settingsHook.loading ? (
+              <>
+                {Array.from({ length: 2 }).map((_, i) => (
+                  <div key={i} className="px-4 py-3">
+                    <Skeleton className="h-5 w-48 rounded-md" />
+                  </div>
+                ))}
+              </>
             ) : (
               <>
-                {/* Theme */}
-                <div className="flex flex-col gap-1.5 rounded-md border bg-background/45 p-3">
-                  <Label className="text-muted-foreground text-sm font-semibold">
-                    Theme
-                  </Label>
-                  <Select value={theme} onValueChange={(v) => v && handleTheme(v)}>
-                    <SelectTrigger className="h-8">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="system">System</SelectItem>
-                      <SelectItem value="light">Light</SelectItem>
-                      <SelectItem value="dark">Dark</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Keep open after launch */}
-                <div className="flex items-center justify-between gap-3 rounded-md border bg-background/45 p-3">
-                  <span className="text-muted-foreground text-sm font-semibold">
-                    Keep launcher open
-                  </span>
+                <SettingRow
+                  label="Keep launcher open"
+                  description="Don't close the launcher when a game starts"
+                >
                   <Switch
                     checked={keepOpen}
                     onCheckedChange={(checked) =>
@@ -140,13 +172,11 @@ function SettingsPage() {
                       )
                     }
                   />
-                </div>
-
-                {/* Show snapshots */}
-                <div className="flex items-center justify-between gap-3 rounded-md border bg-background/45 p-3">
-                  <span className="text-muted-foreground text-sm font-semibold">
-                    Show snapshot builds
-                  </span>
+                </SettingRow>
+                <SettingRow
+                  label="Show snapshot builds"
+                  description="Include pre-release and snapshot versions"
+                >
                   <Switch
                     checked={showSnapshots}
                     onCheckedChange={(checked) =>
@@ -156,56 +186,35 @@ function SettingsPage() {
                       )
                     }
                   />
-                </div>
+                </SettingRow>
               </>
             )}
-          </CardContent>
-        </Card>
+          </SettingGroup>
+        </div>
 
-        {/* Storage paths — real directories */}
-        <Card className="min-h-80">
-          <CardHeader className="has-data-[slot=card-action]:grid-cols-[1fr_auto]">
-            <div>
-              <CardDescription>Paths</CardDescription>
-              <CardTitle>Storage</CardTitle>
-            </div>
-            <FolderIcon className="size-5 text-muted-foreground" />
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2">
+        {/* Right column: storage paths */}
+        <div className="flex flex-col gap-5">
+          <SettingGroup icon={FolderIcon} title="Storage">
             {statusHook.loading ? (
-              Array.from({ length: 5 }).map((_, i) => (
-                <Skeleton key={`sp-${i}`} className="h-11 rounded-md" />
-              ))
+              <>
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="px-4 py-3">
+                    <Skeleton className="h-4 w-full rounded-md" />
+                  </div>
+                ))}
+              </>
             ) : dirs ? (
-              (
-                [
-                  [HardDriveIcon, "Root", dirs.root],
-                  [HardDriveIcon, "Instances", dirs.instances],
-                  [Volume2Icon, "Assets", dirs.assets],
-                  [MonitorIcon, "Versions", dirs.versions],
-                  [GaugeIcon, "Logs", dirs.logs],
-                ] as const
-              ).map(([Icon, label, path]) => (
-                <div
-                  key={label}
-                  className="grid grid-cols-[1.75rem_4.5rem_minmax(0,1fr)] items-center gap-2 rounded-md border bg-background/45 p-3"
-                >
-                  <Icon className="size-4 text-primary" />
-                  <span className="text-muted-foreground text-sm font-semibold">
-                    {label}
-                  </span>
-                  <strong
-                    className="truncate text-right text-xs"
-                    title={path}
-                  >
-                    {path}
-                  </strong>
-                </div>
-              ))
+              <>
+                <PathRow icon={HardDriveIcon} label="Root" path={dirs.root} />
+                <PathRow icon={HardDriveIcon} label="Instances" path={dirs.instances} />
+                <PathRow icon={Volume2Icon} label="Assets" path={dirs.assets} />
+                <PathRow icon={MonitorIcon} label="Versions" path={dirs.versions} />
+                <PathRow icon={GaugeIcon} label="Logs" path={dirs.logs} />
+              </>
             ) : null}
-          </CardContent>
-        </Card>
-      </section>
+          </SettingGroup>
+        </div>
+      </div>
     </div>
   );
 }
