@@ -38,8 +38,7 @@ const LOADERS: Array<{ value: ModLoader; label: string }> = [
   { value: "quilt", label: "Quilt" },
 ];
 
-const RAM_STOPS = [512, 1024, 2048, 3072, 4096, 6144, 8192, 12288, 16384];
-const DEFAULT_RAM_INDEX = RAM_STOPS.indexOf(4096);
+const ALL_RAM_STOPS = [512, 1024, 2048, 3072, 4096, 6144, 8192, 12288, 16384, 32768];
 
 const formatRam = (mb: number): string => {
   if (mb < 1024) return `${mb} MB`;
@@ -51,18 +50,31 @@ export function NewInstanceDialog({ open, onOpenChange, onCreated }: Props) {
   const [versionId, setVersionId] = useState("");
   const [loader, setLoader] = useState<ModLoader>("vanilla");
   const [loaderVersion, setLoaderVersion] = useState("");
-  const [ramIndex, setRamIndex] = useState(DEFAULT_RAM_INDEX);
+  const [ramStops, setRamStops] = useState(ALL_RAM_STOPS);
+  const [ramIndex, setRamIndex] = useState(() => {
+    const idx = ALL_RAM_STOPS.indexOf(4096);
+    return idx >= 0 ? idx : 4;
+  });
   const [submitting, setSubmitting] = useState(false);
 
   const versions = useVersions({ includeSnapshots: false });
   const loaderVersions = useLoaderVersions(loader, versionId);
+
+  useEffect(() => {
+    rpc.requestProxy.getSystemMemory(null).then(({ totalMb }) => {
+      const stops = ALL_RAM_STOPS.filter((mb) => mb <= totalMb);
+      if (stops.length === 0) stops.push(ALL_RAM_STOPS[0]!);
+      setRamStops(stops);
+      setRamIndex((prev) => Math.min(prev, stops.length - 1));
+    }).catch(() => {});
+  }, []);
 
   // Reset loader version when MC version or loader changes
   useEffect(() => {
     setLoaderVersion("");
   }, [versionId, loader]);
 
-  const memoryMaxMb = RAM_STOPS[ramIndex] ?? 4096;
+  const memoryMaxMb = ramStops[ramIndex] ?? 4096;
   const needsLoaderVersion =
     loader !== "vanilla" && loaderVersions.data !== null && loaderVersions.data.length > 0;
 
@@ -101,7 +113,8 @@ export function NewInstanceDialog({ open, onOpenChange, onCreated }: Props) {
     setVersionId("");
     setLoader("vanilla");
     setLoaderVersion("");
-    setRamIndex(DEFAULT_RAM_INDEX);
+    const defaultIdx = ramStops.indexOf(4096);
+    setRamIndex(defaultIdx >= 0 ? defaultIdx : Math.min(4, ramStops.length - 1));
   }
 
   const versionsEmpty =
@@ -270,17 +283,19 @@ export function NewInstanceDialog({ open, onOpenChange, onCreated }: Props) {
             </div>
             <Slider
               min={0}
-              max={RAM_STOPS.length - 1}
+              max={ramStops.length - 1}
               step={1}
               value={[ramIndex] as number[]}
               onValueChange={(v) => {
-                const arr = v as number[];
-                setRamIndex(arr[0] ?? DEFAULT_RAM_INDEX);
+                const newIndex = Array.isArray(v)
+                  ? ((v as number[])[0] ?? 0)
+                  : Math.round(v as number);
+                setRamIndex(newIndex);
               }}
             />
             <div className="flex justify-between text-xs text-muted-foreground">
-              <span>{formatRam(RAM_STOPS[0] ?? 512)}</span>
-              <span>{formatRam(RAM_STOPS[RAM_STOPS.length - 1] ?? 16384)}</span>
+              <span>{formatRam(ramStops[0] ?? 512)}</span>
+              <span>{formatRam(ramStops[ramStops.length - 1] ?? 16384)}</span>
             </div>
           </div>
 

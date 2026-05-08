@@ -95,6 +95,10 @@ export type MainViewRPC = {
         };
         response: SettingsStatus;
       };
+      getSystemMemory: {
+        params: null;
+        response: { totalMb: number };
+      };
     };
   }>;
   webview: RPCSchema<{

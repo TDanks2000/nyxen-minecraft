@@ -1,3 +1,4 @@
+import os from "os";
 import { APP_NAME } from "../../shared/constants";
 import type { AppEnvironment } from "../../shared/types";
 import { getDatabaseStatus } from "../db/client";
@@ -36,6 +37,10 @@ export const logToBun = ({ message }: { message: string }): void => {
 };
 
 export { getDatabaseStatus };
+
+export const getSystemMemory = (): { totalMb: number } => ({
+  totalMb: Math.floor(os.totalmem() / 1024 / 1024),
+});
 
 export const refreshMinecraftVersionManifest = () => refreshManifest();
 
