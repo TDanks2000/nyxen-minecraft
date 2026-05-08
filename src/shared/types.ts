@@ -269,27 +269,25 @@ export type LaunchPlan = {
   warnings: Array<string>;
 };
 
-export type DownloadArtifactsInput = {
-  plan: LaunchPlan;
+export type CreateLaunchPlanInput = {
+  instanceId: string;
+  profileId?: string;
+  refreshVersionDetails?: boolean;
 };
+
+export type DownloadArtifactsInput =
+  | CreateLaunchPlanInput
+  | { plan: LaunchPlan };
 
 export type DownloadArtifactsResult = {
   failed: Array<{ error: string; id: string }>;
   succeeded: number;
 };
 
-export type LaunchInstanceInput = {
-  plan: LaunchPlan;
-};
+export type LaunchInstanceInput = CreateLaunchPlanInput | { plan: LaunchPlan };
 
 export type LaunchInstanceResult = {
   pid: number;
-};
-
-export type CreateLaunchPlanInput = {
-  instanceId: string;
-  profileId?: string;
-  refreshVersionDetails?: boolean;
 };
 
 export type LoaderVersionSummary = {

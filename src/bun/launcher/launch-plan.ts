@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { release } from "node:os";
-import { join } from "node:path";
+import { join, posix } from "node:path";
 import type {
   CreateLaunchPlanInput,
   LauncherProfile,
@@ -11,11 +11,15 @@ import type {
 } from "../../shared/types";
 import { getLauncherInstance } from "./instances";
 import { ensureMicrosoftProfileLaunchAuth } from "./microsoft-auth";
-import { ensureLauncherDirectories } from "./paths";
+import {
+  ensureLauncherDirectories,
+  normalizeLauncherPathSegment,
+} from "./paths";
 import {
   getFirstVerifiedMicrosoftProfile,
   getLauncherProfile,
 } from "./profiles";
+import { joinArtifactPath, normalizeArtifactRelativePath } from "./validation";
 import {
   getMinecraftVersionDetails,
   getMinecraftVersionSummary,
@@ -49,7 +53,7 @@ const mavenPathFromName = (name: string): string | null => {
 
   const classifierSuffix = classifier ? `-${classifier}` : "";
 
-  return join(
+  return posix.join(
     ...group.split("."),
     artifact,
     version,
@@ -60,7 +64,13 @@ const mavenPathFromName = (name: string): string | null => {
 const libraryArtifactPath = (
   library: MinecraftLibrary,
   download: MinecraftDownload | undefined,
-): string | null => download?.path ?? mavenPathFromName(library.name);
+): string | null => {
+  const rawPath = download?.path ?? mavenPathFromName(library.name);
+
+  return rawPath
+    ? normalizeArtifactRelativePath(rawPath, `Library ${library.name}`)
+    : null;
+};
 
 const isOsMatch = (
   os: { arch?: string; name?: string; version?: string } | undefined,
@@ -78,7 +88,11 @@ const isOsMatch = (
   }
 
   if (os.version) {
-    return new RegExp(os.version).test(release());
+    try {
+      return new RegExp(os.version).test(release());
+    } catch {
+      return false;
+    }
   }
 
   return true;
@@ -164,16 +178,21 @@ export const createLaunchPlan = async (
     refresh: input.refreshVersionDetails,
     versionId: instance.versionId,
   });
+  const versionDetailsId = normalizeLauncherPathSegment(
+    versionDetails.id,
+    "Minecraft version id",
+  );
   const directories = ensureLauncherDirectories();
   const nativesDirectory = join(
     directories.temp,
     "natives",
     instance.id,
-    versionDetails.id,
+    versionDetailsId,
   );
   const missingArtifacts: Array<LaunchPlanMissingArtifact> = [];
   const nativeArtifactPaths: Array<string> = [];
   const warnings: Array<string> = [];
+  let assetIndexId: string | null = null;
 
   let profile: LauncherProfile | null = resolveProfile(
     input.profileId,
@@ -183,6 +202,10 @@ export const createLaunchPlan = async (
   try {
     profile = await ensureMicrosoftProfileLaunchAuth(profile);
   } catch (error) {
+    if (profile && profile.kind !== "microsoft") {
+      throw error;
+    }
+
     profile = resolveProfile(input.profileId, instance.profileId);
     warnings.push(
       error instanceof Error ? error.message : "Profile authentication failed.",
@@ -196,12 +219,12 @@ export const createLaunchPlan = async (
   const clientDownload = versionDetails.downloads?.client;
   const clientJarPath = join(
     directories.versions,
-    versionDetails.id,
-    `${versionDetails.id}.jar`,
+    versionDetailsId,
+    `${versionDetailsId}.jar`,
   );
 
   addMissingArtifact(missingArtifacts, {
-    id: `${versionDetails.id}:client`,
+    id: `${versionDetailsId}:client`,
     kind: "clientJar",
     path: clientJarPath,
     sha1: clientDownload?.sha1,
@@ -209,14 +232,15 @@ export const createLaunchPlan = async (
   });
 
   if (versionDetails.assetIndex) {
+    assetIndexId = normalizeLauncherPathSegment(
+      versionDetails.assetIndex.id,
+      "Asset index id",
+    );
+
     addMissingArtifact(missingArtifacts, {
-      id: versionDetails.assetIndex.id,
+      id: assetIndexId,
       kind: "assetIndex",
-      path: join(
-        directories.assets,
-        "indexes",
-        `${versionDetails.assetIndex.id}.json`,
-      ),
+      path: join(directories.assets, "indexes", `${assetIndexId}.json`),
       sha1: versionDetails.assetIndex.sha1,
       url: versionDetails.assetIndex.url,
     });
@@ -229,7 +253,11 @@ export const createLaunchPlan = async (
     const artifactPath = libraryArtifactPath(library, artifact);
 
     if (artifactPath) {
-      const fullPath = join(directories.libraries, artifactPath);
+      const fullPath = joinArtifactPath(
+        directories.libraries,
+        artifactPath,
+        `Library ${library.name}`,
+      );
       addMissingArtifact(missingArtifacts, {
         id: library.name,
         kind: "library",
@@ -247,7 +275,11 @@ export const createLaunchPlan = async (
     const nativePath = libraryArtifactPath(library, nativeArtifact);
 
     if (classifierKey && nativePath) {
-      const fullNativePath = join(directories.libraries, nativePath);
+      const fullNativePath = joinArtifactPath(
+        directories.libraries,
+        nativePath,
+        `Native library ${library.name}`,
+      );
       addMissingArtifact(missingArtifacts, {
         id: `${library.name}:${classifierKey}`,
         kind: "nativeLibrary",
@@ -306,9 +338,9 @@ export const createLaunchPlan = async (
     },
     legacyArgFormat: !versionDetails.arguments,
     minecraft: {
-      assetIndexId: versionDetails.assetIndex?.id ?? null,
+      assetIndexId,
       mainClass: versionDetails.mainClass ?? null,
-      versionId: versionDetails.id,
+      versionId: versionDetailsId,
     },
     missingArtifacts,
     nativeArtifactPaths,

@@ -73,16 +73,12 @@ export function NewInstanceDialog({ open, onOpenChange, onCreated }: Props) {
       .getSystemMemory(null)
       .then(({ totalMb }) => {
         const stops = ALL_RAM_STOPS.filter((mb) => mb <= totalMb);
-        if (stops.length === 0) stops.push(ALL_RAM_STOPS[0]!);
+        if (stops.length === 0) stops.push(ALL_RAM_STOPS[0] ?? 512);
         setRamStops(stops);
         setRamIndex((prev) => Math.min(prev, stops.length - 1));
       })
       .catch(() => {});
   }, []);
-
-  useEffect(() => {
-    setLoaderVersion("");
-  }, [versionId, loader]);
 
   const memoryMaxMb = ramStops[ramIndex] ?? 4096;
   const needsLoaderVersion =
@@ -217,7 +213,12 @@ export function NewInstanceDialog({ open, onOpenChange, onCreated }: Props) {
               ) : (
                 <Select
                   value={versionId}
-                  onValueChange={(v) => v && setVersionId(v)}
+                  onValueChange={(v) => {
+                    if (v) {
+                      setVersionId(v);
+                      setLoaderVersion("");
+                    }
+                  }}
                 >
                   <SelectTrigger id="ni-version">
                     <SelectValue placeholder="Select a version" />
@@ -248,8 +249,7 @@ export function NewInstanceDialog({ open, onOpenChange, onCreated }: Props) {
                   </span>
                 )}
               </div>
-              <div
-                role="group"
+              <fieldset
                 aria-label="Mod loader"
                 className={cn(
                   "grid grid-cols-5 rounded-lg border border-input overflow-hidden",
@@ -261,7 +261,10 @@ export function NewInstanceDialog({ open, onOpenChange, onCreated }: Props) {
                     key={l.value}
                     type="button"
                     disabled={!versionId}
-                    onClick={() => setLoader(l.value)}
+                    onClick={() => {
+                      setLoader(l.value);
+                      setLoaderVersion("");
+                    }}
                     className={cn(
                       "py-2 text-xs font-medium transition-colors",
                       "border-r border-input last:border-r-0",
@@ -273,7 +276,7 @@ export function NewInstanceDialog({ open, onOpenChange, onCreated }: Props) {
                     {l.label}
                   </button>
                 ))}
-              </div>
+              </fieldset>
             </div>
 
             {/* Loader version — shown after non-vanilla + MC version both selected */}
@@ -348,10 +351,10 @@ export function NewInstanceDialog({ open, onOpenChange, onCreated }: Props) {
                 min={0}
                 max={ramStops.length - 1}
                 step={1}
-                value={[ramIndex] as number[]}
+                value={[ramIndex] as Array<number>}
                 onValueChange={(v) => {
                   const newIndex = Array.isArray(v)
-                    ? ((v as number[])[0] ?? 0)
+                    ? ((v as Array<number>)[0] ?? 0)
                     : Math.round(v as number);
                   setRamIndex(newIndex);
                 }}

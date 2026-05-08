@@ -152,6 +152,10 @@ export type MainViewRPC = {
         params: null;
         response: null;
       };
+      openExternal: {
+        params: { url: string };
+        response: { opened: boolean };
+      };
     };
   }>;
   webview: RPCSchema<{

@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { LauncherDirectories, LaunchPlan } from "../src/shared/types";
 
 const manifestDocument = {
   latest: {
@@ -245,6 +246,57 @@ const fakeInvalidMinecraftAppRegistrationFetch = async (
 
 const wait = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
+
+const createTestLaunchPlan = (
+  directories: LauncherDirectories,
+  overrides: Partial<LaunchPlan> = {},
+): LaunchPlan => ({
+  arguments: {
+    game: [],
+    jvm: [],
+  },
+  classpath: [],
+  createdAt: "2024-01-04T00:00:00.000Z",
+  directories: {
+    ...directories,
+    game: join(directories.instances, "instance_test"),
+    natives: join(directories.temp, "natives", "instance_test", "1.20.4"),
+  },
+  instance: {
+    createdAt: "2024-01-04T00:00:00.000Z",
+    gameArgs: [],
+    gameDirectory: join(directories.instances, "instance_test"),
+    iconUrl: null,
+    id: "instance_test",
+    javaArgs: [],
+    javaExecutable: null,
+    lastLaunchedAt: null,
+    loader: "vanilla",
+    loaderVersion: null,
+    memoryMaxMb: 4096,
+    memoryMinMb: 512,
+    name: "Test Instance",
+    profileId: null,
+    updatedAt: "2024-01-04T00:00:00.000Z",
+    versionId: "1.20.4",
+  },
+  java: {
+    executable: "java",
+    memoryMaxMb: 4096,
+    memoryMinMb: 512,
+  },
+  legacyArgFormat: false,
+  minecraft: {
+    assetIndexId: null,
+    mainClass: "net.minecraft.client.main.Main",
+    versionId: "1.20.4",
+  },
+  missingArtifacts: [],
+  nativeArtifactPaths: [],
+  profile: null,
+  warnings: [],
+  ...overrides,
+});
 
 describe("launcher backend", () => {
   const dataRoot = mkdtempSync(join(tmpdir(), "nyxen-launcher-"));
@@ -545,6 +597,154 @@ describe("launcher backend", () => {
         requestTimeoutMs: 5,
       }),
     ).rejects.toThrow("Microsoft device login timed out");
+  });
+
+  test("rejects unsafe Minecraft version ids from metadata", async () => {
+    const { refreshMinecraftVersionManifest } = await import(
+      "../src/bun/launcher/versions"
+    );
+    const unsafeVersion = manifestDocument.versions[0];
+
+    if (!unsafeVersion) {
+      throw new Error("Expected test manifest to include a version.");
+    }
+
+    await expect(
+      refreshMinecraftVersionManifest({
+        fetcher: async () =>
+          jsonResponse({
+            ...manifestDocument,
+            versions: [
+              {
+                ...unsafeVersion,
+                id: "../escape",
+              },
+            ],
+          }),
+      }),
+    ).rejects.toThrow("Version id cannot contain path separators");
+  });
+
+  test("rejects launcher instances with non-Java executables", async () => {
+    const { createLauncherInstance } = await import(
+      "../src/bun/launcher/instances"
+    );
+    const { refreshMinecraftVersionManifest } = await import(
+      "../src/bun/launcher/versions"
+    );
+
+    await refreshMinecraftVersionManifest({ fetcher: fakeFetch });
+
+    expect(() =>
+      createLauncherInstance({
+        javaExecutable: "/bin/sh",
+        name: "Unsafe Java",
+        versionId: "1.20.4",
+      }),
+    ).toThrow("Java executable must point to java or javaw");
+  });
+
+  test("does not fetch artifacts whose paths leave launcher storage", async () => {
+    const { downloadArtifacts } = await import("../src/bun/launcher/download");
+    const { getLauncherDirectories } = await import(
+      "../src/bun/launcher/paths"
+    );
+    const directories = getLauncherDirectories();
+    let fetchCalled = false;
+    const plan = createTestLaunchPlan(directories, {
+      missingArtifacts: [
+        {
+          id: "evil",
+          kind: "library",
+          path: join(dataRoot, "..", "evil.jar"),
+          url: "https://example.com/evil.jar",
+        },
+      ],
+    });
+
+    const result = await downloadArtifacts(plan, {
+      fetcher: async () => {
+        fetchCalled = true;
+        return new Response("evil");
+      },
+    });
+
+    expect(fetchCalled).toBe(false);
+    expect(result.succeeded).toBe(0);
+    expect(result.failed).toHaveLength(1);
+    expect(result.failed[0]?.error).toContain("inside launcher storage");
+  });
+
+  test("downloads artifacts with bounded concurrency", async () => {
+    const { downloadArtifacts } = await import("../src/bun/launcher/download");
+    const { getLauncherDirectories } = await import(
+      "../src/bun/launcher/paths"
+    );
+    const directories = getLauncherDirectories();
+    let active = 0;
+    let maxActive = 0;
+    const plan = createTestLaunchPlan(directories, {
+      missingArtifacts: Array.from({ length: 4 }, (_, index) => ({
+        id: `artifact-${index}`,
+        kind: "library",
+        path: join(directories.libraries, "test", `artifact-${index}.jar`),
+        url: `https://example.com/artifact-${index}.jar`,
+      })),
+    });
+
+    const result = await downloadArtifacts(plan, {
+      concurrency: 2,
+      fetcher: async () => {
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        await wait(10);
+        active -= 1;
+
+        return new Response("artifact");
+      },
+    });
+
+    expect(result).toEqual({ failed: [], succeeded: 4 });
+    expect(maxActive).toBeLessThanOrEqual(2);
+  });
+
+  test("launch RPC rebuilds renderer-provided plans before launching", async () => {
+    const { createLauncherInstance } = await import(
+      "../src/bun/launcher/instances"
+    );
+    const { createLaunchPlan } = await import(
+      "../src/bun/launcher/launch-plan"
+    );
+    const { launchInstance } = await import("../src/bun/rpc/handlers");
+    const { getMinecraftVersionDetails, refreshMinecraftVersionManifest } =
+      await import("../src/bun/launcher/versions");
+
+    await refreshMinecraftVersionManifest({ fetcher: fakeFetch });
+    await getMinecraftVersionDetails(
+      { versionId: "1.20.4" },
+      {
+        fetcher: fakeFetch,
+      },
+    );
+
+    const instance = createLauncherInstance({
+      name: "Trusted Plan",
+      versionId: "1.20.4",
+    });
+    const plan = await createLaunchPlan({ instanceId: instance.id });
+
+    await expect(
+      launchInstance({
+        plan: {
+          ...plan,
+          java: {
+            ...plan.java,
+            executable: "/bin/sh",
+          },
+          missingArtifacts: [],
+        },
+      }),
+    ).rejects.toThrow("Download missing artifacts before launching Minecraft");
   });
 
   test("rejects launch plans for offline profiles", async () => {

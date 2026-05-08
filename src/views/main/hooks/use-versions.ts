@@ -6,28 +6,29 @@ import type { MinecraftVersionSummary } from "../../../shared/types";
 type VersionsOpts = { includeSnapshots?: boolean } | undefined;
 
 export function useVersions(opts?: VersionsOpts): {
-  data: MinecraftVersionSummary[] | null;
+  data: Array<MinecraftVersionSummary> | null;
   loading: boolean;
   error: string | null;
   refresh: () => void;
   refreshManifest: () => Promise<void>;
 } {
-  const [data, setData] = useState<MinecraftVersionSummary[] | null>(null);
+  const [data, setData] = useState<Array<MinecraftVersionSummary> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
-  const optsKey = JSON.stringify(opts);
+  const includeSnapshots = opts?.includeSnapshots;
 
   const refresh = useCallback(() => setTick((t) => t + 1), []);
 
   useEffect(() => {
+    void tick;
     let mounted = true;
 
     async function load() {
       setLoading(true);
       try {
         const result = await rpc.requestProxy.listMinecraftVersions(
-          opts ?? null,
+          includeSnapshots === undefined ? null : { includeSnapshots },
         );
         if (mounted) {
           setData(result);
@@ -46,8 +47,7 @@ export function useVersions(opts?: VersionsOpts): {
     return () => {
       mounted = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tick, optsKey]);
+  }, [tick, includeSnapshots]);
 
   const refreshManifest = useCallback(async () => {
     try {

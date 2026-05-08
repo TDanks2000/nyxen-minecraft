@@ -17,14 +17,21 @@ import type {
 } from "../../shared/types";
 import { db } from "../db/client";
 import * as schema from "../db/schema";
-import { ensureLauncherDirectories, getVersionDirectory } from "./paths";
+import {
+  ensureLauncherDirectories,
+  getVersionDirectory,
+  isLauncherPathSegment,
+  normalizeLauncherPathSegment,
+} from "./paths";
 
 export const MINECRAFT_VERSION_MANIFEST_URL =
   "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
 
 const manifestVersionSchema = z.object({
   complianceLevel: z.number().int().optional(),
-  id: z.string().min(1),
+  id: z.string().min(1).refine(isLauncherPathSegment, {
+    message: "Version id cannot contain path separators.",
+  }),
   releaseTime: z.string().min(1),
   sha1: z.string().optional(),
   time: z.string().min(1),
@@ -106,6 +113,7 @@ type VersionServiceOptions = {
   fetcher?: Fetcher;
   manifestUrl?: string;
   now?: () => Date;
+  requestTimeoutMs?: number;
 };
 
 type VersionRow = typeof schema.minecraftVersions.$inferSelect;
@@ -143,12 +151,54 @@ const emptyManifest = (
   versions: [],
 });
 
+const getRequestTimeoutMs = (options: VersionServiceOptions): number => {
+  if (options.requestTimeoutMs !== undefined) {
+    return Math.max(1, Math.trunc(options.requestTimeoutMs));
+  }
+
+  const configured = Number(
+    process.env.NYXEN_METADATA_REQUEST_TIMEOUT_MS ?? "",
+  );
+
+  if (!Number.isFinite(configured) || configured <= 0) {
+    return 20_000;
+  }
+
+  return Math.max(1_000, Math.trunc(configured));
+};
+
 const fetchJson = async (
   url: string,
   options: VersionServiceOptions,
 ): Promise<unknown> => {
   const requester = options.fetcher ?? fetch;
-  const response = await requester(url);
+  const parsedUrl = new URL(url);
+
+  if (parsedUrl.protocol !== "https:") {
+    throw new Error("Minecraft metadata URL must use HTTPS.");
+  }
+
+  const controller = new AbortController();
+  const timeoutMs = getRequestTimeoutMs(options);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  let response: Response;
+
+  try {
+    response = await requester(url, { signal: controller.signal });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(
+        `Minecraft metadata request timed out after ${Math.round(
+          timeoutMs / 1000,
+        )} seconds.`,
+      );
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     throw new Error(
@@ -176,7 +226,9 @@ const getVersionRow = (versionId: string): VersionRow | null =>
 export const getMinecraftVersionSummary = (
   versionId: string,
 ): MinecraftVersionSummary | null => {
-  const version = getVersionRow(versionId.trim());
+  const version = getVersionRow(
+    normalizeLauncherPathSegment(versionId, "Minecraft version id"),
+  );
 
   return version ? toVersionSummary(version) : null;
 };
@@ -331,11 +383,10 @@ export const getMinecraftVersionDetails = async (
   input: GetMinecraftVersionDetailsInput,
   options: VersionServiceOptions = {},
 ): Promise<MinecraftVersionDetails> => {
-  const versionId = input.versionId.trim();
-
-  if (!versionId) {
-    throw new Error("Minecraft version id is required.");
-  }
+  const versionId = normalizeLauncherPathSegment(
+    input.versionId,
+    "Minecraft version id",
+  );
 
   const version = getVersionRow(versionId);
 

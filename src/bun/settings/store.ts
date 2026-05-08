@@ -1,17 +1,15 @@
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type {
   AppSettings,
   SettingsStatus,
   SettingValue,
 } from "../../shared/types";
-import { getDataRoot } from "../launcher/paths";
+import {
+  ensurePrivateDirectory,
+  ensurePrivateFile,
+  getDataRoot,
+} from "../launcher/paths";
 
 const defaultSettings: AppSettings = {
   "app.theme": "system",
@@ -44,12 +42,13 @@ const normalizeSettings = (value: unknown): AppSettings => {
 };
 
 const writeSettingsFile = (settings: AppSettings): void => {
-  mkdirSync(dirname(settingsPath), { recursive: true });
+  ensurePrivateDirectory(dirname(settingsPath));
   writeFileSync(settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
+  ensurePrivateFile(settingsPath);
 };
 
 const readSettingsFile = (): AppSettings => {
-  mkdirSync(dirname(settingsPath), { recursive: true });
+  ensurePrivateDirectory(dirname(settingsPath));
 
   if (!existsSync(settingsPath)) {
     const settings = { ...defaultSettings };

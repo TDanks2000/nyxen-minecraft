@@ -234,21 +234,23 @@ export function AddProfileDialog({ open, onOpenChange, onCreated }: Props) {
                 </Button>
               </div>
 
-              <div className="flex min-w-0 items-center gap-2 rounded-md border bg-background px-2.5 py-2">
-                <SquareArrowOutUpRightIcon className="shrink-0 text-muted-foreground" />
-                <span className="min-w-0 flex-1 truncate font-mono text-xs">
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full justify-start gap-2 font-mono text-xs"
+                onClick={async () => {
+                  await copyText(login.userCode, "Code");
+                  await rpc.requestProxy.openExternal({
+                    url: login.verificationUri,
+                  });
+                }}
+                aria-label="Open Microsoft sign-in link in browser and copy code"
+              >
+                <SquareArrowOutUpRightIcon className="shrink-0" />
+                <span className="min-w-0 flex-1 truncate text-left">
                   {login.verificationUri}
                 </span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-xs"
-                  onClick={() => copyText(login.verificationUri, "Link")}
-                  aria-label="Copy Microsoft sign-in link"
-                >
-                  <CopyIcon />
-                </Button>
-              </div>
+              </Button>
 
               {loginExpired && (
                 <p className="text-destructive text-sm">

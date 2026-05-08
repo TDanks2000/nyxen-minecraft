@@ -1,18 +1,11 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { formatDistanceToNow } from "date-fns";
-import {
-  CheckCircle2Icon,
-  CircleIcon,
-  Layers3Icon,
-  PlayIcon,
-  PlusIcon,
-} from "lucide-react";
+import { InfoIcon, PlayIcon, PlusIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Button } from "@/views/main/components/ui/button";
+import { Button, buttonVariants } from "@/views/main/components/ui/button";
 import {
   Card,
-  CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
@@ -84,19 +77,21 @@ function InstancesPage() {
         {/* Instance cards */}
         <div className="grid grid-cols-2 gap-3 max-md:grid-cols-1">
           {loading ? (
-            Array.from({ length: 4 }).map((_, i) => (
-              <Card key={`sk-${i}`}>
-                <Skeleton className="h-32 rounded-b-none rounded-t-[inherit]" />
-                <CardHeader>
-                  <Skeleton className="h-5 w-32" />
-                  <Skeleton className="h-3 w-24 mt-1" />
-                </CardHeader>
-                <div className="px-6 pb-4 flex justify-between items-center">
-                  <Skeleton className="h-3 w-20" />
-                  <Skeleton className="size-8 rounded-md" />
-                </div>
-              </Card>
-            ))
+            ["instance-a", "instance-b", "instance-c", "instance-d"].map(
+              (key) => (
+                <Card key={key}>
+                  <Skeleton className="h-32 rounded-b-none rounded-t-[inherit]" />
+                  <CardHeader>
+                    <Skeleton className="h-5 w-32" />
+                    <Skeleton className="h-3 w-24 mt-1" />
+                  </CardHeader>
+                  <div className="px-6 pb-4 flex justify-between items-center">
+                    <Skeleton className="h-3 w-20" />
+                    <Skeleton className="size-8 rounded-md" />
+                  </div>
+                </Card>
+              ),
+            )
           ) : !instances || instances.length === 0 ? (
             <div className="col-span-2 flex flex-col items-center justify-center gap-3 py-16 text-center">
               <p className="text-muted-foreground text-sm">No instances yet.</p>
@@ -133,20 +128,33 @@ function InstancesPage() {
                         })
                       : "Never played"}
                   </span>
-                  <button
-                    type="button"
-                    className={cn(
-                      "size-8 rounded-md flex items-center justify-center transition-colors",
-                      planLoadingId === instance.id
-                        ? "bg-primary/50 cursor-wait"
-                        : "bg-primary hover:bg-primary/80",
-                    )}
-                    onClick={() => handlePlay(instance.id)}
-                    disabled={planLoadingId !== null}
-                    aria-label="Create launch plan"
-                  >
-                    <PlayIcon className="size-4 fill-primary-foreground text-primary-foreground" />
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <Link
+                      to="/instances/$instanceId"
+                      params={{ instanceId: instance.id }}
+                      className={buttonVariants({
+                        size: "sm",
+                        variant: "outline",
+                      })}
+                    >
+                      <InfoIcon data-icon="inline-start" />
+                      Info
+                    </Link>
+                    <button
+                      type="button"
+                      className={cn(
+                        "size-8 rounded-md flex items-center justify-center transition-colors",
+                        planLoadingId === instance.id
+                          ? "bg-primary/50 cursor-wait"
+                          : "bg-primary hover:bg-primary/80",
+                      )}
+                      onClick={() => handlePlay(instance.id)}
+                      disabled={planLoadingId !== null}
+                      aria-label="Create launch plan"
+                    >
+                      <PlayIcon className="size-4 fill-primary-foreground text-primary-foreground" />
+                    </button>
+                  </div>
                 </div>
               </Card>
             ))

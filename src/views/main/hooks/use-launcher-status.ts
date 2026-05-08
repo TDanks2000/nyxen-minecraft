@@ -16,6 +16,7 @@ export function useLauncherStatus(): {
   const refresh = useCallback(() => setTick((t) => t + 1), []);
 
   useEffect(() => {
+    void tick;
     let mounted = true;
 
     async function load() {

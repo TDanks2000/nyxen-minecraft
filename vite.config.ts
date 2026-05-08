@@ -12,10 +12,12 @@ export default defineConfig({
   },
   plugins: [
     tanstackRouter({
-      target: "react",
-      routesDirectory: "./routes",
-      generatedRouteTree: "./routeTree.gen.ts",
       autoCodeSplitting: true,
+      generatedRouteTree: "./routeTree.gen.ts",
+      quoteStyle: "double",
+      routesDirectory: "./routes",
+      semicolons: true,
+      target: "react",
     }),
     tailwindcss(),
     react(),

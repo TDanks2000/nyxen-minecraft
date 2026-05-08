@@ -3,12 +3,12 @@ import { rpc } from "@/views/main/lib/rpc";
 import type { LauncherInstance } from "../../../shared/types";
 
 export function useInstances(): {
-  data: LauncherInstance[] | null;
+  data: Array<LauncherInstance> | null;
   loading: boolean;
   error: string | null;
   refresh: () => void;
 } {
-  const [data, setData] = useState<LauncherInstance[] | null>(null);
+  const [data, setData] = useState<Array<LauncherInstance> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
@@ -16,6 +16,7 @@ export function useInstances(): {
   const refresh = useCallback(() => setTick((t) => t + 1), []);
 
   useEffect(() => {
+    void tick;
     let mounted = true;
 
     async function load() {

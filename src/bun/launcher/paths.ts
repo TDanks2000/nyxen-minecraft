@@ -1,8 +1,51 @@
-import { mkdirSync } from "node:fs";
+import { chmodSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { LauncherDirectories } from "../../shared/types";
 
 const defaultDataRoot = (): string => join(process.cwd(), "data");
+
+export const ensurePrivateDirectory = (directory: string): void => {
+  mkdirSync(directory, { mode: 0o700, recursive: true });
+
+  if (process.platform !== "win32") {
+    chmodSync(directory, 0o700);
+  }
+};
+
+export const ensurePrivateFile = (path: string): void => {
+  if (process.platform !== "win32") {
+    chmodSync(path, 0o600);
+  }
+};
+
+export const normalizeLauncherPathSegment = (
+  value: string,
+  label: string,
+): string => {
+  const normalized = value.trim();
+
+  if (
+    !normalized ||
+    normalized === "." ||
+    normalized === ".." ||
+    normalized.includes("/") ||
+    normalized.includes("\\") ||
+    normalized.includes("\0")
+  ) {
+    throw new Error(`${label} cannot contain path separators.`);
+  }
+
+  return normalized;
+};
+
+export const isLauncherPathSegment = (value: string): boolean => {
+  try {
+    normalizeLauncherPathSegment(value, "Path segment");
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 export const getDataRoot = (): string => {
   const configuredRoot = process.env.NYXEN_DATA_DIR?.trim();
@@ -32,14 +75,20 @@ export const ensureLauncherDirectories = (): LauncherDirectories => {
   const directories = getLauncherDirectories();
 
   for (const directory of Object.values(directories)) {
-    mkdirSync(directory, { recursive: true });
+    ensurePrivateDirectory(directory);
   }
 
   return directories;
 };
 
 export const getInstanceDirectory = (instanceId: string): string =>
-  join(getLauncherDirectories().instances, instanceId);
+  join(
+    getLauncherDirectories().instances,
+    normalizeLauncherPathSegment(instanceId, "Launcher instance id"),
+  );
 
 export const getVersionDirectory = (versionId: string): string =>
-  join(getLauncherDirectories().versions, versionId);
+  join(
+    getLauncherDirectories().versions,
+    normalizeLauncherPathSegment(versionId, "Minecraft version id"),
+  );

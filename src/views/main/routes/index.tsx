@@ -329,9 +329,9 @@ function HomePage() {
         {/* Cards */}
         <div className="grid grid-cols-5 gap-3">
           {instancesHook.loading ? (
-            Array.from({ length: 5 }).map((_, i) => (
+            ["card-a", "card-b", "card-c", "card-d", "card-e"].map((key) => (
               <div
-                key={`sk-${i}`}
+                key={key}
                 className="rounded-md border border-border overflow-hidden"
               >
                 <Skeleton className="h-28" />

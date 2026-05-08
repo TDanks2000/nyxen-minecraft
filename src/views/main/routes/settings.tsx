@@ -156,13 +156,11 @@ function SettingsPage() {
 
           <SettingGroup icon={SlidersHorizontalIcon} title="Behavior">
             {settingsHook.loading ? (
-              <>
-                {Array.from({ length: 2 }).map((_, i) => (
-                  <div key={i} className="px-4 py-3">
-                    <Skeleton className="h-5 w-48 rounded-md" />
-                  </div>
-                ))}
-              </>
+              ["keep-open", "show-snapshots"].map((key) => (
+                <div key={key} className="px-4 py-3">
+                  <Skeleton className="h-5 w-48 rounded-md" />
+                </div>
+              ))
             ) : (
               <>
                 <SettingRow
@@ -202,13 +200,11 @@ function SettingsPage() {
         <div className="flex flex-col gap-5">
           <SettingGroup icon={FolderIcon} title="Storage">
             {statusHook.loading ? (
-              <>
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <div key={i} className="px-4 py-3">
-                    <Skeleton className="h-4 w-full rounded-md" />
-                  </div>
-                ))}
-              </>
+              ["root", "instances", "assets", "versions", "logs"].map((key) => (
+                <div key={key} className="px-4 py-3">
+                  <Skeleton className="h-4 w-full rounded-md" />
+                </div>
+              ))
             ) : dirs ? (
               <>
                 <PathRow icon={HardDriveIcon} label="Root" path={dirs.root} />

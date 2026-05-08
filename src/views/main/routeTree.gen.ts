@@ -8,106 +8,213 @@
 // You should NOT make any changes in this file as it will be overwritten.
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
-import { Route as rootRouteImport } from './routes/__root'
-import { Route as SettingsRouteImport } from './routes/settings'
-import { Route as ProfilesRouteImport } from './routes/profiles'
-import { Route as InstancesRouteImport } from './routes/instances'
-import { Route as IndexRouteImport } from './routes/index'
+import { Route as rootRouteImport } from "./routes/__root";
+import { Route as WorldsRouteImport } from "./routes/worlds";
+import { Route as SettingsRouteImport } from "./routes/settings";
+import { Route as ScreenshotsRouteImport } from "./routes/screenshots";
+import { Route as ProfilesRouteImport } from "./routes/profiles";
+import { Route as ModpacksRouteImport } from "./routes/modpacks";
+import { Route as InstancesRouteImport } from "./routes/instances";
+import { Route as IndexRouteImport } from "./routes/index";
+import { Route as InstancesInstanceIdRouteImport } from "./routes/instances.$instanceId";
 
+const WorldsRoute = WorldsRouteImport.update({
+  id: "/worlds",
+  path: "/worlds",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const SettingsRoute = SettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
+  id: "/settings",
+  path: "/settings",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
+const ScreenshotsRoute = ScreenshotsRouteImport.update({
+  id: "/screenshots",
+  path: "/screenshots",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const ProfilesRoute = ProfilesRouteImport.update({
-  id: '/profiles',
-  path: '/profiles',
+  id: "/profiles",
+  path: "/profiles",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
+const ModpacksRoute = ModpacksRouteImport.update({
+  id: "/modpacks",
+  path: "/modpacks",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const InstancesRoute = InstancesRouteImport.update({
-  id: '/instances',
-  path: '/instances',
+  id: "/instances",
+  path: "/instances",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+  id: "/",
+  path: "/",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
+const InstancesInstanceIdRoute = InstancesInstanceIdRouteImport.update({
+  id: "/$instanceId",
+  path: "/$instanceId",
+  getParentRoute: () => InstancesRoute,
+} as any);
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
-  '/instances': typeof InstancesRoute
-  '/profiles': typeof ProfilesRoute
-  '/settings': typeof SettingsRoute
+  "/": typeof IndexRoute;
+  "/instances": typeof InstancesRouteWithChildren;
+  "/modpacks": typeof ModpacksRoute;
+  "/profiles": typeof ProfilesRoute;
+  "/screenshots": typeof ScreenshotsRoute;
+  "/settings": typeof SettingsRoute;
+  "/worlds": typeof WorldsRoute;
+  "/instances/$instanceId": typeof InstancesInstanceIdRoute;
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
-  '/instances': typeof InstancesRoute
-  '/profiles': typeof ProfilesRoute
-  '/settings': typeof SettingsRoute
+  "/": typeof IndexRoute;
+  "/instances": typeof InstancesRouteWithChildren;
+  "/modpacks": typeof ModpacksRoute;
+  "/profiles": typeof ProfilesRoute;
+  "/screenshots": typeof ScreenshotsRoute;
+  "/settings": typeof SettingsRoute;
+  "/worlds": typeof WorldsRoute;
+  "/instances/$instanceId": typeof InstancesInstanceIdRoute;
 }
 export interface FileRoutesById {
-  __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
-  '/instances': typeof InstancesRoute
-  '/profiles': typeof ProfilesRoute
-  '/settings': typeof SettingsRoute
+  __root__: typeof rootRouteImport;
+  "/": typeof IndexRoute;
+  "/instances": typeof InstancesRouteWithChildren;
+  "/modpacks": typeof ModpacksRoute;
+  "/profiles": typeof ProfilesRoute;
+  "/screenshots": typeof ScreenshotsRoute;
+  "/settings": typeof SettingsRoute;
+  "/worlds": typeof WorldsRoute;
+  "/instances/$instanceId": typeof InstancesInstanceIdRoute;
 }
 export interface FileRouteTypes {
-  fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/instances' | '/profiles' | '/settings'
-  fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/instances' | '/profiles' | '/settings'
-  id: '__root__' | '/' | '/instances' | '/profiles' | '/settings'
-  fileRoutesById: FileRoutesById
+  fileRoutesByFullPath: FileRoutesByFullPath;
+  fullPaths:
+    | "/"
+    | "/instances"
+    | "/modpacks"
+    | "/profiles"
+    | "/screenshots"
+    | "/settings"
+    | "/worlds"
+    | "/instances/$instanceId";
+  fileRoutesByTo: FileRoutesByTo;
+  to:
+    | "/"
+    | "/instances"
+    | "/modpacks"
+    | "/profiles"
+    | "/screenshots"
+    | "/settings"
+    | "/worlds"
+    | "/instances/$instanceId";
+  id:
+    | "__root__"
+    | "/"
+    | "/instances"
+    | "/modpacks"
+    | "/profiles"
+    | "/screenshots"
+    | "/settings"
+    | "/worlds"
+    | "/instances/$instanceId";
+  fileRoutesById: FileRoutesById;
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
-  InstancesRoute: typeof InstancesRoute
-  ProfilesRoute: typeof ProfilesRoute
-  SettingsRoute: typeof SettingsRoute
+  IndexRoute: typeof IndexRoute;
+  InstancesRoute: typeof InstancesRouteWithChildren;
+  ModpacksRoute: typeof ModpacksRoute;
+  ProfilesRoute: typeof ProfilesRoute;
+  ScreenshotsRoute: typeof ScreenshotsRoute;
+  SettingsRoute: typeof SettingsRoute;
+  WorldsRoute: typeof WorldsRoute;
 }
 
-declare module '@tanstack/react-router' {
+declare module "@tanstack/react-router" {
   interface FileRoutesByPath {
-    '/settings': {
-      id: '/settings'
-      path: '/settings'
-      fullPath: '/settings'
-      preLoaderRoute: typeof SettingsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/profiles': {
-      id: '/profiles'
-      path: '/profiles'
-      fullPath: '/profiles'
-      preLoaderRoute: typeof ProfilesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/instances': {
-      id: '/instances'
-      path: '/instances'
-      fullPath: '/instances'
-      preLoaderRoute: typeof InstancesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
+    "/worlds": {
+      id: "/worlds";
+      path: "/worlds";
+      fullPath: "/worlds";
+      preLoaderRoute: typeof WorldsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/settings": {
+      id: "/settings";
+      path: "/settings";
+      fullPath: "/settings";
+      preLoaderRoute: typeof SettingsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/screenshots": {
+      id: "/screenshots";
+      path: "/screenshots";
+      fullPath: "/screenshots";
+      preLoaderRoute: typeof ScreenshotsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/profiles": {
+      id: "/profiles";
+      path: "/profiles";
+      fullPath: "/profiles";
+      preLoaderRoute: typeof ProfilesRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/modpacks": {
+      id: "/modpacks";
+      path: "/modpacks";
+      fullPath: "/modpacks";
+      preLoaderRoute: typeof ModpacksRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/instances": {
+      id: "/instances";
+      path: "/instances";
+      fullPath: "/instances";
+      preLoaderRoute: typeof InstancesRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/": {
+      id: "/";
+      path: "/";
+      fullPath: "/";
+      preLoaderRoute: typeof IndexRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/instances/$instanceId": {
+      id: "/instances/$instanceId";
+      path: "/$instanceId";
+      fullPath: "/instances/$instanceId";
+      preLoaderRoute: typeof InstancesInstanceIdRouteImport;
+      parentRoute: typeof InstancesRoute;
+    };
   }
 }
 
+interface InstancesRouteChildren {
+  InstancesInstanceIdRoute: typeof InstancesInstanceIdRoute;
+}
+
+const InstancesRouteChildren: InstancesRouteChildren = {
+  InstancesInstanceIdRoute: InstancesInstanceIdRoute,
+};
+
+const InstancesRouteWithChildren = InstancesRoute._addFileChildren(
+  InstancesRouteChildren,
+);
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  InstancesRoute: InstancesRoute,
+  InstancesRoute: InstancesRouteWithChildren,
+  ModpacksRoute: ModpacksRoute,
   ProfilesRoute: ProfilesRoute,
+  ScreenshotsRoute: ScreenshotsRoute,
   SettingsRoute: SettingsRoute,
-}
+  WorldsRoute: WorldsRoute,
+};
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
-  ._addFileTypes<FileRouteTypes>()
+  ._addFileTypes<FileRouteTypes>();

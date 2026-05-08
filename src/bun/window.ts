@@ -1,3 +1,5 @@
+import { existsSync, watch } from "node:fs";
+import { join } from "node:path";
 import { BrowserWindow, Screen, Utils } from "electrobun/bun";
 import { APP_NAME } from "../shared/constants";
 import { mainViewRPC } from "./rpc/router";
@@ -8,22 +10,10 @@ const MAX_WINDOW_WIDTH = 1280;
 const MAX_WINDOW_HEIGHT = 860;
 const MIN_WINDOW_WIDTH = 960;
 const MIN_WINDOW_HEIGHT = 640;
-
-const isAllowedNavigation = (url: string): boolean =>
-  url.startsWith("views://") || url === "about:blank";
-
-type NavigationEvent = {
-  data?: {
-    detail?: unknown;
-    url?: unknown;
-  };
-  response?: {
-    allow: boolean;
-  };
-};
-
-const isNavigationEvent = (event: unknown): event is NavigationEvent =>
-  typeof event === "object" && event !== null;
+const MAIN_VIEW_URL = "views://main/index.html";
+const DEV_VIEW_DIRECTORY = join(process.cwd(), ".electrobun", "views", "main");
+const DEV_RELOAD_DELAY_MS = 120;
+const LOCAL_NAVIGATION_RULES = ["^*", "views://*", "about:blank"];
 
 const clamp = (value: number, min: number, max: number): number =>
   Math.min(Math.max(value, min), max);
@@ -57,51 +47,43 @@ const getResponsiveWindowFrame = () => {
   };
 };
 
-const getNavigationUrl = (event: unknown): string | null => {
-  if (!isNavigationEvent(event)) {
-    return null;
+const setupDevViewReloader = (window: BrowserWindow): void => {
+  if (process.env.CES_DEV_RELOAD !== "1" || !existsSync(DEV_VIEW_DIRECTORY)) {
+    return;
   }
 
-  const data = event.data;
+  let reloadTimer: ReturnType<typeof setTimeout> | null = null;
+  const watcher = watch(DEV_VIEW_DIRECTORY, { persistent: false }, () => {
+    if (reloadTimer) {
+      clearTimeout(reloadTimer);
+    }
 
-  if (!data || typeof data !== "object") {
-    return null;
-  }
+    reloadTimer = setTimeout(() => {
+      reloadTimer = null;
+      window.webview.loadURL(MAIN_VIEW_URL);
+    }, DEV_RELOAD_DELAY_MS);
+  });
 
-  if (typeof data.detail === "string") {
-    return data.detail;
-  }
+  window.on("close", () => {
+    if (reloadTimer) {
+      clearTimeout(reloadTimer);
+    }
 
-  if (typeof data.url === "string") {
-    return data.url;
-  }
-
-  return null;
+    watcher.close();
+  });
 };
 
 export const createMainWindow = (): BrowserWindow => {
   const window = new BrowserWindow({
     frame: getResponsiveWindowFrame(),
-    styleMask: {
-      Closable: true,
-      FullSizeContentView: true,
-      Miniaturizable: true,
-      Resizable: true,
-      Titled: true,
-    },
     titleBarStyle: "hidden",
     rpc: mainViewRPC,
     title: APP_NAME,
-    url: "views://main/index.html",
+    url: MAIN_VIEW_URL,
   });
 
-  window.webview.on("will-navigate", (event: unknown) => {
-    const url = getNavigationUrl(event);
-
-    if ((!url || !isAllowedNavigation(url)) && isNavigationEvent(event)) {
-      event.response = { allow: false };
-    }
-  });
+  window.webview.setNavigationRules(LOCAL_NAVIGATION_RULES);
+  setupDevViewReloader(window);
 
   window.on("close", () => {
     Utils.quit();

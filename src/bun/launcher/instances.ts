@@ -8,8 +8,9 @@ import type {
 } from "../../shared/types";
 import { db } from "../db/client";
 import * as schema from "../db/schema";
-import { getInstanceDirectory } from "./paths";
+import { getInstanceDirectory, normalizeLauncherPathSegment } from "./paths";
 import { getLauncherProfile } from "./profiles";
+import { normalizeJavaExecutable } from "./validation";
 
 type InstanceRow = typeof schema.launcherInstances.$inferSelect;
 
@@ -24,22 +25,19 @@ const modLoaders = new Set<ModLoader>([
 const normalizeName = (name: string): string => {
   const normalized = name.trim();
 
-  if (normalized.length < 2 || normalized.length > 64) {
+  if (
+    normalized.length < 2 ||
+    normalized.length > 64 ||
+    normalized.includes("\0")
+  ) {
     throw new Error("Instance name must be between 2 and 64 characters.");
   }
 
   return normalized;
 };
 
-const normalizeVersionId = (versionId: string): string => {
-  const normalized = versionId.trim();
-
-  if (!normalized) {
-    throw new Error("Minecraft version id is required.");
-  }
-
-  return normalized;
-};
+const normalizeVersionId = (versionId: string): string =>
+  normalizeLauncherPathSegment(versionId, "Minecraft version id");
 
 const normalizeLoader = (loader: ModLoader | undefined): ModLoader => {
   if (!loader) {
@@ -66,9 +64,73 @@ const normalizeMemory = (
 
 const normalizeStringArray = (
   values: Array<string> | undefined,
-): Array<string> =>
-  values?.map((value) => value.trim()).filter((value) => value.length > 0) ??
-  [];
+  label: string,
+): Array<string> => {
+  if (values === undefined) {
+    return [];
+  }
+
+  if (!Array.isArray(values)) {
+    throw new Error(`${label} must be a list of strings.`);
+  }
+
+  if (values.length > 128) {
+    throw new Error(`${label} cannot contain more than 128 entries.`);
+  }
+
+  return values
+    .map((value) => {
+      if (typeof value !== "string") {
+        throw new Error(`${label} must only contain strings.`);
+      }
+
+      const normalized = value.trim();
+
+      if (normalized.length > 512 || normalized.includes("\0")) {
+        throw new Error(`${label} contains an invalid argument.`);
+      }
+
+      return normalized;
+    })
+    .filter((value) => value.length > 0);
+};
+
+const normalizeIconUrl = (iconUrl: string | undefined): string | null => {
+  const normalized = iconUrl?.trim();
+
+  if (!normalized) {
+    return null;
+  }
+
+  if (normalized.length > 2048 || normalized.includes("\0")) {
+    throw new Error("Instance icon URL is invalid.");
+  }
+
+  const url = new URL(normalized);
+
+  if (url.protocol !== "https:") {
+    throw new Error("Instance icon URL must use HTTPS.");
+  }
+
+  return url.toString();
+};
+
+const normalizeOptionalText = (
+  value: string | undefined,
+  label: string,
+): string | null => {
+  const normalized = value?.trim();
+
+  if (!normalized) {
+    return null;
+  }
+
+  if (normalized.length > 256 || normalized.includes("\0")) {
+    throw new Error(`${label} is invalid.`);
+  }
+
+  return normalized;
+};
 
 const parseStringArray = (value: string): Array<string> => {
   try {
@@ -175,15 +237,15 @@ export const createLauncherInstance = (
   const gameDirectory = getInstanceDirectory(instanceId);
   const instance = {
     createdAt: now,
-    gameArgs: JSON.stringify(normalizeStringArray(input.gameArgs)),
+    gameArgs: JSON.stringify(normalizeStringArray(input.gameArgs, "Game args")),
     gameDirectory,
-    iconUrl: input.iconUrl?.trim() || null,
+    iconUrl: normalizeIconUrl(input.iconUrl),
     id: instanceId,
-    javaArgs: JSON.stringify(normalizeStringArray(input.javaArgs)),
-    javaExecutable: input.javaExecutable?.trim() || null,
+    javaArgs: JSON.stringify(normalizeStringArray(input.javaArgs, "Java args")),
+    javaExecutable: normalizeJavaExecutable(input.javaExecutable),
     lastLaunchedAt: null,
     loader: normalizeLoader(input.loader),
-    loaderVersion: input.loaderVersion?.trim() || null,
+    loaderVersion: normalizeOptionalText(input.loaderVersion, "Loader version"),
     memoryMaxMb,
     memoryMinMb,
     name: normalizeName(input.name),

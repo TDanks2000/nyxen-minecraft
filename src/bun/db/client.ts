@@ -1,20 +1,25 @@
 import { Database } from "bun:sqlite";
-import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { count } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import type { DatabaseStatus } from "../../shared/types";
-import { getDataRoot } from "../launcher/paths";
+import {
+  ensurePrivateDirectory,
+  ensurePrivateFile,
+  getDataRoot,
+} from "../launcher/paths";
 import * as schema from "./schema";
 
 export const databasePath = join(getDataRoot(), "app.sqlite");
 
-mkdirSync(dirname(databasePath), { recursive: true });
+ensurePrivateDirectory(dirname(databasePath));
 
 export const sqlite = new Database(databasePath, {
   create: true,
   strict: true,
 });
+
+ensurePrivateFile(databasePath);
 
 sqlite.exec(`
   pragma foreign_keys = on;

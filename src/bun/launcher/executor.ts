@@ -1,6 +1,12 @@
 import { spawn } from "node:child_process";
 import { release } from "node:os";
 import type { LaunchInstanceResult, LaunchPlan } from "../../shared/types";
+import { getLauncherDirectories } from "./paths";
+import {
+  assertJavaExecutable,
+  assertNativesDirectory,
+  assertPathInsideDirectory,
+} from "./validation";
 
 type ConditionalArg = {
   rules: Array<{
@@ -45,7 +51,11 @@ const evaluateConditionalArg = (arg: ConditionalArg): Array<string> => {
       }
 
       if (matches && os.version) {
-        matches = new RegExp(os.version).test(release());
+        try {
+          matches = new RegExp(os.version).test(release());
+        } catch {
+          matches = false;
+        }
       }
     }
 
@@ -156,10 +166,46 @@ const buildCommand = (
   };
 };
 
+const assertLaunchPlanStorage = (plan: LaunchPlan): void => {
+  const directories = getLauncherDirectories();
+
+  assertJavaExecutable(plan.java.executable);
+  assertPathInsideDirectory(
+    plan.directories.game,
+    directories.instances,
+    "Game directory",
+  );
+  assertNativesDirectory(plan.directories.natives);
+
+  for (const classpathEntry of plan.classpath) {
+    let isLibraryPath = true;
+
+    try {
+      assertPathInsideDirectory(
+        classpathEntry,
+        directories.libraries,
+        "Launch classpath",
+      );
+    } catch {
+      isLibraryPath = false;
+    }
+
+    if (!isLibraryPath) {
+      assertPathInsideDirectory(
+        classpathEntry,
+        directories.versions,
+        "Launch classpath",
+      );
+    }
+  }
+};
+
 export const launchMinecraft = (
   plan: LaunchPlan,
   options: LaunchOptions = {},
 ): LaunchInstanceResult => {
+  assertLaunchPlanStorage(plan);
+
   const { executable, args } = buildCommand(plan, options);
 
   const child = spawn(executable, args, {

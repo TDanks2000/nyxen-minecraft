@@ -8,8 +8,6 @@ import {
   Loader2Icon,
   PackageIcon,
   PlayIcon,
-  PuzzleIcon,
-  ServerIcon,
   SettingsIcon,
   UserRoundIcon,
 } from "lucide-react";
@@ -42,11 +40,19 @@ const NAV_ITEMS: Array<NavItem> = [
     to: "/profiles",
     activeOn: "/profiles",
   },
-  { label: "Modpacks", icon: PackageIcon, to: "/" },
-  { label: "Worlds", icon: GlobeIcon, to: "/" },
-  { label: "Servers", icon: ServerIcon, to: "/" },
-  { label: "Mods", icon: PuzzleIcon, to: "/" },
-  { label: "Screenshots", icon: CameraIcon, to: "/" },
+  {
+    label: "Modpacks",
+    icon: PackageIcon,
+    to: "/modpacks",
+    activeOn: "/modpacks",
+  },
+  { label: "Worlds", icon: GlobeIcon, to: "/worlds", activeOn: "/worlds" },
+  {
+    label: "Screenshots",
+    icon: CameraIcon,
+    to: "/screenshots",
+    activeOn: "/screenshots",
+  },
   {
     label: "Settings",
     icon: SettingsIcon,
@@ -104,7 +110,12 @@ export function AppSidebar() {
       <nav className="flex flex-col gap-0.5 p-2 pt-2">
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
-          const isActive = item.activeOn ? pathname === item.activeOn : false;
+          const isActive = item.activeOn
+            ? item.activeOn === "/"
+              ? pathname === "/"
+              : pathname === item.activeOn ||
+                pathname.startsWith(`${item.activeOn}/`)
+            : false;
 
           return (
             <Link
@@ -133,9 +144,9 @@ export function AppSidebar() {
 
       <div className="flex flex-col gap-0.5 px-2">
         {instancesHook.loading ? (
-          Array.from({ length: 3 }).map((_, i) => (
+          ["quick-play-a", "quick-play-b", "quick-play-c"].map((key) => (
             <div
-              key={`qs-${i}`}
+              key={key}
               className="flex items-center gap-2 h-10 px-2 rounded-md"
             >
               <div className="size-8 rounded-sm shrink-0 bg-muted animate-pulse" />

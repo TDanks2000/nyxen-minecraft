@@ -13,7 +13,6 @@ import {
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/views/main/components/ui/button";
-import { Separator } from "@/views/main/components/ui/separator";
 import {
   Sheet,
   SheetContent,
@@ -70,11 +69,11 @@ export function LaunchPlanSheet({ open, onOpenChange, plan }: Props) {
         toast.error(
           `${result.failed.length} artifact${result.failed.length === 1 ? "" : "s"} failed to download`,
         );
+        setLaunchState("idle");
       } else {
         toast.success("All artifacts downloaded");
+        setLaunchState("downloaded");
       }
-
-      setLaunchState("downloaded");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Download failed");
       setLaunchState("idle");
@@ -200,9 +199,9 @@ export function LaunchPlanSheet({ open, onOpenChange, plan }: Props) {
                       Warnings ({plan.warnings.length})
                     </p>
                     <ul className="flex flex-col gap-1.5">
-                      {plan.warnings.map((w, i) => (
+                      {plan.warnings.map((w) => (
                         <li
-                          key={`w-${i}`}
+                          key={w}
                           className="text-xs text-amber-600 dark:text-amber-400 bg-amber-500/10 rounded-md px-2.5 py-1.5 border border-amber-500/20"
                         >
                           {w}
