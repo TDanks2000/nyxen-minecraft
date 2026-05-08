@@ -87,7 +87,7 @@ function Titlebar() {
 
   return (
     <>
-      <div className="electrobun-webkit-app-region-drag relative z-[9999] flex h-12 shrink-0 select-none items-center border-sidebar-border border-b bg-sidebar px-4">
+      <div className="electrobun-webkit-app-region-drag relative z-9999 flex h-12 shrink-0 select-none items-center border-sidebar-border border-b bg-sidebar px-4">
         {/* Logo – aligns with sidebar width */}
         <div className="flex items-center gap-2.5 w-52 shrink-0">
           <AppIcon />
@@ -141,7 +141,7 @@ function Titlebar() {
             className="flex items-center gap-2 px-2 py-1 rounded-md border border-transparent hover:border-sidebar-border/50 hover:bg-white/5 cursor-pointer transition-colors ml-1 no-underline"
           >
             <div className="relative size-7 shrink-0">
-              <div className="size-7 rounded overflow-hidden bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center">
+              <div className="size-7 rounded overflow-hidden bg-linear-to-br from-amber-400 to-orange-600 flex items-center justify-center">
                 <span className="text-[0.55rem] font-black text-white select-none">
                   {activeProfile ? initials(activeProfile.displayName) : "?"}
                 </span>

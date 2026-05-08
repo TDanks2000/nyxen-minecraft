@@ -104,7 +104,7 @@ function InstancesPage() {
             instances.map((instance) => (
               <Card key={instance.id}>
                 <div
-                  className="relative h-32 overflow-hidden bg-gradient-to-br from-primary/80 to-primary/20"
+                  className="relative h-32 overflow-hidden bg-linear-to-br from-primary/80 to-primary/20"
                   aria-hidden="true"
                 >
                   <span className="absolute bottom-0 left-6 h-20 w-14 bg-background/60" />

@@ -85,7 +85,7 @@ function InstanceArtwork({ instance }: { instance: LauncherInstance }) {
   return (
     <div
       className={cn(
-        "relative h-56 overflow-hidden bg-gradient-to-br",
+        "relative h-56 overflow-hidden bg-linear-to-br",
         toneByLoader[instance.loader],
       )}
       aria-hidden="true"
@@ -99,7 +99,7 @@ function InstanceArtwork({ instance }: { instance: LauncherInstance }) {
           />
         ))}
       </div>
-      <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-background/85 to-transparent" />
+      <div className="absolute inset-x-0 bottom-0 h-24 bg-linear-to-t from-background/85 to-transparent" />
       <div className="absolute bottom-6 left-6">
         <Badge variant="secondary" className="capitalize">
           {instance.loader}
