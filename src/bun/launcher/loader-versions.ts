@@ -38,7 +38,7 @@ const getJson = async <T>(url: string): Promise<T> => {
 const xmlVersions = (xml: string): string[] =>
   [...xml.matchAll(/<version>([\w.+\-]+?)<\/version>/g)]
     .map((m) => m[1])
-    .filter(Boolean);
+    .filter((v): v is string => !!v);
 
 const listFabric = async (mcVersion: string): Promise<LoaderVersionSummary[]> => {
   const key = `fabric:${mcVersion}`;

@@ -62,7 +62,7 @@ export function NewInstanceDialog({ open, onOpenChange, onCreated }: Props) {
     setLoaderVersion("");
   }, [versionId, loader]);
 
-  const memoryMaxMb = RAM_STOPS[ramIndex];
+  const memoryMaxMb = RAM_STOPS[ramIndex] ?? 4096;
   const needsLoaderVersion =
     loader !== "vanilla" && loaderVersions.data !== null && loaderVersions.data.length > 0;
 
@@ -279,8 +279,8 @@ export function NewInstanceDialog({ open, onOpenChange, onCreated }: Props) {
               }}
             />
             <div className="flex justify-between text-xs text-muted-foreground">
-              <span>{formatRam(RAM_STOPS[0])}</span>
-              <span>{formatRam(RAM_STOPS[RAM_STOPS.length - 1])}</span>
+              <span>{formatRam(RAM_STOPS[0] ?? 512)}</span>
+              <span>{formatRam(RAM_STOPS[RAM_STOPS.length - 1] ?? 16384)}</span>
             </div>
           </div>
 
