@@ -698,6 +698,6 @@ function InstanceInfoPage() {
   );
 }
 
-export const Route = createFileRoute("/instances/$instanceId")({
+export const Route = createFileRoute("/instances_/$instanceId")({
   component: InstanceInfoPage,
 });

@@ -1,4 +1,4 @@
-import { createRootRoute, Outlet } from "@tanstack/react-router";
+import { createRootRoute, Link, Outlet } from "@tanstack/react-router";
 import {
   BellIcon,
   ChevronDownIcon,
@@ -51,7 +51,17 @@ function Titlebar() {
   const [newInstanceOpen, setNewInstanceOpen] = useState(false);
   const profiles = useProfiles();
 
-  const activeProfile = profiles.data?.[0] ?? null;
+  const activeProfile =
+    profiles.data?.find(
+      (profile) =>
+        profile.kind === "microsoft" &&
+        profile.accountId &&
+        profile.ownershipCheckedAt &&
+        profile.entitlements.includes("game_minecraft") &&
+        profile.entitlements.includes("product_minecraft"),
+    ) ??
+    profiles.data?.[0] ??
+    null;
 
   const syncWindowState = useCallback(async () => {
     const state = await rpc.requestProxy.getWindowState(null);
@@ -121,7 +131,15 @@ function Titlebar() {
           </button>
 
           {/* User profile */}
-          <div className="flex items-center gap-2 px-2 py-1 rounded-md border border-transparent hover:border-sidebar-border/50 hover:bg-white/5 cursor-pointer transition-colors ml-1">
+          <Link
+            to="/profiles"
+            aria-label={
+              activeProfile
+                ? `Open profile ${activeProfile.displayName}`
+                : "Open profiles"
+            }
+            className="flex items-center gap-2 px-2 py-1 rounded-md border border-transparent hover:border-sidebar-border/50 hover:bg-white/5 cursor-pointer transition-colors ml-1 no-underline"
+          >
             <div className="relative size-7 shrink-0">
               <div className="size-7 rounded overflow-hidden bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center">
                 <span className="text-[0.55rem] font-black text-white select-none">
@@ -146,7 +164,7 @@ function Titlebar() {
               </span>
             </div>
             <ChevronDownIcon className="size-3 text-muted-foreground ml-0.5" />
-          </div>
+          </Link>
 
           <div className="h-5 w-px bg-border mx-1" />
 

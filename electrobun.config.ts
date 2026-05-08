@@ -1,9 +1,10 @@
 import type { ElectrobunConfig } from "electrobun";
+import { APP_IDENTIFIER, APP_NAME } from "./src/shared/constants";
 
 export default {
   app: {
-    identifier: "dev.electrobun.nyxenminecraft",
-    name: "Nyxen Minecraft",
+    identifier: APP_IDENTIFIER,
+    name: APP_NAME,
     version: "0.1.0",
   },
   runtime: {

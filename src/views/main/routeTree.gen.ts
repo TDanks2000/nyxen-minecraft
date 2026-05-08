@@ -16,7 +16,7 @@ import { Route as ProfilesRouteImport } from "./routes/profiles";
 import { Route as ModpacksRouteImport } from "./routes/modpacks";
 import { Route as InstancesRouteImport } from "./routes/instances";
 import { Route as IndexRouteImport } from "./routes/index";
-import { Route as InstancesInstanceIdRouteImport } from "./routes/instances.$instanceId";
+import { Route as InstancesInstanceIdRouteImport } from "./routes/instances_.$instanceId";
 
 const WorldsRoute = WorldsRouteImport.update({
   id: "/worlds",
@@ -54,14 +54,14 @@ const IndexRoute = IndexRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any);
 const InstancesInstanceIdRoute = InstancesInstanceIdRouteImport.update({
-  id: "/$instanceId",
-  path: "/$instanceId",
-  getParentRoute: () => InstancesRoute,
+  id: "/instances_/$instanceId",
+  path: "/instances/$instanceId",
+  getParentRoute: () => rootRouteImport,
 } as any);
 
 export interface FileRoutesByFullPath {
   "/": typeof IndexRoute;
-  "/instances": typeof InstancesRouteWithChildren;
+  "/instances": typeof InstancesRoute;
   "/modpacks": typeof ModpacksRoute;
   "/profiles": typeof ProfilesRoute;
   "/screenshots": typeof ScreenshotsRoute;
@@ -71,7 +71,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   "/": typeof IndexRoute;
-  "/instances": typeof InstancesRouteWithChildren;
+  "/instances": typeof InstancesRoute;
   "/modpacks": typeof ModpacksRoute;
   "/profiles": typeof ProfilesRoute;
   "/screenshots": typeof ScreenshotsRoute;
@@ -82,13 +82,13 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport;
   "/": typeof IndexRoute;
-  "/instances": typeof InstancesRouteWithChildren;
+  "/instances": typeof InstancesRoute;
   "/modpacks": typeof ModpacksRoute;
   "/profiles": typeof ProfilesRoute;
   "/screenshots": typeof ScreenshotsRoute;
   "/settings": typeof SettingsRoute;
   "/worlds": typeof WorldsRoute;
-  "/instances/$instanceId": typeof InstancesInstanceIdRoute;
+  "/instances_/$instanceId": typeof InstancesInstanceIdRoute;
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath;
@@ -120,17 +120,18 @@ export interface FileRouteTypes {
     | "/screenshots"
     | "/settings"
     | "/worlds"
-    | "/instances/$instanceId";
+    | "/instances_/$instanceId";
   fileRoutesById: FileRoutesById;
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute;
-  InstancesRoute: typeof InstancesRouteWithChildren;
+  InstancesRoute: typeof InstancesRoute;
   ModpacksRoute: typeof ModpacksRoute;
   ProfilesRoute: typeof ProfilesRoute;
   ScreenshotsRoute: typeof ScreenshotsRoute;
   SettingsRoute: typeof SettingsRoute;
   WorldsRoute: typeof WorldsRoute;
+  InstancesInstanceIdRoute: typeof InstancesInstanceIdRoute;
 }
 
 declare module "@tanstack/react-router" {
@@ -184,36 +185,25 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof IndexRouteImport;
       parentRoute: typeof rootRouteImport;
     };
-    "/instances/$instanceId": {
-      id: "/instances/$instanceId";
-      path: "/$instanceId";
+    "/instances_/$instanceId": {
+      id: "/instances_/$instanceId";
+      path: "/instances/$instanceId";
       fullPath: "/instances/$instanceId";
       preLoaderRoute: typeof InstancesInstanceIdRouteImport;
-      parentRoute: typeof InstancesRoute;
+      parentRoute: typeof rootRouteImport;
     };
   }
 }
 
-interface InstancesRouteChildren {
-  InstancesInstanceIdRoute: typeof InstancesInstanceIdRoute;
-}
-
-const InstancesRouteChildren: InstancesRouteChildren = {
-  InstancesInstanceIdRoute: InstancesInstanceIdRoute,
-};
-
-const InstancesRouteWithChildren = InstancesRoute._addFileChildren(
-  InstancesRouteChildren,
-);
-
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  InstancesRoute: InstancesRouteWithChildren,
+  InstancesRoute: InstancesRoute,
   ModpacksRoute: ModpacksRoute,
   ProfilesRoute: ProfilesRoute,
   ScreenshotsRoute: ScreenshotsRoute,
   SettingsRoute: SettingsRoute,
   WorldsRoute: WorldsRoute,
+  InstancesInstanceIdRoute: InstancesInstanceIdRoute,
 };
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

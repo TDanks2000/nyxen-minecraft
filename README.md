@@ -92,8 +92,10 @@ Minecraft/Xbox network calls do not block the UI.
 
 ## Privacy And Local Data
 
-Launcher state is stored locally under `data/` by default. Tests set
-`NYXEN_DATA_DIR` to isolate SQLite and launcher cache files.
+Launcher state is stored locally under the app-scoped OS data directory by
+default, such as `~/.local/share/dev.electrobun.nyxenminecraft/dev` on Linux.
+Set `NYXEN_DATA_DIR` to isolate SQLite and launcher cache files during tests or
+manual debugging.
 
 The local SQLite database stores launcher profiles, instances, cached version
 metadata, and tokens needed to refresh a verified Microsoft profile. This is

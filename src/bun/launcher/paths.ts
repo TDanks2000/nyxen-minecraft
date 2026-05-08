@@ -1,8 +1,27 @@
 import { chmodSync, mkdirSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
+import { APP_CHANNEL, APP_IDENTIFIER } from "../../shared/constants";
 import type { LauncherDirectories } from "../../shared/types";
 
-const defaultDataRoot = (): string => join(process.cwd(), "data");
+const defaultDataDirectory = (): string => {
+  switch (process.platform) {
+    case "darwin":
+      return join(homedir(), "Library", "Application Support");
+    case "win32":
+      return (
+        process.env.LOCALAPPDATA?.trim() ||
+        join(process.env.USERPROFILE?.trim() || homedir(), "AppData", "Local")
+      );
+    default:
+      return (
+        process.env.XDG_DATA_HOME?.trim() || join(homedir(), ".local", "share")
+      );
+  }
+};
+
+const defaultDataRoot = (): string =>
+  join(defaultDataDirectory(), APP_IDENTIFIER, APP_CHANNEL);
 
 export const ensurePrivateDirectory = (directory: string): void => {
   mkdirSync(directory, { mode: 0o700, recursive: true });
