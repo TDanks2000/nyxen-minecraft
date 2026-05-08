@@ -30,8 +30,18 @@ type NavItem = {
 
 const NAV_ITEMS: Array<NavItem> = [
   { label: "Home", icon: HomeIcon, to: "/", activeOn: "/" },
-  { label: "Library", icon: BookOpenIcon, to: "/instances", activeOn: "/instances" },
-  { label: "Profiles", icon: UserRoundIcon, to: "/profiles", activeOn: "/profiles" },
+  {
+    label: "Library",
+    icon: BookOpenIcon,
+    to: "/instances",
+    activeOn: "/instances",
+  },
+  {
+    label: "Profiles",
+    icon: UserRoundIcon,
+    to: "/profiles",
+    activeOn: "/profiles",
+  },
   { label: "Modpacks", icon: PackageIcon, to: "/" },
   { label: "Worlds", icon: GlobeIcon, to: "/" },
   { label: "Servers", icon: ServerIcon, to: "/" },
@@ -63,7 +73,10 @@ export function AppSidebar() {
   const quickPlayInstances = [...(instancesHook.data ?? [])]
     .sort((a, b) => {
       if (a.lastLaunchedAt && b.lastLaunchedAt)
-        return new Date(b.lastLaunchedAt).getTime() - new Date(a.lastLaunchedAt).getTime();
+        return (
+          new Date(b.lastLaunchedAt).getTime() -
+          new Date(a.lastLaunchedAt).getTime()
+        );
       if (a.lastLaunchedAt) return -1;
       if (b.lastLaunchedAt) return 1;
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
@@ -77,7 +90,9 @@ export function AppSidebar() {
       setActivePlan(plan);
       setSheetOpen(true);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to create launch plan");
+      toast.error(
+        e instanceof Error ? e.message : "Failed to create launch plan",
+      );
     } finally {
       setPlanLoadingId(null);
     }
@@ -119,7 +134,10 @@ export function AppSidebar() {
       <div className="flex flex-col gap-0.5 px-2">
         {instancesHook.loading ? (
           Array.from({ length: 3 }).map((_, i) => (
-            <div key={`qs-${i}`} className="flex items-center gap-2 h-10 px-2 rounded-md">
+            <div
+              key={`qs-${i}`}
+              className="flex items-center gap-2 h-10 px-2 rounded-md"
+            >
               <div className="size-8 rounded-sm shrink-0 bg-muted animate-pulse" />
               <div className="flex-1 min-w-0 flex flex-col gap-1">
                 <div className="h-2.5 w-24 rounded bg-muted animate-pulse" />
@@ -128,14 +146,21 @@ export function AppSidebar() {
             </div>
           ))
         ) : quickPlayInstances.length === 0 ? (
-          <p className="px-2 text-[0.65rem] text-muted-foreground/60">No instances yet.</p>
+          <p className="px-2 text-[0.65rem] text-muted-foreground/60">
+            No instances yet.
+          </p>
         ) : (
           quickPlayInstances.map((item) => (
             <div
               key={item.id}
               className="flex items-center gap-2 h-10 px-2 rounded-md hover:bg-sidebar-accent cursor-pointer transition-colors group"
             >
-              <div className={cn("size-8 rounded-sm shrink-0", LOADER_COLORS[item.loader] ?? "bg-slate-800")} />
+              <div
+                className={cn(
+                  "size-8 rounded-sm shrink-0",
+                  LOADER_COLORS[item.loader] ?? "bg-slate-800",
+                )}
+              />
               <div className="flex-1 min-w-0">
                 <div className="text-xs font-semibold text-sidebar-foreground truncate leading-none">
                   {item.name}
@@ -195,7 +220,11 @@ export function AppSidebar() {
           </div>
         </div>
       </div>
-      <LaunchPlanSheet open={sheetOpen} onOpenChange={setSheetOpen} plan={activePlan} />
+      <LaunchPlanSheet
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+        plan={activePlan}
+      />
     </aside>
   );
 }

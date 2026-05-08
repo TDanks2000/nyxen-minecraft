@@ -1,11 +1,6 @@
+import { Loader2Icon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Loader2Icon } from "lucide-react";
-import type { LauncherInstance, ModLoader } from "../../../../../shared/types";
-import { rpc } from "@/views/main/lib/rpc";
-import { useSettings } from "@/views/main/hooks/use-settings";
-import { useVersions } from "@/views/main/hooks/use-versions";
-import { useLoaderVersions } from "@/views/main/hooks/use-loader-versions";
 import { Button } from "@/views/main/components/ui/button";
 import {
   Dialog,
@@ -24,9 +19,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/views/main/components/ui/select";
-import { Slider } from "@/views/main/components/ui/slider";
 import { Separator } from "@/views/main/components/ui/separator";
+import { Slider } from "@/views/main/components/ui/slider";
+import { useLoaderVersions } from "@/views/main/hooks/use-loader-versions";
+import { useSettings } from "@/views/main/hooks/use-settings";
+import { useVersions } from "@/views/main/hooks/use-versions";
+import { rpc } from "@/views/main/lib/rpc";
 import { cn } from "@/views/main/lib/utils";
+import type { LauncherInstance, ModLoader } from "../../../../../shared/types";
 
 type Props = {
   open: boolean;
@@ -42,7 +42,9 @@ const LOADERS: Array<{ value: ModLoader; label: string }> = [
   { value: "quilt", label: "Quilt" },
 ];
 
-const ALL_RAM_STOPS = [512, 1024, 2048, 3072, 4096, 6144, 8192, 12288, 16384, 32768];
+const ALL_RAM_STOPS = [
+  512, 1024, 2048, 3072, 4096, 6144, 8192, 12288, 16384, 32768,
+];
 
 const formatRam = (mb: number): string => {
   if (mb < 1024) return `${mb} MB`;
@@ -62,17 +64,20 @@ export function NewInstanceDialog({ open, onOpenChange, onCreated }: Props) {
   const [submitting, setSubmitting] = useState(false);
 
   const settings = useSettings();
-  const includeSnapshots = !!(settings.data?.values["launcher.showSnapshots"]);
+  const includeSnapshots = !!settings.data?.values["launcher.showSnapshots"];
   const versions = useVersions({ includeSnapshots });
   const loaderVersions = useLoaderVersions(loader, versionId);
 
   useEffect(() => {
-    rpc.requestProxy.getSystemMemory(null).then(({ totalMb }) => {
-      const stops = ALL_RAM_STOPS.filter((mb) => mb <= totalMb);
-      if (stops.length === 0) stops.push(ALL_RAM_STOPS[0]!);
-      setRamStops(stops);
-      setRamIndex((prev) => Math.min(prev, stops.length - 1));
-    }).catch(() => {});
+    rpc.requestProxy
+      .getSystemMemory(null)
+      .then(({ totalMb }) => {
+        const stops = ALL_RAM_STOPS.filter((mb) => mb <= totalMb);
+        if (stops.length === 0) stops.push(ALL_RAM_STOPS[0]!);
+        setRamStops(stops);
+        setRamIndex((prev) => Math.min(prev, stops.length - 1));
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -81,7 +86,9 @@ export function NewInstanceDialog({ open, onOpenChange, onCreated }: Props) {
 
   const memoryMaxMb = ramStops[ramIndex] ?? 4096;
   const needsLoaderVersion =
-    loader !== "vanilla" && loaderVersions.data !== null && loaderVersions.data.length > 0;
+    loader !== "vanilla" &&
+    loaderVersions.data !== null &&
+    loaderVersions.data.length > 0;
 
   const canSubmit =
     !submitting &&
@@ -119,14 +126,22 @@ export function NewInstanceDialog({ open, onOpenChange, onCreated }: Props) {
     setLoader("vanilla");
     setLoaderVersion("");
     const defaultIdx = ramStops.indexOf(4096);
-    setRamIndex(defaultIdx >= 0 ? defaultIdx : Math.min(4, ramStops.length - 1));
+    setRamIndex(
+      defaultIdx >= 0 ? defaultIdx : Math.min(4, ramStops.length - 1),
+    );
   }
 
   const versionsEmpty =
     !versions.loading && !versions.error && versions.data?.length === 0;
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { onOpenChange(o); if (!o) resetForm(); }}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        onOpenChange(o);
+        if (!o) resetForm();
+      }}
+    >
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>New Instance</DialogTitle>
@@ -352,7 +367,10 @@ export function NewInstanceDialog({ open, onOpenChange, onCreated }: Props) {
             <Button
               type="button"
               variant="outline"
-              onClick={() => { onOpenChange(false); resetForm(); }}
+              onClick={() => {
+                onOpenChange(false);
+                resetForm();
+              }}
               disabled={submitting}
             >
               Cancel

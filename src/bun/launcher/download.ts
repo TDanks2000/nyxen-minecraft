@@ -1,7 +1,7 @@
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { spawnSync } from "node:child_process";
 import type {
   DownloadArtifactsResult,
   LaunchPlan,

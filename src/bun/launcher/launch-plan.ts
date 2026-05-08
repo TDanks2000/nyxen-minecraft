@@ -185,9 +185,7 @@ export const createLaunchPlan = async (
   } catch (error) {
     profile = resolveProfile(input.profileId, instance.profileId);
     warnings.push(
-      error instanceof Error
-        ? error.message
-        : "Profile authentication failed.",
+      error instanceof Error ? error.message : "Profile authentication failed.",
     );
   }
 

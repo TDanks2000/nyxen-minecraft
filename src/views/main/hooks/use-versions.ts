@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import type { MinecraftVersionSummary } from "../../../shared/types";
 import { rpc } from "@/views/main/lib/rpc";
+import type { MinecraftVersionSummary } from "../../../shared/types";
 
 type VersionsOpts = { includeSnapshots?: boolean } | undefined;
 

@@ -10,6 +10,7 @@
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
+    "lint:fix": "biome check --write .",
     "format": "biome check --write .",
     "check": "turbo run typecheck lint test",
     "db:generate": "drizzle-kit generate",

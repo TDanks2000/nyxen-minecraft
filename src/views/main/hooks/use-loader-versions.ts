@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { LoaderVersionSummary, ModLoader } from "../../../shared/types";
 import { rpc } from "@/views/main/lib/rpc";
+import type { LoaderVersionSummary, ModLoader } from "../../../shared/types";
 
 export function useLoaderVersions(loader: ModLoader, mcVersion: string) {
   const [data, setData] = useState<LoaderVersionSummary[] | null>(null);
@@ -23,13 +23,18 @@ export function useLoaderVersions(loader: ModLoader, mcVersion: string) {
     setLoading(true);
     setError(null);
     try {
-      const result = await rpc.requestProxy.listLoaderVersions({ loader, mcVersion });
+      const result = await rpc.requestProxy.listLoaderVersions({
+        loader,
+        mcVersion,
+      });
       if (!ctrl.signal.aborted) {
         setData(result);
       }
     } catch (e) {
       if (!ctrl.signal.aborted) {
-        setError(e instanceof Error ? e.message : "Failed to load loader versions");
+        setError(
+          e instanceof Error ? e.message : "Failed to load loader versions",
+        );
         setData(null);
       }
     } finally {

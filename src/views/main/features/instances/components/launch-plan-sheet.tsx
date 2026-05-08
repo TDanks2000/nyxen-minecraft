@@ -12,7 +12,6 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import type { LaunchPlan } from "../../../../../shared/types";
 import { Button } from "@/views/main/components/ui/button";
 import { Separator } from "@/views/main/components/ui/separator";
 import {
@@ -24,6 +23,7 @@ import {
   SheetTitle,
 } from "@/views/main/components/ui/sheet";
 import { rpc } from "@/views/main/lib/rpc";
+import type { LaunchPlan } from "../../../../../shared/types";
 
 type Props = {
   open: boolean;
@@ -96,11 +96,17 @@ export function LaunchPlanSheet({ open, onOpenChange, plan }: Props) {
     }
   }
 
-  const busy = launchState === "downloading" || launchState === "launching" || launchState === "launched";
+  const busy =
+    launchState === "downloading" ||
+    launchState === "launching" ||
+    launchState === "launched";
 
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
-      <SheetContent side="right" className="flex w-[440px] flex-col overflow-hidden p-0">
+      <SheetContent
+        side="right"
+        className="flex w-[440px] flex-col overflow-hidden p-0"
+      >
         {/* Header */}
         <SheetHeader className="border-b px-5 py-4">
           <SheetTitle className="text-base">Launch Plan</SheetTitle>
@@ -136,7 +142,9 @@ export function LaunchPlanSheet({ open, onOpenChange, plan }: Props) {
 
               {/* Profile */}
               <div className="flex items-start gap-3 px-5 py-4">
-                <div className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md ${plan.profile ? "bg-primary/10 text-primary" : "bg-amber-500/10 text-amber-500"}`}>
+                <div
+                  className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md ${plan.profile ? "bg-primary/10 text-primary" : "bg-amber-500/10 text-amber-500"}`}
+                >
                   <UserIcon className="size-4" />
                 </div>
                 <div className="min-w-0 flex-1">
@@ -144,7 +152,9 @@ export function LaunchPlanSheet({ open, onOpenChange, plan }: Props) {
                     Account
                   </p>
                   {plan.profile ? (
-                    <p className="font-medium text-sm">{plan.profile.displayName}</p>
+                    <p className="font-medium text-sm">
+                      {plan.profile.displayName}
+                    </p>
                   ) : (
                     <p className="text-sm text-amber-500 font-medium">
                       Offline mode
@@ -205,13 +215,16 @@ export function LaunchPlanSheet({ open, onOpenChange, plan }: Props) {
 
               {/* Artifacts */}
               <div className="flex items-start gap-3 px-5 py-4">
-                <div className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md ${
-                  failedArtifacts.length > 0
-                    ? "bg-destructive/10 text-destructive"
-                    : plan.missingArtifacts.length === 0 || launchState === "downloaded"
-                      ? "bg-green-500/10 text-green-600 dark:text-green-400"
-                      : "bg-primary/10 text-primary"
-                }`}>
+                <div
+                  className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md ${
+                    failedArtifacts.length > 0
+                      ? "bg-destructive/10 text-destructive"
+                      : plan.missingArtifacts.length === 0 ||
+                          launchState === "downloaded"
+                        ? "bg-green-500/10 text-green-600 dark:text-green-400"
+                        : "bg-primary/10 text-primary"
+                  }`}
+                >
                   <HardDriveIcon className="size-4" />
                 </div>
                 <div className="min-w-0 flex-1">
@@ -219,7 +232,8 @@ export function LaunchPlanSheet({ open, onOpenChange, plan }: Props) {
                     Artifacts
                   </p>
 
-                  {launchState === "downloaded" && failedArtifacts.length === 0 ? (
+                  {launchState === "downloaded" &&
+                  failedArtifacts.length === 0 ? (
                     <p className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400 font-medium">
                       <CheckCircle2Icon className="size-3.5 shrink-0" />
                       All artifacts downloaded
@@ -233,7 +247,8 @@ export function LaunchPlanSheet({ open, onOpenChange, plan }: Props) {
                     <>
                       <p className="text-xs text-muted-foreground mb-1.5">
                         {plan.missingArtifacts.length} artifact
-                        {plan.missingArtifacts.length !== 1 ? "s" : ""} to download
+                        {plan.missingArtifacts.length !== 1 ? "s" : ""} to
+                        download
                       </p>
                       <ul className="flex flex-col gap-1 max-h-36 overflow-y-auto">
                         {plan.missingArtifacts.map((a) => (
@@ -264,8 +279,12 @@ export function LaunchPlanSheet({ open, onOpenChange, plan }: Props) {
                             key={a.id}
                             className="text-xs text-destructive/80 bg-destructive/5 rounded px-2 py-1 border border-destructive/20"
                           >
-                            <span className="font-mono truncate block">{a.id}</span>
-                            <span className="text-destructive/60">{a.error}</span>
+                            <span className="font-mono truncate block">
+                              {a.id}
+                            </span>
+                            <span className="text-destructive/60">
+                              {a.error}
+                            </span>
                           </li>
                         ))}
                       </ul>
@@ -302,7 +321,10 @@ export function LaunchPlanSheet({ open, onOpenChange, plan }: Props) {
               disabled={busy}
             >
               {launchState === "downloading" ? (
-                <Loader2Icon data-icon="inline-start" className="animate-spin" />
+                <Loader2Icon
+                  data-icon="inline-start"
+                  className="animate-spin"
+                />
               ) : (
                 <DownloadIcon data-icon="inline-start" />
               )}

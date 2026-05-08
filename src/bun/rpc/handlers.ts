@@ -13,20 +13,23 @@ import type {
   MicrosoftProfileSignInStatus,
 } from "../../shared/types";
 import { getDatabaseStatus } from "../db/client";
+import { downloadArtifacts as downloadArtifactsFn } from "../launcher/download";
+import { launchMinecraft } from "../launcher/executor";
 import {
   createLauncherInstance,
   listLauncherInstances,
 } from "../launcher/instances";
 import { createLaunchPlan } from "../launcher/launch-plan";
-import { downloadArtifacts as downloadArtifactsFn } from "../launcher/download";
-import { launchMinecraft } from "../launcher/executor";
 import { listLoaderVersions } from "../launcher/loader-versions";
 import {
   completeMicrosoftProfileLogin as completeMicrosoftProfileLoginRequest,
   pollMicrosoftProfileSignIn as pollMicrosoftProfileSignInRequest,
   startMicrosoftProfileLogin as startMicrosoftProfileLoginRequest,
 } from "../launcher/microsoft-auth";
-import { getLauncherProfileAuthSecrets, listLauncherProfiles } from "../launcher/profiles";
+import {
+  getLauncherProfileAuthSecrets,
+  listLauncherProfiles,
+} from "../launcher/profiles";
 import { getLauncherStatus } from "../launcher/status";
 import {
   getMinecraftVersionDetails,

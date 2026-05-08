@@ -10,10 +10,6 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTheme } from "@/views/main/components/theme-provider";
-import { useSettings } from "@/views/main/hooks/use-settings";
-import { useLauncherStatus } from "@/views/main/hooks/use-launcher-status";
-import { Skeleton } from "@/views/main/components/ui/skeleton";
-import { Switch } from "@/views/main/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -21,6 +17,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/views/main/components/ui/select";
+import { Skeleton } from "@/views/main/components/ui/skeleton";
+import { Switch } from "@/views/main/components/ui/switch";
+import { useLauncherStatus } from "@/views/main/hooks/use-launcher-status";
+import { useSettings } from "@/views/main/hooks/use-settings";
 
 function SettingGroup({
   icon: Icon,
@@ -105,8 +105,8 @@ function SettingsPage() {
   const dirs = statusHook.data?.directories;
 
   const theme = (settings?.["app.theme"] as string) ?? "system";
-  const keepOpen = !!(settings?.["launcher.keepOpenAfterLaunch"]);
-  const showSnapshots = !!(settings?.["launcher.showSnapshots"]);
+  const keepOpen = !!settings?.["launcher.keepOpenAfterLaunch"];
+  const showSnapshots = !!settings?.["launcher.showSnapshots"];
 
   async function handleTheme(value: string) {
     setTheme(value as "system" | "light" | "dark");
@@ -133,8 +133,14 @@ function SettingsPage() {
                 <Skeleton className="h-8 w-full rounded-md" />
               </div>
             ) : (
-              <SettingRow label="Theme" description="Set the application color scheme">
-                <Select value={theme} onValueChange={(v) => v && handleTheme(v)}>
+              <SettingRow
+                label="Theme"
+                description="Set the application color scheme"
+              >
+                <Select
+                  value={theme}
+                  onValueChange={(v) => v && handleTheme(v)}
+                >
                   <SelectTrigger className="h-8 w-32">
                     <SelectValue />
                   </SelectTrigger>
@@ -206,9 +212,17 @@ function SettingsPage() {
             ) : dirs ? (
               <>
                 <PathRow icon={HardDriveIcon} label="Root" path={dirs.root} />
-                <PathRow icon={HardDriveIcon} label="Instances" path={dirs.instances} />
+                <PathRow
+                  icon={HardDriveIcon}
+                  label="Instances"
+                  path={dirs.instances}
+                />
                 <PathRow icon={Volume2Icon} label="Assets" path={dirs.assets} />
-                <PathRow icon={MonitorIcon} label="Versions" path={dirs.versions} />
+                <PathRow
+                  icon={MonitorIcon}
+                  label="Versions"
+                  path={dirs.versions}
+                />
                 <PathRow icon={GaugeIcon} label="Logs" path={dirs.logs} />
               </>
             ) : null}

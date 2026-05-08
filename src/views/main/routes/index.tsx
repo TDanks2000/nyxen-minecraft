@@ -1,11 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { formatDistanceToNow } from "date-fns";
 import {
   BoxesIcon,
+  CheckCircle2Icon,
   ChevronDownIcon,
   ChevronRightIcon,
   CloudIcon,
-  CheckCircle2Icon,
   CpuIcon,
   FolderOpenIcon,
   GaugeIcon,
@@ -19,16 +19,16 @@ import {
   StarIcon,
   WrenchIcon,
 } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { useState } from "react";
 import { toast } from "sonner";
-import type { LaunchPlan } from "../../../shared/types";
+import { Skeleton } from "@/views/main/components/ui/skeleton";
+import { LaunchPlanSheet } from "@/views/main/features/instances/components/launch-plan-sheet";
+import { NewInstanceDialog } from "@/views/main/features/instances/components/new-instance-dialog";
 import { useInstances } from "@/views/main/hooks/use-instances";
 import { useLauncherStatus } from "@/views/main/hooks/use-launcher-status";
 import { rpc } from "@/views/main/lib/rpc";
-import { LaunchPlanSheet } from "@/views/main/features/instances/components/launch-plan-sheet";
-import { NewInstanceDialog } from "@/views/main/features/instances/components/new-instance-dialog";
-import { Skeleton } from "@/views/main/components/ui/skeleton";
 import { cn } from "@/views/main/lib/utils";
+import type { LaunchPlan } from "../../../shared/types";
 
 /* ─── Hero Background ─────────────────────────────────────────────── */
 function HeroBg() {
@@ -128,15 +128,16 @@ function HomePage() {
   const instances = instancesHook.data ?? [];
 
   // Most recently played instance (nulls last)
-  const heroInstance = [...instances].sort((a, b) => {
-    if (!a.lastLaunchedAt && !b.lastLaunchedAt) return 0;
-    if (!a.lastLaunchedAt) return 1;
-    if (!b.lastLaunchedAt) return -1;
-    return (
-      new Date(b.lastLaunchedAt).getTime() -
-      new Date(a.lastLaunchedAt).getTime()
-    );
-  })[0] ?? null;
+  const heroInstance =
+    [...instances].sort((a, b) => {
+      if (!a.lastLaunchedAt && !b.lastLaunchedAt) return 0;
+      if (!a.lastLaunchedAt) return 1;
+      if (!b.lastLaunchedAt) return -1;
+      return (
+        new Date(b.lastLaunchedAt).getTime() -
+        new Date(a.lastLaunchedAt).getTime()
+      );
+    })[0] ?? null;
 
   const counts = statusHook.data?.counts;
 
@@ -159,7 +160,9 @@ function HomePage() {
               <div className="flex items-center gap-1.5">
                 <span className="size-1.5 rounded-full bg-primary inline-block shrink-0" />
                 <span className="text-[0.58rem] font-bold tracking-[0.2em] text-primary uppercase">
-                  {heroInstance.lastLaunchedAt ? "Last Played" : "Ready to Play"}
+                  {heroInstance.lastLaunchedAt
+                    ? "Last Played"
+                    : "Ready to Play"}
                 </span>
               </div>
               <div className="flex items-center gap-2 mt-1.5">
@@ -245,9 +248,24 @@ function HomePage() {
       {/* ── Stats Bar ── */}
       <div className="flex items-center border-b border-border bg-card/60 divide-x divide-border overflow-x-auto">
         {[
-          { id: "instances", icon: BoxesIcon, label: "Instances", value: counts ? String(counts.instances) : "—" },
-          { id: "profiles", icon: StarIcon, label: "Profiles", value: counts ? String(counts.profiles) : "—" },
-          { id: "versions", icon: CheckCircle2Icon, label: "Versions cached", value: counts ? String(counts.versions) : "—" },
+          {
+            id: "instances",
+            icon: BoxesIcon,
+            label: "Instances",
+            value: counts ? String(counts.instances) : "—",
+          },
+          {
+            id: "profiles",
+            icon: StarIcon,
+            label: "Profiles",
+            value: counts ? String(counts.profiles) : "—",
+          },
+          {
+            id: "versions",
+            icon: CheckCircle2Icon,
+            label: "Versions cached",
+            value: counts ? String(counts.versions) : "—",
+          },
           { id: "java", icon: CpuIcon, label: "Java", value: "—" },
           { id: "memory", icon: MemoryStickIcon, label: "Memory", value: "—" },
           { id: "perf", icon: GaugeIcon, label: "Performance", value: "—" },
@@ -255,14 +273,21 @@ function HomePage() {
         ].map((stat) => {
           const Icon = stat.icon;
           return (
-            <div key={stat.id} className="flex items-center gap-2.5 px-4 py-4 shrink-0">
+            <div
+              key={stat.id}
+              className="flex items-center gap-2.5 px-4 py-4 shrink-0"
+            >
               <Icon className="size-4 text-primary/70 shrink-0" />
               <div className="flex flex-col leading-none">
                 <span className="text-[0.58rem] text-muted-foreground uppercase tracking-wide">
                   {stat.label}
                 </span>
                 <span className="text-xs font-bold text-foreground mt-0.5">
-                  {statusHook.loading ? <Skeleton className="h-3 w-6 inline-block" /> : stat.value}
+                  {statusHook.loading ? (
+                    <Skeleton className="h-3 w-6 inline-block" />
+                  ) : (
+                    stat.value
+                  )}
                 </span>
               </div>
             </div>
@@ -305,7 +330,10 @@ function HomePage() {
         <div className="grid grid-cols-5 gap-3">
           {instancesHook.loading ? (
             Array.from({ length: 5 }).map((_, i) => (
-              <div key={`sk-${i}`} className="rounded-md border border-border overflow-hidden">
+              <div
+                key={`sk-${i}`}
+                className="rounded-md border border-border overflow-hidden"
+              >
                 <Skeleton className="h-28" />
                 <div className="bg-card px-2.5 pt-2.5 pb-2.5 flex flex-col gap-1.5">
                   <Skeleton className="h-3 w-20" />
@@ -337,9 +365,7 @@ function HomePage() {
                     : "border-border hover:border-border/80",
                 )}
               >
-                <div
-                  className="relative h-28 shrink-0 flex items-center justify-center bg-gradient-to-br from-primary/80 to-primary/20"
-                >
+                <div className="relative h-28 shrink-0 flex items-center justify-center bg-gradient-to-br from-primary/80 to-primary/20">
                   <span className="absolute inset-0 bg-[repeating-linear-gradient(90deg,color-mix(in_oklch,var(--foreground)_5%,transparent)_0_1px,transparent_1px_18px)]" />
                   {inst.id === heroInstance?.id && (
                     <div className="absolute inset-0 ring-inset ring-2 ring-primary/50 rounded-md pointer-events-none" />

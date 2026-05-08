@@ -137,9 +137,7 @@ const buildCommand = (
     );
   } else {
     for (const arg of plan.arguments.jvm) {
-      jvmArgs.push(
-        ...evaluateArg(arg).map((a) => substituteVars(a, vars)),
-      );
+      jvmArgs.push(...evaluateArg(arg).map((a) => substituteVars(a, vars)));
     }
   }
 

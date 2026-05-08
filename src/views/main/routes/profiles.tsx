@@ -1,10 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import {
-  BanIcon,
-  CrownIcon,
-  PlusIcon,
-  ShieldCheckIcon,
-} from "lucide-react";
+import { BanIcon, CrownIcon, PlusIcon, ShieldCheckIcon } from "lucide-react";
 import { useState } from "react";
 import { Avatar, AvatarFallback } from "@/views/main/components/ui/avatar";
 import { Badge } from "@/views/main/components/ui/badge";

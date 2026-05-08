@@ -41,7 +41,9 @@ function AppIcon() {
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/);
   if (parts.length === 1) return (parts[0]?.slice(0, 2) ?? "?").toUpperCase();
-  return ((parts[0]?.[0] ?? "") + (parts[parts.length - 1]?.[0] ?? "")).toUpperCase();
+  return (
+    (parts[0]?.[0] ?? "") + (parts[parts.length - 1]?.[0] ?? "")
+  ).toUpperCase();
 }
 
 function Titlebar() {
@@ -75,106 +77,113 @@ function Titlebar() {
 
   return (
     <>
-    <div className="electrobun-webkit-app-region-drag relative z-[9999] flex h-12 shrink-0 select-none items-center border-sidebar-border border-b bg-sidebar px-4">
-      {/* Logo – aligns with sidebar width */}
-      <div className="flex items-center gap-2.5 w-52 shrink-0">
-        <AppIcon />
-        <div className="flex flex-col leading-none">
-          <span className="font-black text-[0.68rem] tracking-[0.18em] text-foreground uppercase">
-            {APP_NAME}
-          </span>
-          <span className="text-[0.52rem] text-muted-foreground tracking-wide uppercase mt-0.5">
-            Next Generation Minecraft Launcher
-          </span>
+      <div className="electrobun-webkit-app-region-drag relative z-[9999] flex h-12 shrink-0 select-none items-center border-sidebar-border border-b bg-sidebar px-4">
+        {/* Logo – aligns with sidebar width */}
+        <div className="flex items-center gap-2.5 w-52 shrink-0">
+          <AppIcon />
+          <div className="flex flex-col leading-none">
+            <span className="font-black text-[0.68rem] tracking-[0.18em] text-foreground uppercase">
+              {APP_NAME}
+            </span>
+            <span className="text-[0.52rem] text-muted-foreground tracking-wide uppercase mt-0.5">
+              Next Generation Minecraft Launcher
+            </span>
+          </div>
         </div>
-      </div>
 
-      <div className="flex-1" />
+        <div className="flex-1" />
 
-      {/* Titlebar actions */}
-      <div className={`${NO_DRAG_CLASS} flex items-center gap-1.5`}>
-        <button
-          type="button"
-          onClick={() => setNewInstanceOpen(true)}
-          className="flex items-center gap-1.5 h-9 px-3.5 bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold rounded-md transition-colors"
-        >
-          <PlusIcon className="size-3.5" />
-          Add Instance
-        </button>
+        {/* Titlebar actions */}
+        <div className={`${NO_DRAG_CLASS} flex items-center gap-1.5`}>
+          <button
+            type="button"
+            onClick={() => setNewInstanceOpen(true)}
+            className="flex items-center gap-1.5 h-9 px-3.5 bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold rounded-md transition-colors"
+          >
+            <PlusIcon className="size-3.5" />
+            Add Instance
+          </button>
 
-        <button
-          type="button"
-          className="size-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors"
-          aria-label="Notifications"
-        >
-          <BellIcon className="size-4" />
-        </button>
+          <button
+            type="button"
+            className="size-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors"
+            aria-label="Notifications"
+          >
+            <BellIcon className="size-4" />
+          </button>
 
-        <button
-          type="button"
-          className="size-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors"
-          aria-label="Settings"
-        >
-          <SettingsIcon className="size-4" />
-        </button>
+          <button
+            type="button"
+            className="size-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors"
+            aria-label="Settings"
+          >
+            <SettingsIcon className="size-4" />
+          </button>
 
-        {/* User profile */}
-        <div className="flex items-center gap-2 px-2 py-1 rounded-md border border-transparent hover:border-sidebar-border/50 hover:bg-white/5 cursor-pointer transition-colors ml-1">
-          <div className="relative size-7 shrink-0">
-            <div className="size-7 rounded overflow-hidden bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center">
-              <span className="text-[0.55rem] font-black text-white select-none">
-                {activeProfile ? initials(activeProfile.displayName) : "?"}
+          {/* User profile */}
+          <div className="flex items-center gap-2 px-2 py-1 rounded-md border border-transparent hover:border-sidebar-border/50 hover:bg-white/5 cursor-pointer transition-colors ml-1">
+            <div className="relative size-7 shrink-0">
+              <div className="size-7 rounded overflow-hidden bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center">
+                <span className="text-[0.55rem] font-black text-white select-none">
+                  {activeProfile ? initials(activeProfile.displayName) : "?"}
+                </span>
+              </div>
+              <span
+                className={`absolute bottom-0 right-0 size-2 rounded-full ring-1 ring-sidebar ${activeProfile?.kind === "microsoft" ? "bg-green-400" : "bg-slate-400"}`}
+              />
+            </div>
+            <div className="flex flex-col leading-none">
+              <span className="text-xs font-semibold text-foreground">
+                {activeProfile?.displayName ??
+                  (profiles.loading ? "Loading…" : "No profile")}
+              </span>
+              <span className="text-[0.6rem] text-primary font-medium">
+                {activeProfile?.kind === "microsoft"
+                  ? "Online"
+                  : activeProfile
+                    ? "Offline"
+                    : "—"}
               </span>
             </div>
-            <span className={`absolute bottom-0 right-0 size-2 rounded-full ring-1 ring-sidebar ${activeProfile?.kind === "microsoft" ? "bg-green-400" : "bg-slate-400"}`} />
+            <ChevronDownIcon className="size-3 text-muted-foreground ml-0.5" />
           </div>
-          <div className="flex flex-col leading-none">
-            <span className="text-xs font-semibold text-foreground">
-              {activeProfile?.displayName ?? (profiles.loading ? "Loading…" : "No profile")}
-            </span>
-            <span className="text-[0.6rem] text-primary font-medium">
-              {activeProfile?.kind === "microsoft" ? "Online" : activeProfile ? "Offline" : "—"}
-            </span>
-          </div>
-          <ChevronDownIcon className="size-3 text-muted-foreground ml-0.5" />
+
+          <div className="h-5 w-px bg-border mx-1" />
+
+          {/* Window controls */}
+          <button
+            type="button"
+            className="size-6 flex items-center justify-center rounded-sm hover:bg-white/10 text-muted-foreground hover:text-foreground transition-colors"
+            aria-label="Minimize"
+            onClick={handleMinimize}
+          >
+            <MinusIcon className="size-3" />
+          </button>
+          <button
+            type="button"
+            className="size-6 flex items-center justify-center rounded-sm hover:bg-white/10 text-muted-foreground hover:text-foreground transition-colors"
+            aria-label={isMaximized ? "Restore" : "Maximize"}
+            onClick={() => {
+              handleToggleMaximize().catch(console.error);
+            }}
+          >
+            <SquareIcon className="size-3" />
+          </button>
+          <button
+            type="button"
+            className="size-6 flex items-center justify-center rounded-sm hover:bg-red-600 text-muted-foreground hover:text-white transition-colors"
+            aria-label="Close"
+            onClick={handleClose}
+          >
+            <XIcon className="size-3" />
+          </button>
         </div>
-
-        <div className="h-5 w-px bg-border mx-1" />
-
-        {/* Window controls */}
-        <button
-          type="button"
-          className="size-6 flex items-center justify-center rounded-sm hover:bg-white/10 text-muted-foreground hover:text-foreground transition-colors"
-          aria-label="Minimize"
-          onClick={handleMinimize}
-        >
-          <MinusIcon className="size-3" />
-        </button>
-        <button
-          type="button"
-          className="size-6 flex items-center justify-center rounded-sm hover:bg-white/10 text-muted-foreground hover:text-foreground transition-colors"
-          aria-label={isMaximized ? "Restore" : "Maximize"}
-          onClick={() => {
-            handleToggleMaximize().catch(console.error);
-          }}
-        >
-          <SquareIcon className="size-3" />
-        </button>
-        <button
-          type="button"
-          className="size-6 flex items-center justify-center rounded-sm hover:bg-red-600 text-muted-foreground hover:text-white transition-colors"
-          aria-label="Close"
-          onClick={handleClose}
-        >
-          <XIcon className="size-3" />
-        </button>
       </div>
-    </div>
-    <NewInstanceDialog
-      open={newInstanceOpen}
-      onOpenChange={setNewInstanceOpen}
-      onCreated={() => {}}
-    />
+      <NewInstanceDialog
+        open={newInstanceOpen}
+        onOpenChange={setNewInstanceOpen}
+        onCreated={() => {}}
+      />
     </>
   );
 }
