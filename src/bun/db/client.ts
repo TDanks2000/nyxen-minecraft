@@ -50,7 +50,13 @@ sqlite.exec(`
     account_id text,
     created_at text not null,
     display_name text not null,
+    entitlements text,
     kind text not null,
+    minecraft_access_token text,
+    minecraft_access_token_expires_at text,
+    microsoft_refresh_token text,
+    ownership_checked_at text,
+    skin_url text,
     updated_at text not null
   );
 
@@ -79,6 +85,42 @@ sqlite.exec(`
   create index if not exists minecraft_versions_type_release_time_idx
     on minecraft_versions(type, release_time);
 `);
+
+const launcherProfileColumns = new Set(
+  sqlite
+    .query<{ name: string }, []>("pragma table_info(launcher_profiles)")
+    .all()
+    .map((column) => column.name),
+);
+
+const ensureLauncherProfileColumn = (
+  columnName: string,
+  definition: string,
+): void => {
+  if (!launcherProfileColumns.has(columnName)) {
+    sqlite.exec(`alter table launcher_profiles add column ${definition}`);
+    launcherProfileColumns.add(columnName);
+  }
+};
+
+ensureLauncherProfileColumn("entitlements", "entitlements text");
+ensureLauncherProfileColumn(
+  "minecraft_access_token",
+  "minecraft_access_token text",
+);
+ensureLauncherProfileColumn(
+  "minecraft_access_token_expires_at",
+  "minecraft_access_token_expires_at text",
+);
+ensureLauncherProfileColumn(
+  "microsoft_refresh_token",
+  "microsoft_refresh_token text",
+);
+ensureLauncherProfileColumn(
+  "ownership_checked_at",
+  "ownership_checked_at text",
+);
+ensureLauncherProfileColumn("skin_url", "skin_url text");
 
 export const db = drizzle(sqlite, { schema });
 

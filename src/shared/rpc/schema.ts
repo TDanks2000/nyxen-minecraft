@@ -1,6 +1,7 @@
 import type { RPCSchema } from "electrobun";
 import type {
   AppEnvironment,
+  CompleteMicrosoftProfileLoginInput,
   CreateLauncherInstanceInput,
   CreateLauncherProfileInput,
   CreateLaunchPlanInput,
@@ -13,6 +14,9 @@ import type {
   ListLoaderVersionsInput,
   ListMinecraftVersionsInput,
   LoaderVersionSummary,
+  MicrosoftProfileLoginResult,
+  MicrosoftProfileLoginStart,
+  MicrosoftProfileSignInStatus,
   MinecraftVersionDetails,
   MinecraftVersionManifest,
   MinecraftVersionSummary,
@@ -64,6 +68,18 @@ export type MainViewRPC = {
         params: CreateLauncherProfileInput;
         response: LauncherProfile;
       };
+      startMicrosoftProfileLogin: {
+        params: null;
+        response: MicrosoftProfileLoginStart;
+      };
+      completeMicrosoftProfileLogin: {
+        params: CompleteMicrosoftProfileLoginInput;
+        response: MicrosoftProfileLoginResult;
+      };
+      pollMicrosoftProfileSignIn: {
+        params: CompleteMicrosoftProfileLoginInput;
+        response: MicrosoftProfileSignInStatus;
+      };
       listLauncherProfiles: {
         params: null;
         response: Array<LauncherProfile>;
@@ -98,6 +114,31 @@ export type MainViewRPC = {
       getSystemMemory: {
         params: null;
         response: { totalMb: number };
+      };
+      getWindowState: {
+        params: null;
+        response: {
+          maximized: boolean;
+          minimized: boolean;
+        };
+      };
+      minimizeWindow: {
+        params: null;
+        response: {
+          maximized: boolean;
+          minimized: boolean;
+        };
+      };
+      toggleMaximizeWindow: {
+        params: null;
+        response: {
+          maximized: boolean;
+          minimized: boolean;
+        };
+      };
+      closeWindow: {
+        params: null;
+        response: null;
       };
     };
   }>;

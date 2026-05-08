@@ -139,10 +139,14 @@ export type LauncherProfileKind = "microsoft" | "offline";
 
 export type LauncherProfile = {
   accountId: string | null;
+  authExpiresAt: string | null;
   createdAt: string;
   displayName: string;
+  entitlements: Array<string>;
   id: string;
   kind: LauncherProfileKind;
+  ownershipCheckedAt: string | null;
+  skinUrl: string | null;
   updatedAt: string;
 };
 
@@ -151,6 +155,42 @@ export type CreateLauncherProfileInput = {
   displayName: string;
   kind?: LauncherProfileKind;
 };
+
+export type MicrosoftProfileLoginStart = {
+  deviceCode: string;
+  expiresAt: string;
+  intervalSeconds: number;
+  message: string;
+  userCode: string;
+  verificationUri: string;
+  verificationUriComplete: string | null;
+};
+
+export type CompleteMicrosoftProfileLoginInput = {
+  deviceCode: string;
+};
+
+export type MicrosoftProfileSignInStatus =
+  | {
+      message: string;
+      retryAfterSeconds: number;
+      status: "pending";
+    }
+  | {
+      message: string;
+      status: "signedIn";
+    };
+
+export type MicrosoftProfileLoginResult =
+  | {
+      message: string;
+      retryAfterSeconds: number;
+      status: "pending";
+    }
+  | {
+      profile: LauncherProfile;
+      status: "complete";
+    };
 
 export type ModLoader = "fabric" | "forge" | "neoforge" | "quilt" | "vanilla";
 

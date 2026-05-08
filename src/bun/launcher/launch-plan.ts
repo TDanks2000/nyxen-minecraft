@@ -10,8 +10,12 @@ import type {
   MinecraftLibrary,
 } from "../../shared/types";
 import { getLauncherInstance } from "./instances";
+import { ensureMicrosoftProfileLaunchAuth } from "./microsoft-auth";
 import { ensureLauncherDirectories } from "./paths";
-import { getFirstLauncherProfile, getLauncherProfile } from "./profiles";
+import {
+  getFirstVerifiedMicrosoftProfile,
+  getLauncherProfile,
+} from "./profiles";
 import {
   getMinecraftVersionDetails,
   getMinecraftVersionSummary,
@@ -134,10 +138,10 @@ const resolveProfile = (
   }
 
   if (instanceProfileId) {
-    return getLauncherProfile(instanceProfileId) ?? getFirstLauncherProfile();
+    return getLauncherProfile(instanceProfileId);
   }
 
-  return getFirstLauncherProfile();
+  return getFirstVerifiedMicrosoftProfile();
 };
 
 export const createLaunchPlan = async (
@@ -167,7 +171,9 @@ export const createLaunchPlan = async (
     instance.id,
     versionDetails.id,
   );
-  const profile = resolveProfile(input.profileId, instance.profileId);
+  const profile = await ensureMicrosoftProfileLaunchAuth(
+    resolveProfile(input.profileId, instance.profileId),
+  );
   const missingArtifacts: Array<LaunchPlanMissingArtifact> = [];
   const warnings: Array<string> = [];
 
@@ -233,10 +239,6 @@ export const createLaunchPlan = async (
         url: nativeArtifact?.url,
       });
     }
-  }
-
-  if (!profile) {
-    warnings.push("No launcher profile exists yet.");
   }
 
   if (!versionDetails.mainClass) {

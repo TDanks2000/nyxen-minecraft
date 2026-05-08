@@ -2,6 +2,7 @@ import { count } from "drizzle-orm";
 import type { LauncherStatus } from "../../shared/types";
 import { db } from "../db/client";
 import * as schema from "../db/schema";
+import { isMicrosoftAuthConfigured } from "./microsoft-auth";
 import { ensureLauncherDirectories } from "./paths";
 import {
   getMinecraftVersionManifest,
@@ -44,8 +45,8 @@ export const getLauncherStatus = (): LauncherStatus => {
       },
       {
         id: "microsoft-auth",
-        ready: false,
-        title: "Microsoft account authentication",
+        ready: isMicrosoftAuthConfigured(),
+        title: "Microsoft account ownership verification",
       },
     ],
     counts: {

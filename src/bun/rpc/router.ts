@@ -1,6 +1,8 @@
 import { BrowserView } from "electrobun/bun";
 import type { MainViewRPC } from "../../shared/rpc/types";
 import {
+  closeWindow,
+  completeMicrosoftProfileLogin,
   createLauncherInstance,
   createLauncherProfile,
   createLaunchPlan,
@@ -10,13 +12,18 @@ import {
   getMinecraftVersionDetails,
   getSettingsStatus,
   getSystemMemory,
+  getWindowState,
   greet,
   listLauncherInstances,
   listLauncherProfiles,
   listLoaderVersions,
   listMinecraftVersions,
   logToBun,
+  minimizeWindow,
+  pollMicrosoftProfileSignIn,
   refreshMinecraftVersionManifest,
+  startMicrosoftProfileLogin,
+  toggleMaximizeWindow,
   updateSetting,
 } from "./handlers";
 
@@ -26,6 +33,8 @@ export const mainViewRPC = BrowserView.defineRPC<MainViewRPC>({
       logToBun,
     },
     requests: {
+      closeWindow,
+      completeMicrosoftProfileLogin,
       createLaunchPlan,
       createLauncherInstance,
       createLauncherProfile,
@@ -35,14 +44,19 @@ export const mainViewRPC = BrowserView.defineRPC<MainViewRPC>({
       getMinecraftVersionDetails,
       getSettingsStatus,
       getSystemMemory,
+      getWindowState,
       greet,
       listLauncherInstances,
       listLauncherProfiles,
       listLoaderVersions,
       listMinecraftVersions,
+      minimizeWindow,
+      pollMicrosoftProfileSignIn,
       refreshMinecraftVersionManifest,
+      startMicrosoftProfileLogin,
+      toggleMaximizeWindow,
       updateSetting,
     },
   },
-  maxRequestTime: 30000,
+  maxRequestTime: 120000,
 });

@@ -1,28 +1,31 @@
-import { useState } from "react";
+import {
+  CheckCircle2Icon,
+  CopyIcon,
+  Loader2Icon,
+  ShieldCheckIcon,
+  SquareArrowOutUpRightIcon,
+} from "lucide-react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { Loader2Icon } from "lucide-react";
-import type {
-  LauncherProfile,
-  LauncherProfileKind,
-} from "../../../../../shared/types";
-import { rpc } from "@/views/main/lib/rpc";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@/views/main/components/ui/alert";
 import { Button } from "@/views/main/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/views/main/components/ui/dialog";
-import { Input } from "@/views/main/components/ui/input";
-import { Label } from "@/views/main/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/views/main/components/ui/select";
+import { rpc } from "@/views/main/lib/rpc";
+import type {
+  LauncherProfile,
+  MicrosoftProfileLoginStart,
+} from "../../../../../shared/types";
 
 type Props = {
   open: boolean;
@@ -30,93 +33,289 @@ type Props = {
   onCreated: (profile: LauncherProfile) => void;
 };
 
+type FlowState = "idle" | "starting" | "waitingForSignIn" | "verifying";
+
+const wait = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+const copyText = async (value: string, label: string): Promise<void> => {
+  try {
+    await navigator.clipboard.writeText(value);
+    toast.success(`${label} copied`);
+  } catch {
+    toast.error(`Could not copy ${label.toLowerCase()}`);
+  }
+};
+
 export function AddProfileDialog({ open, onOpenChange, onCreated }: Props) {
-  const [displayName, setDisplayName] = useState("");
-  const [kind, setKind] = useState<LauncherProfileKind>("offline");
-  const [submitting, setSubmitting] = useState(false);
+  const [login, setLogin] = useState<MicrosoftProfileLoginStart | null>(null);
+  const [flowState, setFlowState] = useState<FlowState>("idle");
+  const [verificationMessage, setVerificationMessage] = useState<string | null>(
+    null,
+  );
+  const [microsoftSignedIn, setMicrosoftSignedIn] = useState(false);
+  const verificationRunId = useRef(0);
 
-  const canSubmit = !submitting && displayName.trim().length >= 3;
+  const busy = flowState === "starting" || flowState === "verifying";
+  const waitingForSignIn = flowState === "waitingForSignIn";
+  const verifying = flowState === "verifying";
+  const loginExpired = login
+    ? Date.now() >= Date.parse(login.expiresAt)
+    : false;
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!canSubmit) return;
-    setSubmitting(true);
+  const resetFlow = () => {
+    verificationRunId.current += 1;
+    setLogin(null);
+    setFlowState("idle");
+    setVerificationMessage(null);
+    setMicrosoftSignedIn(false);
+  };
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    onOpenChange(nextOpen);
+
+    if (!nextOpen) {
+      resetFlow();
+    }
+  };
+
+  async function handleStartLogin() {
+    verificationRunId.current += 1;
+    setFlowState("starting");
+    setVerificationMessage(null);
+    setMicrosoftSignedIn(false);
+
     try {
-      const profile = await rpc.requestProxy.createLauncherProfile({
-        displayName: displayName.trim(),
-        kind,
-      });
-      toast.success("Profile added");
-      onCreated(profile);
-      onOpenChange(false);
-      setDisplayName("");
-      setKind("offline");
+      const result = await rpc.requestProxy.startMicrosoftProfileLogin(null);
+      setLogin(result);
+      void watchMicrosoftSignIn(result, verificationRunId.current + 1);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to create profile");
+      toast.error(
+        e instanceof Error ? e.message : "Failed to start Microsoft sign-in",
+      );
+      setFlowState("idle");
+    }
+  }
+
+  async function watchMicrosoftSignIn(
+    activeLogin: MicrosoftProfileLoginStart,
+    runId: number,
+  ) {
+    verificationRunId.current = runId;
+    setFlowState("waitingForSignIn");
+    setVerificationMessage("Waiting for Microsoft sign-in to finish.");
+
+    try {
+      while (verificationRunId.current === runId) {
+        if (Date.now() >= Date.parse(activeLogin.expiresAt)) {
+          setVerificationMessage(
+            "This sign-in code expired. Start a new Microsoft sign-in.",
+          );
+          setFlowState("idle");
+          return;
+        }
+
+        const result = await rpc.requestProxy.pollMicrosoftProfileSignIn({
+          deviceCode: activeLogin.deviceCode,
+        });
+
+        setVerificationMessage(result.message);
+
+        if (result.status === "signedIn") {
+          setMicrosoftSignedIn(true);
+          setFlowState("idle");
+          return;
+        }
+
+        await wait(Math.max(1, Math.min(result.retryAfterSeconds, 5)) * 1000);
+      }
+    } catch (e) {
+      toast.error(
+        e instanceof Error
+          ? e.message
+          : "Failed while waiting for Microsoft sign-in",
+      );
+      if (verificationRunId.current === runId) {
+        setFlowState("idle");
+      }
     } finally {
-      setSubmitting(false);
+      if (verificationRunId.current === runId && !microsoftSignedIn) {
+        setFlowState((current) =>
+          current === "waitingForSignIn" ? "idle" : current,
+        );
+      }
+    }
+  }
+
+  async function handleVerifyLogin() {
+    if (!login || loginExpired) {
+      toast.error("Start a new Microsoft sign-in first");
+      return;
+    }
+
+    if (!microsoftSignedIn) {
+      toast.error("Finish Microsoft sign-in first");
+      return;
+    }
+
+    setFlowState("verifying");
+    setVerificationMessage("Checking Minecraft ownership.");
+    const runId = verificationRunId.current + 1;
+    verificationRunId.current = runId;
+
+    try {
+      while (verificationRunId.current === runId) {
+        const result = await rpc.requestProxy.completeMicrosoftProfileLogin({
+          deviceCode: login.deviceCode,
+        });
+
+        if (result.status === "complete") {
+          toast.success("Microsoft profile verified");
+          onCreated(result.profile);
+          handleOpenChange(false);
+          return;
+        }
+
+        setVerificationMessage(result.message);
+
+        await wait(Math.max(1, Math.min(result.retryAfterSeconds, 5)) * 1000);
+      }
+    } catch (e) {
+      toast.error(
+        e instanceof Error ? e.message : "Failed to verify Minecraft ownership",
+      );
+    } finally {
+      if (verificationRunId.current === runId) {
+        setFlowState("idle");
+      }
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-sm">
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Add Profile</DialogTitle>
+          <DialogTitle>Add Microsoft Profile</DialogTitle>
+          <DialogDescription>
+            Profiles are created from the Minecraft account returned by
+            Microsoft sign-in.
+          </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4 py-2">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="ap-name">Display Name</Label>
-            <Input
-              id="ap-name"
-              placeholder="Player name"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              minLength={3}
-              maxLength={32}
-              required
-            />
-          </div>
 
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="ap-kind">Account Type</Label>
-            <Select
-              value={kind}
-              onValueChange={(v) => setKind(v as LauncherProfileKind)}
-            >
-              <SelectTrigger id="ap-kind">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="offline">Offline</SelectItem>
-                <SelectItem value="microsoft">Microsoft</SelectItem>
-              </SelectContent>
-            </Select>
-            {kind === "microsoft" && (
-              <p className="text-xs text-muted-foreground">
-                Microsoft auth is not available yet. Profile will be created
-                without account linking.
-              </p>
-            )}
-          </div>
+        <div className="flex flex-col gap-4 py-1">
+          {!login ? (
+            <Alert>
+              <ShieldCheckIcon />
+              <AlertTitle>Verified accounts only</AlertTitle>
+              <AlertDescription>
+                The launcher checks for the Java Edition license before saving a
+                profile.
+              </AlertDescription>
+            </Alert>
+          ) : (
+            <div className="flex flex-col gap-3 rounded-lg border bg-muted/35 p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-muted-foreground text-xs font-bold uppercase">
+                    Microsoft Code
+                  </p>
+                  <p className="mt-1 font-mono font-bold text-2xl tracking-normal">
+                    {login.userCode}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon-sm"
+                  onClick={() => copyText(login.userCode, "Code")}
+                  aria-label="Copy Microsoft sign-in code"
+                >
+                  <CopyIcon />
+                </Button>
+              </div>
 
-          <DialogFooter className="mt-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={submitting}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" disabled={!canSubmit}>
-              {submitting && (
-                <Loader2Icon className="size-3.5 animate-spin mr-1.5" />
+              <div className="flex min-w-0 items-center gap-2 rounded-md border bg-background px-2.5 py-2">
+                <SquareArrowOutUpRightIcon className="shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1 truncate font-mono text-xs">
+                  {login.verificationUri}
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={() => copyText(login.verificationUri, "Link")}
+                  aria-label="Copy Microsoft sign-in link"
+                >
+                  <CopyIcon />
+                </Button>
+              </div>
+
+              {loginExpired && (
+                <p className="text-destructive text-sm">
+                  This sign-in code expired. Start a new Microsoft sign-in.
+                </p>
               )}
-              Add Profile
+              {verificationMessage && (
+                <p className="flex items-center gap-2 text-muted-foreground text-sm">
+                  {waitingForSignIn || verifying ? (
+                    <Loader2Icon className="animate-spin" />
+                  ) : microsoftSignedIn ? (
+                    <CheckCircle2Icon className="text-primary" />
+                  ) : null}
+                  {verificationMessage}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => handleOpenChange(false)}
+            disabled={busy}
+          >
+            Cancel
+          </Button>
+          {login ? (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleStartLogin}
+                disabled={flowState !== "idle"}
+              >
+                New Code
+              </Button>
+              <Button
+                type="button"
+                onClick={handleVerifyLogin}
+                disabled={
+                  busy || waitingForSignIn || !microsoftSignedIn || loginExpired
+                }
+              >
+                {flowState === "verifying" && (
+                  <Loader2Icon
+                    data-icon="inline-start"
+                    className="animate-spin"
+                  />
+                )}
+                Verify Ownership
+              </Button>
+            </>
+          ) : (
+            <Button type="button" onClick={handleStartLogin} disabled={busy}>
+              {flowState === "starting" && (
+                <Loader2Icon
+                  data-icon="inline-start"
+                  className="animate-spin"
+                />
+              )}
+              Sign In
             </Button>
-          </DialogFooter>
-        </form>
+          )}
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

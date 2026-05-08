@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { formatDistanceToNow } from "date-fns";
 import {
   CheckCircle2Icon,
   CircleIcon,
@@ -7,14 +7,8 @@ import {
   PlayIcon,
   PlusIcon,
 } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { useState } from "react";
 import { toast } from "sonner";
-import type { LaunchPlan } from "../../../shared/types";
-import { useInstances } from "@/views/main/hooks/use-instances";
-import { useLauncherStatus } from "@/views/main/hooks/use-launcher-status";
-import { rpc } from "@/views/main/lib/rpc";
-import { LaunchPlanSheet } from "@/views/main/features/instances/components/launch-plan-sheet";
-import { NewInstanceDialog } from "@/views/main/features/instances/components/new-instance-dialog";
 import { Button } from "@/views/main/components/ui/button";
 import {
   Card,
@@ -24,7 +18,13 @@ import {
   CardTitle,
 } from "@/views/main/components/ui/card";
 import { Skeleton } from "@/views/main/components/ui/skeleton";
+import { LaunchPlanSheet } from "@/views/main/features/instances/components/launch-plan-sheet";
+import { NewInstanceDialog } from "@/views/main/features/instances/components/new-instance-dialog";
+import { useInstances } from "@/views/main/hooks/use-instances";
+import { useLauncherStatus } from "@/views/main/hooks/use-launcher-status";
+import { rpc } from "@/views/main/lib/rpc";
 import { cn } from "@/views/main/lib/utils";
+import type { LaunchPlan } from "../../../shared/types";
 
 function InstancesPage() {
   const instancesHook = useInstances();
@@ -154,46 +154,6 @@ function InstancesPage() {
             ))
           )}
         </div>
-
-        {/* Capabilities sidebar */}
-        <Card className="self-start">
-          <CardHeader className="has-data-[slot=card-action]:grid-cols-[1fr_auto]">
-            <div>
-              <CardDescription>Launcher</CardDescription>
-              <CardTitle>Capabilities</CardTitle>
-            </div>
-            <Layers3Icon className="size-5 text-muted-foreground" />
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2">
-            {statusHook.loading
-              ? Array.from({ length: 5 }).map((_, i) => (
-                  <Skeleton key={`scap-${i}`} className="h-11 rounded-md" />
-                ))
-              : statusHook.data?.capabilities.map((cap) => (
-                  <div
-                    key={cap.id}
-                    className="grid grid-cols-[1.75rem_minmax(0,1fr)_minmax(4rem,auto)] items-center gap-2 rounded-md border bg-background/45 p-3"
-                  >
-                    {cap.ready ? (
-                      <CheckCircle2Icon className="size-4 text-primary" />
-                    ) : (
-                      <CircleIcon className="size-4 text-muted-foreground/40" />
-                    )}
-                    <span className="truncate text-muted-foreground text-sm font-semibold">
-                      {cap.title}
-                    </span>
-                    <strong
-                      className={cn(
-                        "text-xs truncate text-right",
-                        cap.ready ? "text-primary" : "text-muted-foreground/60",
-                      )}
-                    >
-                      {cap.ready ? "Ready" : "Not ready"}
-                    </strong>
-                  </div>
-                ))}
-          </CardContent>
-        </Card>
       </section>
 
       <NewInstanceDialog

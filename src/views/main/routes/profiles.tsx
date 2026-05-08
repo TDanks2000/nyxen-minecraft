@@ -1,8 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
+import {
+  BanIcon,
+  CrownIcon,
+  PlusIcon,
+  ShieldCheckIcon,
+  UserRoundIcon,
+} from "lucide-react";
 import { useState } from "react";
-import { CrownIcon, PlusIcon, UserRoundIcon } from "lucide-react";
-import { useProfiles } from "@/views/main/hooks/use-profiles";
-import { AddProfileDialog } from "@/views/main/features/profiles/components/add-profile-dialog";
 import { Avatar, AvatarFallback } from "@/views/main/components/ui/avatar";
 import { Badge } from "@/views/main/components/ui/badge";
 import { Button } from "@/views/main/components/ui/button";
@@ -13,13 +17,59 @@ import {
   CardHeader,
   CardTitle,
 } from "@/views/main/components/ui/card";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/views/main/components/ui/empty";
 import { Skeleton } from "@/views/main/components/ui/skeleton";
+import { AddProfileDialog } from "@/views/main/features/profiles/components/add-profile-dialog";
+import { useProfiles } from "@/views/main/hooks/use-profiles";
 import { cn } from "@/views/main/lib/utils";
+import type { LauncherProfile } from "../../../shared/types";
 
 const KIND_COLORS: Record<string, string> = {
   microsoft: "bg-primary/20 text-primary",
-  offline: "bg-[var(--chart-3)]/20 text-[var(--chart-3)]",
+  offline: "bg-destructive/10 text-destructive",
 };
+
+const PROFILE_SKELETON_IDS = [
+  "profile-skeleton-one",
+  "profile-skeleton-two",
+  "profile-skeleton-three",
+];
+
+const isVerifiedMinecraftProfile = (profile: LauncherProfile): boolean => {
+  const entitlements = new Set(profile.entitlements);
+
+  return (
+    profile.kind === "microsoft" &&
+    Boolean(profile.accountId) &&
+    Boolean(profile.ownershipCheckedAt) &&
+    entitlements.has("game_minecraft") &&
+    entitlements.has("product_minecraft")
+  );
+};
+
+const getProfileStatus = (
+  profile: LauncherProfile,
+): { label: string; tone: "default" | "destructive" | "outline" } => {
+  if (isVerifiedMinecraftProfile(profile)) {
+    return { label: "Verified", tone: "default" };
+  }
+
+  if (profile.kind === "offline") {
+    return { label: "Blocked", tone: "destructive" };
+  }
+
+  return { label: "Needs sign-in", tone: "outline" };
+};
+
+const formatAccountId = (accountId: string | null): string =>
+  accountId ? `${accountId.slice(0, 8)}...${accountId.slice(-4)}` : "No UUID";
 
 function ProfilesPage() {
   const profilesHook = useProfiles();
@@ -27,7 +77,8 @@ function ProfilesPage() {
 
   const profiles = profilesHook.data;
   const loading = profilesHook.loading;
-  const primaryProfile = profiles?.[0] ?? null;
+  const primaryProfile =
+    profiles?.find(isVerifiedMinecraftProfile) ?? profiles?.[0] ?? null;
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-5 p-5">
@@ -42,7 +93,7 @@ function ProfilesPage() {
         </div>
         <Button variant="outline" onClick={() => setDialogOpen(true)}>
           <PlusIcon data-icon="inline-start" />
-          Add Profile
+          Add Microsoft Profile
         </Button>
       </section>
 
@@ -63,8 +114,8 @@ function ProfilesPage() {
         {/* Profile list */}
         <div className="flex flex-col gap-3">
           {loading ? (
-            Array.from({ length: 3 }).map((_, i) => (
-              <Card key={`sk-${i}`}>
+            PROFILE_SKELETON_IDS.map((skeletonId) => (
+              <Card key={skeletonId}>
                 <CardContent className="grid grid-cols-[3.25rem_minmax(0,1fr)_minmax(4rem,auto)] items-center gap-3">
                   <Skeleton className="size-12 rounded-md" />
                   <div className="flex flex-col gap-1.5">
@@ -76,18 +127,30 @@ function ProfilesPage() {
               </Card>
             ))
           ) : !profiles || profiles.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
-              <p className="text-muted-foreground text-sm">No profiles yet.</p>
-              <Button onClick={() => setDialogOpen(true)}>
-                <PlusIcon className="size-4 mr-1.5" />
-                Add Profile
-              </Button>
-            </div>
+            <Empty className="py-12">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <ShieldCheckIcon />
+                </EmptyMedia>
+                <EmptyTitle>No verified profiles</EmptyTitle>
+                <EmptyDescription>
+                  Sign in with the Microsoft account that owns Minecraft.
+                </EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent>
+                <Button onClick={() => setDialogOpen(true)}>
+                  <PlusIcon data-icon="inline-start" />
+                  Add Microsoft Profile
+                </Button>
+              </EmptyContent>
+            </Empty>
           ) : (
-            profiles.map((profile, idx) => {
+            profiles.map((profile) => {
               const toneClass =
-                KIND_COLORS[profile.kind] ?? "bg-muted/40 text-muted-foreground";
-              const isActive = idx === 0;
+                KIND_COLORS[profile.kind] ??
+                "bg-muted/40 text-muted-foreground";
+              const status = getProfileStatus(profile);
+              const isActive = profile.id === primaryProfile?.id;
               return (
                 <Card
                   key={profile.id}
@@ -111,12 +174,12 @@ function ProfilesPage() {
                         {profile.displayName}
                       </strong>
                       <small className="block truncate text-muted-foreground text-sm font-semibold capitalize">
-                        {profile.kind}
+                        {isVerifiedMinecraftProfile(profile)
+                          ? formatAccountId(profile.accountId)
+                          : profile.kind}
                       </small>
                     </div>
-                    <Badge variant={isActive ? "default" : "outline"}>
-                      {isActive ? "Selected" : "Slot"}
-                    </Badge>
+                    <Badge variant={status.tone}>{status.label}</Badge>
                   </CardContent>
                 </Card>
               );
@@ -150,8 +213,16 @@ function ProfilesPage() {
                 <Badge variant="outline" className="capitalize">
                   {primaryProfile.kind}
                 </Badge>
-                {primaryProfile.accountId && (
-                  <Badge variant="outline">Linked</Badge>
+                {isVerifiedMinecraftProfile(primaryProfile) ? (
+                  <Badge>
+                    <ShieldCheckIcon />
+                    Verified owner
+                  </Badge>
+                ) : (
+                  <Badge variant="destructive">
+                    <BanIcon />
+                    Not launchable
+                  </Badge>
                 )}
               </CardContent>
             </>

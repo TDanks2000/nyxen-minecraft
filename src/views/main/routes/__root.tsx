@@ -8,9 +8,13 @@ import {
   SquareIcon,
   XIcon,
 } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Toaster } from "@/views/main/components/ui/sonner";
 import { AppSidebar } from "@/views/main/features/layout/app-sidebar";
 import { RightSidebar } from "@/views/main/features/layout/right-sidebar";
-import { Toaster } from "@/views/main/components/ui/sonner";
+import { rpc } from "@/views/main/lib/rpc";
+
+const NO_DRAG_CLASS = "electrobun-webkit-app-region-no-drag";
 
 function AppIcon() {
   return (
@@ -32,8 +36,32 @@ function AppIcon() {
 }
 
 function Titlebar() {
+  const [isMaximized, setIsMaximized] = useState(false);
+
+  const syncWindowState = useCallback(async () => {
+    const state = await rpc.requestProxy.getWindowState(null);
+    setIsMaximized(state.maximized);
+  }, []);
+
+  useEffect(() => {
+    syncWindowState().catch(console.error);
+  }, [syncWindowState]);
+
+  const handleMinimize = useCallback(() => {
+    rpc.requestProxy.minimizeWindow(null).catch(console.error);
+  }, []);
+
+  const handleToggleMaximize = useCallback(async () => {
+    const state = await rpc.requestProxy.toggleMaximizeWindow(null);
+    setIsMaximized(state.maximized);
+  }, []);
+
+  const handleClose = useCallback(() => {
+    rpc.requestProxy.closeWindow(null).catch(console.error);
+  }, []);
+
   return (
-    <div className="flex items-center h-12 px-4 border-b border-sidebar-border bg-sidebar shrink-0">
+    <div className="electrobun-webkit-app-region-drag flex h-12 shrink-0 select-none items-center border-sidebar-border border-b bg-sidebar px-4">
       {/* Logo – aligns with sidebar width */}
       <div className="flex items-center gap-2.5 w-52 shrink-0">
         <AppIcon />
@@ -50,7 +78,7 @@ function Titlebar() {
       <div className="flex-1" />
 
       {/* Titlebar actions */}
-      <div className="flex items-center gap-1.5">
+      <div className={`${NO_DRAG_CLASS} flex items-center gap-1.5`}>
         <Link
           to="/instances"
           className="flex items-center gap-1.5 h-9 px-3.5 bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold rounded-md transition-colors no-underline"
@@ -103,13 +131,17 @@ function Titlebar() {
           type="button"
           className="size-6 flex items-center justify-center rounded-sm hover:bg-white/10 text-muted-foreground hover:text-foreground transition-colors"
           aria-label="Minimize"
+          onClick={handleMinimize}
         >
           <MinusIcon className="size-3" />
         </button>
         <button
           type="button"
           className="size-6 flex items-center justify-center rounded-sm hover:bg-white/10 text-muted-foreground hover:text-foreground transition-colors"
-          aria-label="Maximize"
+          aria-label={isMaximized ? "Restore" : "Maximize"}
+          onClick={() => {
+            handleToggleMaximize().catch(console.error);
+          }}
         >
           <SquareIcon className="size-3" />
         </button>
@@ -117,6 +149,7 @@ function Titlebar() {
           type="button"
           className="size-6 flex items-center justify-center rounded-sm hover:bg-red-600 text-muted-foreground hover:text-white transition-colors"
           aria-label="Close"
+          onClick={handleClose}
         >
           <XIcon className="size-3" />
         </button>

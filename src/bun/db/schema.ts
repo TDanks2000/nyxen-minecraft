@@ -34,7 +34,13 @@ export const launcherProfiles = sqliteTable("launcher_profiles", {
   accountId: text("account_id"),
   createdAt: text("created_at").notNull(),
   displayName: text("display_name").notNull(),
+  entitlements: text("entitlements"),
   kind: text("kind").notNull(),
+  minecraftAccessToken: text("minecraft_access_token"),
+  minecraftAccessTokenExpiresAt: text("minecraft_access_token_expires_at"),
+  microsoftRefreshToken: text("microsoft_refresh_token"),
+  ownershipCheckedAt: text("ownership_checked_at"),
+  skinUrl: text("skin_url"),
   updatedAt: text("updated_at").notNull(),
 });
 

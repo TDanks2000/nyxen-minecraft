@@ -1,6 +1,12 @@
-import os from "os";
+import os from "node:os";
 import { APP_NAME } from "../../shared/constants";
-import type { AppEnvironment } from "../../shared/types";
+import type {
+  AppEnvironment,
+  CompleteMicrosoftProfileLoginInput,
+  MicrosoftProfileLoginResult,
+  MicrosoftProfileLoginStart,
+  MicrosoftProfileSignInStatus,
+} from "../../shared/types";
 import { getDatabaseStatus } from "../db/client";
 import {
   createLauncherInstance,
@@ -9,9 +15,11 @@ import {
 import { createLaunchPlan } from "../launcher/launch-plan";
 import { listLoaderVersions } from "../launcher/loader-versions";
 import {
-  createLauncherProfile,
-  listLauncherProfiles,
-} from "../launcher/profiles";
+  completeMicrosoftProfileLogin as completeMicrosoftProfileLoginRequest,
+  pollMicrosoftProfileSignIn as pollMicrosoftProfileSignInRequest,
+  startMicrosoftProfileLogin as startMicrosoftProfileLoginRequest,
+} from "../launcher/microsoft-auth";
+import { listLauncherProfiles } from "../launcher/profiles";
 import { getLauncherStatus } from "../launcher/status";
 import {
   getMinecraftVersionDetails,
@@ -19,6 +27,12 @@ import {
   refreshMinecraftVersionManifest as refreshManifest,
 } from "../launcher/versions";
 import { getSettingsStatus, updateSetting } from "../settings/store";
+import {
+  closeWindow,
+  getWindowState,
+  minimizeWindow,
+  toggleMaximizeWindow,
+} from "../window-controls";
 
 const startedAt = new Date().toISOString();
 
@@ -44,16 +58,39 @@ export const getSystemMemory = (): { totalMb: number } => ({
 
 export const refreshMinecraftVersionManifest = () => refreshManifest();
 
+export const createLauncherProfile = (): never => {
+  throw new Error(
+    "Manual profile creation is disabled. Sign in with a Microsoft account that owns Minecraft.",
+  );
+};
+
+export const startMicrosoftProfileLogin =
+  (): Promise<MicrosoftProfileLoginStart> =>
+    startMicrosoftProfileLoginRequest();
+
+export const completeMicrosoftProfileLogin = (
+  input: CompleteMicrosoftProfileLoginInput,
+): Promise<MicrosoftProfileLoginResult> =>
+  completeMicrosoftProfileLoginRequest(input);
+
+export const pollMicrosoftProfileSignIn = (
+  input: CompleteMicrosoftProfileLoginInput,
+): Promise<MicrosoftProfileSignInStatus> =>
+  pollMicrosoftProfileSignInRequest(input);
+
 export {
+  closeWindow,
   createLauncherInstance,
-  createLauncherProfile,
   createLaunchPlan,
   getLauncherStatus,
   getMinecraftVersionDetails,
   getSettingsStatus,
+  getWindowState,
   listLauncherInstances,
   listLauncherProfiles,
   listLoaderVersions,
   listMinecraftVersions,
+  minimizeWindow,
+  toggleMaximizeWindow,
   updateSetting,
 };
