@@ -1,0 +1,307 @@
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import { Loader2Icon } from "lucide-react";
+import type { LauncherInstance, ModLoader } from "../../../../../shared/types";
+import { rpc } from "@/views/main/lib/rpc";
+import { useVersions } from "@/views/main/hooks/use-versions";
+import { useLoaderVersions } from "@/views/main/hooks/use-loader-versions";
+import { Button } from "@/views/main/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/views/main/components/ui/dialog";
+import { Input } from "@/views/main/components/ui/input";
+import { Label } from "@/views/main/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/views/main/components/ui/select";
+import { Slider } from "@/views/main/components/ui/slider";
+
+type Props = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onCreated: (instance: LauncherInstance) => void;
+};
+
+const LOADERS: Array<{ value: ModLoader; label: string }> = [
+  { value: "vanilla", label: "Vanilla" },
+  { value: "fabric", label: "Fabric" },
+  { value: "forge", label: "Forge" },
+  { value: "neoforge", label: "NeoForge" },
+  { value: "quilt", label: "Quilt" },
+];
+
+const RAM_STOPS = [512, 1024, 2048, 3072, 4096, 6144, 8192, 12288, 16384];
+const DEFAULT_RAM_INDEX = RAM_STOPS.indexOf(4096);
+
+const formatRam = (mb: number): string => {
+  if (mb < 1024) return `${mb} MB`;
+  return `${mb / 1024} GB`;
+};
+
+export function NewInstanceDialog({ open, onOpenChange, onCreated }: Props) {
+  const [name, setName] = useState("");
+  const [versionId, setVersionId] = useState("");
+  const [loader, setLoader] = useState<ModLoader>("vanilla");
+  const [loaderVersion, setLoaderVersion] = useState("");
+  const [ramIndex, setRamIndex] = useState(DEFAULT_RAM_INDEX);
+  const [submitting, setSubmitting] = useState(false);
+
+  const versions = useVersions({ includeSnapshots: false });
+  const loaderVersions = useLoaderVersions(loader, versionId);
+
+  // Reset loader version when MC version or loader changes
+  useEffect(() => {
+    setLoaderVersion("");
+  }, [versionId, loader]);
+
+  const memoryMaxMb = RAM_STOPS[ramIndex];
+  const needsLoaderVersion =
+    loader !== "vanilla" && loaderVersions.data !== null && loaderVersions.data.length > 0;
+
+  const canSubmit =
+    !submitting &&
+    name.trim().length >= 2 &&
+    versionId.length > 0 &&
+    (!needsLoaderVersion || loaderVersion.length > 0) &&
+    !(loader !== "vanilla" && loaderVersions.loading);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!canSubmit) return;
+    setSubmitting(true);
+    try {
+      const instance = await rpc.requestProxy.createLauncherInstance({
+        name: name.trim(),
+        versionId,
+        loader,
+        loaderVersion: loaderVersion || undefined,
+        memoryMaxMb,
+      });
+      toast.success("Instance created");
+      onCreated(instance);
+      onOpenChange(false);
+      resetForm();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to create instance");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function resetForm() {
+    setName("");
+    setVersionId("");
+    setLoader("vanilla");
+    setLoaderVersion("");
+    setRamIndex(DEFAULT_RAM_INDEX);
+  }
+
+  const versionsEmpty =
+    !versions.loading && !versions.error && versions.data?.length === 0;
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { onOpenChange(o); if (!o) resetForm(); }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>New Instance</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4 py-2">
+          {/* Name */}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="ni-name">Name</Label>
+            <Input
+              id="ni-name"
+              placeholder="My Instance"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              minLength={2}
+              maxLength={64}
+              required
+            />
+          </div>
+
+          {/* Minecraft Version */}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="ni-version">Minecraft Version</Label>
+            {versions.loading ? (
+              <div className="flex items-center gap-2 h-9 px-3 rounded-md border border-input bg-background text-sm text-muted-foreground">
+                <Loader2Icon className="size-3.5 animate-spin shrink-0" />
+                Loading versions…
+              </div>
+            ) : versionsEmpty ? (
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2 h-9 px-3 rounded-md border border-input bg-muted text-sm text-muted-foreground">
+                  No versions available
+                </div>
+                <p className="text-xs text-destructive">
+                  Could not fetch version manifest.{" "}
+                  <button
+                    type="button"
+                    className="underline hover:no-underline"
+                    onClick={versions.refreshManifest}
+                  >
+                    Retry
+                  </button>
+                </p>
+              </div>
+            ) : versions.error ? (
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2 h-9 px-3 rounded-md border border-destructive/50 bg-muted text-sm text-muted-foreground">
+                  Failed to load versions
+                </div>
+                <button
+                  type="button"
+                  className="text-xs text-primary underline hover:no-underline text-left"
+                  onClick={versions.refresh}
+                >
+                  Retry
+                </button>
+              </div>
+            ) : (
+              <Select
+                value={versionId}
+                onValueChange={(v) => v && setVersionId(v)}
+              >
+                <SelectTrigger id="ni-version">
+                  <SelectValue placeholder="Select a version" />
+                </SelectTrigger>
+                <SelectContent>
+                  {versions.data?.map((v) => (
+                    <SelectItem key={v.id} value={v.id}>
+                      {v.id}
+                      <span className="ml-2 text-muted-foreground text-xs">
+                        {v.type}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
+          {/* Mod Loader */}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="ni-loader">Mod Loader</Label>
+            <Select
+              value={loader}
+              onValueChange={(v) => setLoader(v as ModLoader)}
+            >
+              <SelectTrigger id="ni-loader">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {LOADERS.map((l) => (
+                  <SelectItem key={l.value} value={l.value}>
+                    {l.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Loader Version (shown when non-vanilla loader + MC version selected) */}
+          {loader !== "vanilla" && versionId && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ni-loader-version">
+                {LOADERS.find((l) => l.value === loader)?.label} Version
+              </Label>
+              {loaderVersions.loading ? (
+                <div className="flex items-center gap-2 h-9 px-3 rounded-md border border-input bg-background text-sm text-muted-foreground">
+                  <Loader2Icon className="size-3.5 animate-spin shrink-0" />
+                  Fetching versions…
+                </div>
+              ) : loaderVersions.error ? (
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-2 h-9 px-3 rounded-md border border-destructive/50 bg-muted text-sm text-muted-foreground">
+                    Failed to load versions
+                  </div>
+                  <button
+                    type="button"
+                    className="text-xs text-primary underline hover:no-underline text-left"
+                    onClick={loaderVersions.refresh}
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : loaderVersions.data?.length === 0 ? (
+                <div className="flex items-center gap-2 h-9 px-3 rounded-md border border-input bg-muted text-sm text-muted-foreground">
+                  No versions available for {versionId}
+                </div>
+              ) : (
+                <Select
+                  value={loaderVersion}
+                  onValueChange={(v) => v && setLoaderVersion(v)}
+                >
+                  <SelectTrigger id="ni-loader-version">
+                    <SelectValue placeholder="Select a version" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {loaderVersions.data?.map((v) => (
+                      <SelectItem key={v.id} value={v.id}>
+                        {v.id}
+                        {!v.stable && (
+                          <span className="ml-2 text-amber-500 text-xs">
+                            beta
+                          </span>
+                        )}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+          )}
+
+          {/* RAM Slider */}
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <Label>Max Memory</Label>
+              <span className="text-sm font-medium tabular-nums">
+                {formatRam(memoryMaxMb)}
+              </span>
+            </div>
+            <Slider
+              min={0}
+              max={RAM_STOPS.length - 1}
+              step={1}
+              value={[ramIndex] as number[]}
+              onValueChange={(v) => {
+                const arr = v as number[];
+                setRamIndex(arr[0] ?? DEFAULT_RAM_INDEX);
+              }}
+            />
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <span>{formatRam(RAM_STOPS[0])}</span>
+              <span>{formatRam(RAM_STOPS[RAM_STOPS.length - 1])}</span>
+            </div>
+          </div>
+
+          <DialogFooter className="mt-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => { onOpenChange(false); resetForm(); }}
+              disabled={submitting}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={!canSubmit}>
+              {submitting && (
+                <Loader2Icon className="size-3.5 animate-spin mr-1.5" />
+              )}
+              Create
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
