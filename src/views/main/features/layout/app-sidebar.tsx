@@ -12,7 +12,7 @@ import {
   UserRoundIcon,
 } from "lucide-react";
 import { type ComponentType, type SVGProps, useMemo } from "react";
-import type { ModLoader } from "@/shared/types";
+import { InstanceIcon } from "@/views/main/features/instances/components/instance-artwork";
 import { LaunchPlanSheet } from "@/views/main/features/instances/components/launch-plan-sheet";
 import { useLaunchPlan } from "@/views/main/features/instances/hooks/use-launch-plan";
 import { useInstances } from "@/views/main/hooks/use-instances";
@@ -60,14 +60,6 @@ const NAV_ITEMS: Array<NavItem> = [
   },
 ];
 
-const LOADER_COLORS: Record<ModLoader, string> = {
-  vanilla: "bg-emerald-900",
-  fabric: "bg-indigo-900",
-  forge: "bg-amber-900",
-  neoforge: "bg-orange-900",
-  quilt: "bg-violet-900",
-};
-
 export function AppSidebar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const instancesHook = useInstances();
@@ -89,6 +81,7 @@ export function AppSidebar() {
       })
       .slice(0, 3);
   }, [instancesHook.data]);
+  const activeInstance = quickPlayInstances[0] ?? null;
 
   return (
     <aside className="flex flex-col w-52 shrink-0 bg-sidebar border-r border-sidebar-border overflow-y-auto">
@@ -152,12 +145,7 @@ export function AppSidebar() {
               key={item.id}
               className="flex items-center gap-2 h-10 px-2 rounded-md hover:bg-sidebar-accent cursor-pointer transition-colors group"
             >
-              <div
-                className={cn(
-                  "size-8 rounded-sm shrink-0",
-                  LOADER_COLORS[item.loader] ?? "bg-slate-800",
-                )}
-              />
+              <InstanceIcon instance={item} className="size-8 rounded-sm" />
               <div className="flex-1 min-w-0">
                 <div className="text-xs font-semibold text-sidebar-foreground truncate leading-none">
                   {item.name}
@@ -188,29 +176,26 @@ export function AppSidebar() {
       {/* Bottom – active game */}
       <div className="mt-auto border-t border-sidebar-border">
         <div className="flex items-center gap-2 px-3 py-3 bg-primary/5">
-          <div className="size-8 rounded-sm shrink-0 bg-emerald-900 overflow-hidden flex items-center justify-center">
-            <svg
-              viewBox="0 0 16 16"
-              className="size-5"
-              fill="none"
-              aria-hidden="true"
-            >
-              <rect x="1" y="1" width="7" height="7" fill="#4a7c3a" />
-              <rect x="8" y="1" width="7" height="7" fill="#5a3e28" />
-              <rect x="1" y="8" width="7" height="7" fill="#5a3e28" />
-              <rect x="8" y="8" width="7" height="7" fill="#4a7c3a" />
-              <rect x="1" y="1" width="7" height="1" fill="#6db858" />
-              <rect x="1" y="1" width="1" height="7" fill="#6db858" />
-            </svg>
-          </div>
+          {activeInstance ? (
+            <InstanceIcon
+              instance={activeInstance}
+              className="size-8 rounded-sm"
+            />
+          ) : (
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-sm bg-muted">
+              <PackageIcon className="size-4 text-muted-foreground" />
+            </div>
+          )}
           <div className="flex-1 min-w-0">
-            <div className="text-xs font-semibold text-foreground leading-none">
-              Minecraft 1.20.4
+            <div className="truncate text-xs font-semibold text-foreground leading-none">
+              {activeInstance?.name ?? "No active instance"}
             </div>
             <div className="flex items-center mt-0.5 leading-none">
               <span className="size-1.5 rounded-full bg-primary mr-1 shrink-0 inline-block" />
-              <span className="text-[0.62rem] text-primary font-medium">
-                Ready to play
+              <span className="truncate text-[0.62rem] font-medium text-primary">
+                {activeInstance
+                  ? `${activeInstance.versionId} · ${activeInstance.loader}`
+                  : "Create one to play"}
               </span>
             </div>
           </div>

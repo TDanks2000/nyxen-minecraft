@@ -506,6 +506,7 @@ export const createLaunchPlan = async (
       majorVersion: requiredJava.majorVersion,
       memoryMaxMb: instance.memoryMaxMb,
       memoryMinMb: instance.memoryMinMb,
+      runtimeDirectory: managedRuntime?.directory ?? null,
       runtimePlatform: managedRuntime?.platform ?? null,
       runtimeVersion: managedRuntime?.versionName ?? null,
     },

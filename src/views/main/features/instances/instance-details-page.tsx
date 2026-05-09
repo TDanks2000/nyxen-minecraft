@@ -26,33 +26,34 @@ export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
   };
 
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-5 p-5">
+    <div className="flex flex-col">
       <InstanceDetailsHeader
         instance={instance}
         onPlay={playInstance}
         planLoading={planLoading}
       />
 
-      <InstanceSummary
-        enabledModsCount={catalog.enabledMods.length}
-        instance={instance}
-        onlineServersCount={catalog.onlineServers.length}
-      />
+      <div className="mx-auto flex w-full max-w-7xl min-w-0 flex-col gap-5 px-4 pt-5 pb-8 sm:px-5">
+        <InstanceSummary
+          enabledModsCount={catalog.enabledMods.length}
+          instance={instance}
+        />
 
-      <InstanceCatalogTabs
-        enabled={catalog.enabled}
-        favorites={catalog.favorites}
-        instance={instance}
-        mods={catalog.mods}
-        onAddMod={catalog.addMod}
-        onAddServer={catalog.addServer}
-        onApplyUpdate={catalog.applyUpdate}
-        onRefreshPings={catalog.refreshPings}
-        onToggleFavorite={catalog.toggleFavorite}
-        onToggleMod={catalog.toggleMod}
-        servers={catalog.servers}
-        updates={catalog.updates}
-      />
+        <InstanceCatalogTabs
+          enabled={catalog.enabled}
+          favorites={catalog.favorites}
+          instance={instance}
+          mods={catalog.mods}
+          onAddMod={catalog.addMod}
+          onAddServer={catalog.addServer}
+          onApplyUpdate={catalog.applyUpdate}
+          onRefreshPings={catalog.refreshPings}
+          onToggleFavorite={catalog.toggleFavorite}
+          onToggleMod={catalog.toggleMod}
+          servers={catalog.servers}
+          updates={catalog.updates}
+        />
+      </div>
 
       <LaunchPlanSheet
         open={launchPlan.sheetOpen}

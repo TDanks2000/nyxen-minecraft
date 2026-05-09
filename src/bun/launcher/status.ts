@@ -2,6 +2,7 @@ import { count } from "drizzle-orm";
 import type { LauncherStatus } from "../../shared/types";
 import { db } from "../db/client";
 import * as schema from "../db/schema";
+import { getCurseForgeStatus } from "./curseforge";
 import { isMicrosoftAuthConfigured } from "./microsoft-auth";
 import { ensureLauncherDirectories } from "./paths";
 import {
@@ -20,6 +21,7 @@ export const getLauncherStatus = (): LauncherStatus => {
   const directories = ensureLauncherDirectories();
   const manifest = getMinecraftVersionManifest({ limit: 1 });
   const versionCount = tableCount(schema.minecraftVersions);
+  const curseForgeStatus = getCurseForgeStatus();
 
   return {
     capabilities: [
@@ -47,6 +49,11 @@ export const getLauncherStatus = (): LauncherStatus => {
         id: "microsoft-auth",
         ready: isMicrosoftAuthConfigured(),
         title: "Microsoft account ownership verification",
+      },
+      {
+        id: "curseforge-api",
+        ready: curseForgeStatus.configured,
+        title: "CurseForge catalog API",
       },
     ],
     counts: {

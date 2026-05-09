@@ -1,15 +1,11 @@
+import { Link } from "@tanstack/react-router";
 import { formatDistanceToNow } from "date-fns";
-import {
-  ChevronDownIcon,
-  FolderOpenIcon,
-  MoreHorizontalIcon,
-  PlayIcon,
-  PlusIcon,
-  WrenchIcon,
-} from "lucide-react";
+import { FolderOpenIcon, PlayIcon, PlusIcon, WrenchIcon } from "lucide-react";
 import type { LauncherInstance } from "@/shared/types";
+import { Button } from "@/views/main/components/ui/button";
 import { Skeleton } from "@/views/main/components/ui/skeleton";
 import { HeroBackground } from "@/views/main/features/dashboard/components/hero-background";
+import { rpc } from "@/views/main/lib/rpc";
 
 type DashboardHeroProps = {
   instance: LauncherInstance | null;
@@ -27,10 +23,10 @@ export function DashboardHero({
   onPlayInstance,
 }: DashboardHeroProps) {
   return (
-    <section className="relative h-[330px] overflow-hidden border-b border-border">
+    <section className="relative min-h-[330px] overflow-hidden border-b border-border">
       <HeroBackground />
 
-      <div className="relative flex h-full flex-col justify-end px-6 pb-5">
+      <div className="relative flex min-h-[330px] flex-col justify-end px-4 pb-5 sm:px-6">
         {loading ? (
           <div className="flex flex-col gap-2">
             <Skeleton className="h-3 w-24 bg-white/10" />
@@ -47,7 +43,7 @@ export function DashboardHero({
               </span>
             </div>
             <div className="mt-1.5 flex items-center gap-2">
-              <h1 className="font-black text-4xl text-white leading-none">
+              <h1 className="max-w-3xl text-balance font-heading font-black text-4xl text-white leading-none max-sm:text-3xl">
                 {instance.name}
               </h1>
             </div>
@@ -63,46 +59,45 @@ export function DashboardHero({
               </p>
             )}
 
-            <div className="mt-5 flex items-center gap-2">
-              <div className="flex overflow-hidden rounded-md shadow-[0_0_16px_rgba(74,222,128,0.2)]">
-                <button
-                  type="button"
-                  disabled={launchDisabled}
-                  onClick={() => onPlayInstance(instance.id)}
-                  className="flex h-9 items-center gap-1.5 bg-primary pr-3 pl-3.5 font-bold text-primary-foreground text-sm transition-colors hover:bg-primary/90 disabled:opacity-60"
-                >
-                  <PlayIcon className="size-3.5 fill-current" />
-                  Play
-                </button>
-                <div className="w-px bg-primary-foreground/20" />
-                <button
-                  type="button"
-                  className="flex h-9 items-center bg-primary px-2 text-primary-foreground transition-colors hover:bg-primary/80"
-                >
-                  <ChevronDownIcon className="size-3.5" />
-                </button>
-              </div>
+            <div className="mt-5 flex flex-wrap items-center gap-2">
+              <Button
+                disabled={launchDisabled}
+                onClick={() => onPlayInstance(instance.id)}
+                size="lg"
+              >
+                <PlayIcon data-icon="inline-start" className="fill-current" />
+                Play
+              </Button>
 
-              <button
-                type="button"
-                className="flex h-9 items-center gap-1.5 rounded-md border border-white/[0.18] bg-white/[0.06] px-3 font-semibold text-white/80 text-xs transition-colors hover:bg-white/[0.12]"
+              <Button
+                render={
+                  <Link
+                    to="/instances/$instanceId"
+                    params={{ instanceId: instance.id }}
+                  />
+                }
+                nativeButton={false}
+                size="lg"
+                variant="outline"
+                className="border-white/[0.18] bg-white/[0.06] text-white/80 hover:bg-white/[0.12] hover:text-white"
               >
-                <WrenchIcon className="size-3.5" />
+                <WrenchIcon data-icon="inline-start" />
                 Manage
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
-                className="flex h-9 items-center gap-1.5 rounded-md border border-white/[0.18] bg-white/[0.06] px-3 font-semibold text-white/80 text-xs transition-colors hover:bg-white/[0.12]"
+                onClick={() => {
+                  void rpc.requestProxy.openExternal({
+                    url: `file://${instance.gameDirectory}`,
+                  });
+                }}
+                size="lg"
+                variant="outline"
+                className="border-white/[0.18] bg-white/[0.06] text-white/80 hover:bg-white/[0.12] hover:text-white"
               >
-                <FolderOpenIcon className="size-3.5" />
+                <FolderOpenIcon data-icon="inline-start" />
                 Open Folder
-              </button>
-              <button
-                type="button"
-                className="flex size-9 items-center justify-center rounded-md border border-white/[0.18] bg-white/[0.06] text-white/80 transition-colors hover:bg-white/[0.12]"
-              >
-                <MoreHorizontalIcon className="size-4" />
-              </button>
+              </Button>
             </div>
           </>
         ) : (
@@ -113,14 +108,10 @@ export function DashboardHero({
             <p className="text-sm text-white/60">
               Create your first instance to get started.
             </p>
-            <button
-              type="button"
-              onClick={onCreateInstance}
-              className="mt-2 flex h-9 w-fit items-center gap-1.5 rounded-md bg-primary px-4 font-bold text-primary-foreground text-sm transition-colors hover:bg-primary/90"
-            >
-              <PlusIcon className="size-3.5" />
+            <Button className="mt-2 w-fit" size="lg" onClick={onCreateInstance}>
+              <PlusIcon data-icon="inline-start" />
               New Instance
-            </button>
+            </Button>
           </div>
         )}
       </div>

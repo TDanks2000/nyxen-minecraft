@@ -1,5 +1,6 @@
 import {
   CpuIcon,
+  FolderDownIcon,
   FolderIcon,
   GaugeIcon,
   HardDriveIcon,
@@ -169,7 +170,7 @@ export function SettingsPage() {
             ) : (
               <SettingRow
                 label="Java management"
-                description="Use system Java, or let Nyxen download the runtime required by each Minecraft version"
+                description="Use system or per-instance Java, or let Nyxen download the Mojang runtime required by each Minecraft version"
               >
                 <Select
                   value={javaManagement}
@@ -183,7 +184,7 @@ export function SettingsPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectGroup>
-                      <SelectItem value="auto">Automatic</SelectItem>
+                      <SelectItem value="auto">System Java</SelectItem>
                       <SelectItem value="app-controlled">
                         App controlled
                       </SelectItem>
@@ -192,6 +193,15 @@ export function SettingsPage() {
                 </Select>
               </SettingRow>
             )}
+            {!settingsHook.loading &&
+              javaManagement === "app-controlled" &&
+              dirs && (
+                <PathRow
+                  icon={FolderDownIcon}
+                  label="Install"
+                  path={dirs.runtimes}
+                />
+              )}
           </SettingGroup>
 
           <SettingGroup icon={SlidersHorizontalIcon} title="Behavior">

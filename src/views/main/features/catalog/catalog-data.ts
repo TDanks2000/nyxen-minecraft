@@ -3,7 +3,7 @@ export type Modpack = {
   downloads: string;
   id: string;
   installed: boolean;
-  loader: "Fabric" | "Forge" | "NeoForge" | "Quilt";
+  loader: "Fabric" | "Forge" | "NeoForge" | "Quilt" | "Unknown";
   minecraft: string;
   name: string;
   performance: string;

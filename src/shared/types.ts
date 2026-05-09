@@ -70,6 +70,84 @@ export type LauncherStatus = {
   };
 };
 
+export type CurseForgeProjectSection = "modpacks" | "mods";
+
+export type CurseForgeSortField =
+  | "downloads"
+  | "featured"
+  | "lastUpdated"
+  | "name"
+  | "popularity"
+  | "rating"
+  | "released";
+
+export type CurseForgeStatus = {
+  baseUrl: string;
+  configured: boolean;
+  gameId: number;
+  keySource: "CURSEFORGE_API_KEY" | "NYXEN_CURSEFORGE_API_KEY" | null;
+  modClassId: number;
+  modpackClassId: number;
+};
+
+export type SearchCurseForgeProjectsInput = {
+  gameVersion?: string;
+  index?: number;
+  loader?: ModLoader;
+  pageSize?: number;
+  query?: string;
+  section?: CurseForgeProjectSection;
+  sortField?: CurseForgeSortField;
+  sortOrder?: "asc" | "desc";
+} | null;
+
+export type CurseForgeProjectFileSummary = {
+  displayName: string;
+  downloadUrl: string | null;
+  fileDate: string | null;
+  fileName: string;
+  gameVersions: Array<string>;
+  id: number;
+  modLoaders: Array<ModLoader>;
+  releaseType: "alpha" | "beta" | "release" | "unknown";
+};
+
+export type CurseForgeProjectSummary = {
+  allowDistribution: boolean | null;
+  authors: Array<string>;
+  categories: Array<string>;
+  classId: number | null;
+  dateModified: string | null;
+  downloadCount: number;
+  gameVersions: Array<string>;
+  id: number;
+  isAvailable: boolean;
+  isFeatured: boolean;
+  latestFile: CurseForgeProjectFileSummary | null;
+  logoUrl: string | null;
+  modLoaders: Array<ModLoader>;
+  name: string;
+  section: CurseForgeProjectSection | "unknown";
+  slug: string;
+  summary: string;
+  websiteUrl: string | null;
+};
+
+export type CurseForgeSearchResult = {
+  data: Array<CurseForgeProjectSummary>;
+  pagination: {
+    index: number;
+    pageSize: number;
+    resultCount: number;
+    totalCount: number;
+  };
+  source: {
+    classId: number;
+    gameId: number;
+    section: CurseForgeProjectSection;
+  };
+};
+
 export type MinecraftVersionSummary = {
   complianceLevel: number | null;
   id: string;
@@ -297,6 +375,7 @@ export type LaunchPlan = {
     majorVersion: number | null;
     memoryMaxMb: number;
     memoryMinMb: number;
+    runtimeDirectory: string | null;
     runtimePlatform: string | null;
     runtimeVersion: string | null;
   };

@@ -1,12 +1,17 @@
 import { formatDistanceToNow } from "date-fns";
 import {
   DownloadIcon,
+  FolderTreeIcon,
+  HardDriveIcon,
   PlugZapIcon,
   PuzzleIcon,
   RadioTowerIcon,
   ServerIcon,
   Settings2Icon,
+  SignalIcon,
+  SlidersHorizontalIcon,
   StarIcon,
+  TerminalSquareIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { LauncherInstance } from "@/shared/types";
@@ -16,20 +21,11 @@ import {
   Card,
   CardAction,
   CardContent,
-  CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
 } from "@/views/main/components/ui/card";
 import { Switch } from "@/views/main/components/ui/switch";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/views/main/components/ui/table";
 import {
   Tabs,
   TabsContent,
@@ -57,6 +53,172 @@ type InstanceCatalogTabsProps = {
   updates: Set<string>;
 };
 
+function StatChip({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: React.ElementType;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2">
+      <div className="flex items-center gap-1.5 text-[0.62rem] font-semibold uppercase tracking-widest text-muted-foreground">
+        <Icon className="size-3 text-primary" />
+        {label}
+      </div>
+      <div className="mt-1 font-heading text-lg font-black leading-none">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function ModRow({
+  enabled,
+  hasUpdate,
+  mod,
+  onApplyUpdate,
+  onToggleMod,
+}: {
+  enabled: boolean;
+  hasUpdate: boolean;
+  mod: ModEntry;
+  onApplyUpdate: (id: string, name: string) => void;
+  onToggleMod: (id: string, name: string, checked: boolean) => void;
+}) {
+  return (
+    <div className="grid gap-3 rounded-lg border border-border/60 bg-background/55 p-3 md:grid-cols-[minmax(0,1fr)_auto]">
+      <div className="min-w-0">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <h3 className="truncate font-heading text-sm font-semibold">
+            {mod.name}
+          </h3>
+          {hasUpdate && <Badge variant="default">Update ready</Badge>}
+          <Badge variant={enabled ? "secondary" : "outline"}>
+            {enabled ? "Enabled" : "Disabled"}
+          </Badge>
+        </div>
+        <p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">
+          {mod.summary}
+        </p>
+        <div className="mt-2 flex flex-wrap gap-1">
+          <Badge variant="outline">{mod.category}</Badge>
+          <Badge variant="outline">{mod.scope}</Badge>
+          <Badge variant="ghost">{mod.version}</Badge>
+        </div>
+      </div>
+      <div className="flex items-center justify-end gap-2 md:min-w-36">
+        {hasUpdate && (
+          <Button size="sm" variant="outline" onClick={() => onApplyUpdate(mod.id, mod.name)}>
+            <DownloadIcon data-icon="inline-start" />
+            Update
+          </Button>
+        )}
+        <Switch
+          aria-label={`${enabled ? "Disable" : "Enable"} ${mod.name}`}
+          checked={enabled}
+          onCheckedChange={(checked) => onToggleMod(mod.id, mod.name, checked)}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ServerRow({
+  favorite,
+  instanceName,
+  onToggleFavorite,
+  server,
+}: {
+  favorite: boolean;
+  instanceName: string;
+  onToggleFavorite: (id: string) => void;
+  server: ServerEntry;
+}) {
+  const online = server.status === "Online";
+
+  return (
+    <div className="grid gap-3 rounded-lg border border-border/60 bg-background/55 p-3 md:grid-cols-[minmax(0,1fr)_auto]">
+      <div className="min-w-0">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <h3 className="truncate font-heading text-sm font-semibold">
+            {server.name}
+          </h3>
+          <Badge
+            variant={
+              server.status === "Online"
+                ? "secondary"
+                : server.status === "Maintenance"
+                  ? "outline"
+                  : "destructive"
+            }
+          >
+            {server.status}
+          </Badge>
+          {favorite && <Badge variant="default">Favorite</Badge>}
+        </div>
+        <div className="mt-1 truncate font-mono text-xs text-muted-foreground">
+          {server.address}
+        </div>
+        <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
+          <span>
+            <span className="font-semibold text-foreground">{server.players}</span> players
+          </span>
+          <span>
+            <span className="font-semibold text-foreground">
+              {server.latencyMs === null ? "—" : `${server.latencyMs} ms`}
+            </span>{" "}
+            latency
+          </span>
+          <span>
+            <span className="font-semibold text-foreground">{server.version}</span>
+          </span>
+        </div>
+      </div>
+      <div className="flex items-center justify-end gap-2 md:min-w-28">
+        <Button
+          variant={favorite ? "secondary" : "ghost"}
+          size="icon-sm"
+          aria-label={favorite ? "Remove from favorites" : "Add to favorites"}
+          onClick={() => onToggleFavorite(server.id)}
+        >
+          <StarIcon className={cn(favorite && "fill-current")} />
+        </Button>
+        <Button
+          size="sm"
+          disabled={!online}
+          onClick={() => toast.success(`${server.name} selected for ${instanceName}.`)}
+        >
+          <PlugZapIcon data-icon="inline-start" />
+          Use
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function OverviewTile({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: React.ElementType;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <Icon className="size-3.5 shrink-0 text-primary" />
+        {label}
+      </div>
+      <div className="mt-1.5 truncate font-mono text-xs">{value}</div>
+    </div>
+  );
+}
+
 export function InstanceCatalogTabs({
   enabled,
   favorites,
@@ -71,9 +233,14 @@ export function InstanceCatalogTabs({
   servers,
   updates,
 }: InstanceCatalogTabsProps) {
+  const enabledCount = mods.filter((mod) => enabled.has(mod.id)).length;
+  const updateCount = mods.filter((mod) => updates.has(mod.id)).length;
+  const onlineCount = servers.filter((s) => s.status === "Online").length;
+  const favoriteCount = servers.filter((s) => favorites.has(s.id)).length;
+
   return (
-    <Tabs defaultValue="mods">
-      <TabsList>
+    <Tabs defaultValue="mods" className="min-w-0">
+      <TabsList className="mb-1">
         <TabsTrigger value="mods">
           <PuzzleIcon />
           Mods
@@ -82,19 +249,16 @@ export function InstanceCatalogTabs({
           <ServerIcon />
           Servers
         </TabsTrigger>
-        <TabsTrigger value="overview">
+        <TabsTrigger value="settings">
           <Settings2Icon />
-          Overview
+          Settings
         </TabsTrigger>
       </TabsList>
 
       <TabsContent value="mods">
-        <Card>
+        <Card className="min-w-0">
           <CardHeader>
-            <CardTitle>Instance Mods</CardTitle>
-            <CardDescription>
-              Enable, disable, and update mods attached to {instance.name}.
-            </CardDescription>
+            <CardTitle>Mods</CardTitle>
             <CardAction>
               <Button size="sm" onClick={onAddMod}>
                 <DownloadIcon data-icon="inline-start" />
@@ -102,73 +266,38 @@ export function InstanceCatalogTabs({
               </Button>
             </CardAction>
           </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Mod</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Scope</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Enabled</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {mods.map((mod) => {
-                  const isEnabled = enabled.has(mod.id);
-                  const hasUpdate = updates.has(mod.id);
-
-                  return (
-                    <TableRow key={mod.id}>
-                      <TableCell>
-                        <div className="flex min-w-0 flex-col">
-                          <span className="font-semibold">{mod.name}</span>
-                          <span className="max-w-xl truncate text-muted-foreground text-xs">
-                            {mod.summary}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>{mod.category}</TableCell>
-                      <TableCell>{mod.scope}</TableCell>
-                      <TableCell>
-                        {hasUpdate ? (
-                          <Button
-                            size="xs"
-                            variant="outline"
-                            onClick={() => onApplyUpdate(mod.id, mod.name)}
-                          >
-                            <DownloadIcon data-icon="inline-start" />
-                            Update
-                          </Button>
-                        ) : (
-                          <Badge variant="secondary">{mod.version}</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Switch
-                          aria-label={`${isEnabled ? "Disable" : "Enable"} ${mod.name}`}
-                          checked={isEnabled}
-                          onCheckedChange={(checked) =>
-                            onToggleMod(mod.id, mod.name, checked)
-                          }
-                        />
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+          <CardContent className="flex flex-col gap-3">
+            <div className="grid grid-cols-3 gap-2 max-md:grid-cols-1">
+              <StatChip icon={PuzzleIcon} label="Attached" value={String(mods.length)} />
+              <StatChip icon={SlidersHorizontalIcon} label="Enabled" value={String(enabledCount)} />
+              <StatChip icon={DownloadIcon} label="Updates" value={String(updateCount)} />
+            </div>
+            {mods.length > 0 ? (
+              <div className="flex flex-col gap-2">
+                {mods.map((mod) => (
+                  <ModRow
+                    key={mod.id}
+                    enabled={enabled.has(mod.id)}
+                    hasUpdate={updates.has(mod.id)}
+                    mod={mod}
+                    onApplyUpdate={onApplyUpdate}
+                    onToggleMod={onToggleMod}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="py-4 text-center text-sm text-muted-foreground">
+                No mods attached to this instance.
+              </p>
+            )}
           </CardContent>
         </Card>
       </TabsContent>
 
       <TabsContent value="servers">
-        <Card>
+        <Card className="min-w-0">
           <CardHeader>
-            <CardTitle>Instance Servers</CardTitle>
-            <CardDescription>
-              Trusted multiplayer targets for this instance.
-            </CardDescription>
+            <CardTitle>Servers</CardTitle>
             <CardAction className="flex gap-2">
               <Button variant="outline" size="sm" onClick={onRefreshPings}>
                 <RadioTowerIcon data-icon="inline-start" />
@@ -180,129 +309,70 @@ export function InstanceCatalogTabs({
               </Button>
             </CardAction>
           </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Players</TableHead>
-                  <TableHead>Version</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {servers.map((server) => {
-                  const isFavorite = favorites.has(server.id);
-
-                  return (
-                    <TableRow key={server.id}>
-                      <TableCell>
-                        <div className="flex min-w-0 flex-col">
-                          <span className="font-semibold">{server.name}</span>
-                          <span className="text-muted-foreground text-xs">
-                            {server.address}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={
-                            server.status === "Online"
-                              ? "default"
-                              : server.status === "Maintenance"
-                                ? "outline"
-                                : "destructive"
-                          }
-                        >
-                          {server.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>{server.players}</TableCell>
-                      <TableCell>{server.version}</TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          <Button
-                            variant={isFavorite ? "secondary" : "ghost"}
-                            size="icon-sm"
-                            aria-label={
-                              isFavorite
-                                ? "Remove from favorites"
-                                : "Add to favorites"
-                            }
-                            onClick={() => onToggleFavorite(server.id)}
-                          >
-                            <StarIcon
-                              className={cn(isFavorite && "fill-current")}
-                            />
-                          </Button>
-                          <Button
-                            size="sm"
-                            disabled={server.status !== "Online"}
-                            onClick={() =>
-                              toast.success(
-                                `${server.name} selected for ${instance.name}.`,
-                              )
-                            }
-                          >
-                            <PlugZapIcon data-icon="inline-start" />
-                            Use
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+          <CardContent className="flex flex-col gap-3">
+            <div className="grid grid-cols-3 gap-2 max-md:grid-cols-1">
+              <StatChip icon={SignalIcon} label="Online" value={String(onlineCount)} />
+              <StatChip icon={StarIcon} label="Favorites" value={String(favoriteCount)} />
+              <StatChip icon={ServerIcon} label="Total" value={String(servers.length)} />
+            </div>
+            {servers.length > 0 ? (
+              <div className="flex flex-col gap-2">
+                {servers.map((server) => (
+                  <ServerRow
+                    key={server.id}
+                    favorite={favorites.has(server.id)}
+                    instanceName={instance.name}
+                    onToggleFavorite={onToggleFavorite}
+                    server={server}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="py-4 text-center text-sm text-muted-foreground">
+                No servers saved for this instance.
+              </p>
+            )}
           </CardContent>
         </Card>
       </TabsContent>
 
-      <TabsContent value="overview">
-        <Card>
+      <TabsContent value="settings">
+        <Card className="min-w-0">
           <CardHeader>
-            <CardTitle>Storage and Arguments</CardTitle>
-            <CardDescription>
-              Instance-level launch metadata and local paths.
-            </CardDescription>
+            <CardTitle>Settings</CardTitle>
           </CardHeader>
           <CardContent className="grid grid-cols-2 gap-3 max-lg:grid-cols-1">
-            <div className="rounded-md border border-border/60 bg-muted/20 p-3">
-              <div className="font-semibold text-muted-foreground text-xs">
-                Game Directory
-              </div>
-              <div className="mt-1 truncate font-mono text-xs">
-                {instance.gameDirectory}
-              </div>
-            </div>
-            <div className="rounded-md border border-border/60 bg-muted/20 p-3">
-              <div className="font-semibold text-muted-foreground text-xs">
-                Icon Source
-              </div>
-              <div className="mt-1 truncate font-mono text-xs">
-                {instance.iconUrl ?? "Generated from loader"}
-              </div>
-            </div>
-            <div className="rounded-md border border-border/60 bg-muted/20 p-3">
-              <div className="font-semibold text-muted-foreground text-xs">
-                JVM Arguments
-              </div>
-              <div className="mt-1 font-semibold text-sm">
-                {instance.javaArgs.length} custom
-              </div>
-            </div>
-            <div className="rounded-md border border-border/60 bg-muted/20 p-3">
-              <div className="font-semibold text-muted-foreground text-xs">
-                Game Arguments
-              </div>
-              <div className="mt-1 font-semibold text-sm">
-                {instance.gameArgs.length} custom
-              </div>
-            </div>
+            <OverviewTile
+              icon={HardDriveIcon}
+              label="Game directory"
+              value={instance.gameDirectory}
+            />
+            <OverviewTile
+              icon={FolderTreeIcon}
+              label="Instance root"
+              value={instance.instanceDirectory}
+            />
+            <OverviewTile
+              icon={TerminalSquareIcon}
+              label="JVM arguments"
+              value={
+                instance.javaArgs.length > 0
+                  ? instance.javaArgs.join(" ")
+                  : "None"
+              }
+            />
+            <OverviewTile
+              icon={Settings2Icon}
+              label="Game arguments"
+              value={
+                instance.gameArgs.length > 0
+                  ? instance.gameArgs.join(" ")
+                  : "None"
+              }
+            />
           </CardContent>
-          <CardFooter className="justify-between gap-3">
-            <span className="text-muted-foreground text-xs">
+          <CardFooter className="flex-wrap justify-between gap-3">
+            <span className="text-xs text-muted-foreground">
               Created{" "}
               {formatDistanceToNow(new Date(instance.createdAt), {
                 addSuffix: true,

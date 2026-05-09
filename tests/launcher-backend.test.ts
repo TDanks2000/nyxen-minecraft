@@ -1,8 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -624,6 +626,7 @@ const createTestLaunchPlan = (
       majorVersion: 17,
       memoryMaxMb: 4096,
       memoryMinMb: 512,
+      runtimeDirectory: null,
       runtimePlatform: null,
       runtimeVersion: null,
     },
@@ -1067,6 +1070,154 @@ describe("launcher backend", () => {
     }
   });
 
+  test("searches CurseForge modpacks through the backend API client", async () => {
+    const { searchCurseForgeProjects } = await import(
+      "../src/bun/launcher/curseforge"
+    );
+    const request = {
+      apiKey: null as string | null,
+      url: null as URL | null,
+    };
+    const fetcher = async (
+      input: string | URL | Request,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      const url = input instanceof Request ? input.url : input.toString();
+      request.url = new URL(url);
+      request.apiKey = new Headers(init?.headers).get("x-api-key");
+
+      return jsonResponse({
+        data: [
+          {
+            allowModDistribution: true,
+            authors: [{ name: "Fabulously Team" }],
+            categories: [{ name: "Performance" }],
+            classId: 4471,
+            dateModified: "2024-02-01T00:00:00Z",
+            downloadCount: 1_234_567,
+            id: 123,
+            isAvailable: true,
+            isFeatured: true,
+            latestFiles: [
+              {
+                displayName: "Fabulously Optimized 1.20.4",
+                downloadUrl:
+                  "https://edge.forgecdn.net/files/1234/567/fabulously.zip",
+                fileDate: "2024-02-01T00:00:00Z",
+                fileName: "fabulously.zip",
+                gameVersions: ["1.20.4", "Fabric"],
+                id: 456,
+                releaseType: 1,
+              },
+            ],
+            latestFilesIndexes: [
+              {
+                fileId: 456,
+                gameVersion: "1.20.4",
+                modLoader: 4,
+              },
+            ],
+            links: {
+              websiteUrl:
+                "https://www.curseforge.com/minecraft/modpacks/fabulously-optimized",
+            },
+            logo: {
+              url: "https://media.forgecdn.net/avatars/pack.png",
+            },
+            name: "Fabulously Optimized",
+            slug: "fabulously-optimized",
+            summary: "Performance-focused Minecraft client modpack.",
+          },
+        ],
+        pagination: {
+          index: 0,
+          pageSize: 25,
+          resultCount: 1,
+          totalCount: 1,
+        },
+      });
+    };
+
+    const result = await searchCurseForgeProjects(
+      {
+        gameVersion: "1.20.4",
+        loader: "fabric",
+        pageSize: 25,
+        query: "optimized",
+        section: "modpacks",
+        sortField: "downloads",
+      },
+      {
+        apiKey: "test-curseforge-key",
+        baseUrl: "https://curseforge.test",
+        fetcher,
+      },
+    );
+
+    if (!request.url) {
+      throw new Error("Expected CurseForge fetch to be called.");
+    }
+
+    expect(request.url.pathname).toBe("/v1/mods/search");
+    expect(request.url.searchParams.get("gameId")).toBe("432");
+    expect(request.url.searchParams.get("classId")).toBe("4471");
+    expect(request.url.searchParams.get("searchFilter")).toBe("optimized");
+    expect(request.url.searchParams.get("gameVersion")).toBe("1.20.4");
+    expect(request.url.searchParams.get("modLoaderType")).toBe("4");
+    expect(request.url.searchParams.get("sortField")).toBe("6");
+    expect(request.apiKey).toBe("test-curseforge-key");
+    expect(result.source).toEqual({
+      classId: 4471,
+      gameId: 432,
+      section: "modpacks",
+    });
+    expect(result.data[0]).toMatchObject({
+      authors: ["Fabulously Team"],
+      categories: ["Performance"],
+      downloadCount: 1_234_567,
+      id: 123,
+      modLoaders: ["fabric"],
+      name: "Fabulously Optimized",
+      section: "modpacks",
+      slug: "fabulously-optimized",
+    });
+    expect(result.data[0]?.latestFile).toMatchObject({
+      downloadUrl: "https://edge.forgecdn.net/files/1234/567/fabulously.zip",
+      fileName: "fabulously.zip",
+      modLoaders: ["fabric"],
+      releaseType: "release",
+    });
+  });
+
+  test("explains missing CurseForge API key configuration", async () => {
+    const { searchCurseForgeProjects } = await import(
+      "../src/bun/launcher/curseforge"
+    );
+    const previousNyxenKey = process.env.NYXEN_CURSEFORGE_API_KEY;
+    const previousGenericKey = process.env.CURSEFORGE_API_KEY;
+
+    delete process.env.NYXEN_CURSEFORGE_API_KEY;
+    delete process.env.CURSEFORGE_API_KEY;
+
+    try {
+      await expect(
+        searchCurseForgeProjects({ section: "modpacks" }),
+      ).rejects.toThrow("NYXEN_CURSEFORGE_API_KEY");
+    } finally {
+      if (previousNyxenKey === undefined) {
+        delete process.env.NYXEN_CURSEFORGE_API_KEY;
+      } else {
+        process.env.NYXEN_CURSEFORGE_API_KEY = previousNyxenKey;
+      }
+
+      if (previousGenericKey === undefined) {
+        delete process.env.CURSEFORGE_API_KEY;
+      } else {
+        process.env.CURSEFORGE_API_KEY = previousGenericKey;
+      }
+    }
+  });
+
   test("resolves Fabric launch metadata and maven artifacts", async () => {
     const { createLauncherInstance } = await import(
       "../src/bun/launcher/instances"
@@ -1310,6 +1461,177 @@ describe("launcher backend", () => {
     expect(existsSync(generatedPath)).toBe(true);
   });
 
+  test("resolves managed Java runtime link targets relative to the link directory", async () => {
+    const { resolveManagedJavaRuntime } = await import(
+      "../src/bun/launcher/java-runtimes"
+    );
+    const { getLauncherDirectories } = await import(
+      "../src/bun/launcher/paths"
+    );
+    const runtimeManifestUrl =
+      "https://runtime.test/link/java-runtime-all.json";
+    const packageManifestUrl =
+      "https://runtime.test/link/java-runtime-gamma/manifest.json";
+    const versionName = "17.0.link";
+    const fetcher = async (
+      input: string | URL | Request,
+    ): Promise<Response> => {
+      const url = input instanceof Request ? input.url : input.toString();
+
+      if (url === runtimeManifestUrl) {
+        return jsonResponse(
+          runtimeAllDocument([
+            runtimeEntryDocument({
+              manifestUrl: packageManifestUrl,
+              versionName,
+            }),
+          ]),
+        );
+      }
+
+      if (url === packageManifestUrl) {
+        return jsonResponse({
+          files: {
+            bin: {
+              type: "directory",
+            },
+            "bin/java": {
+              downloads: {
+                raw: {
+                  url: "https://runtime.test/link/bin/java",
+                },
+              },
+              executable: true,
+              type: "file",
+            },
+            "bin/libjli.so": {
+              target: "../lib/libjli.so",
+              type: "link",
+            },
+            lib: {
+              type: "directory",
+            },
+            "lib/libjli.so": {
+              downloads: {
+                raw: {
+                  url: "https://runtime.test/link/lib/libjli.so",
+                },
+              },
+              type: "file",
+            },
+          },
+        });
+      }
+
+      return fakeFetch(input);
+    };
+
+    const requiredJava = {
+      component: "java-runtime-gamma",
+      majorVersion: 17,
+    };
+    const runtimeOptions = {
+      fetcher,
+      manifestCacheTtlMs: 0,
+      manifestUrl: runtimeManifestUrl,
+    };
+    const runtime = await resolveManagedJavaRuntime(
+      requiredJava,
+      runtimeOptions,
+    );
+    const directories = getLauncherDirectories();
+    const linkPath = join(
+      directories.runtimes,
+      currentJavaRuntimePlatform(),
+      "java-runtime-gamma",
+      versionName,
+      "bin",
+      "libjli.so",
+    );
+
+    expect(runtime.versionName).toBe(versionName);
+    expect(runtime.missingArtifacts.map((artifact) => artifact.id)).toContain(
+      `java-runtime-gamma:${versionName}:lib/libjli.so`,
+    );
+
+    if (process.platform !== "win32") {
+      expect(lstatSync(linkPath).isSymbolicLink()).toBe(true);
+    }
+
+    const repeatedRuntime = await resolveManagedJavaRuntime(
+      requiredJava,
+      runtimeOptions,
+    );
+
+    expect(repeatedRuntime.versionName).toBe(versionName);
+  });
+
+  test("rejects managed Java runtime links that escape the runtime directory", async () => {
+    const { resolveManagedJavaRuntime } = await import(
+      "../src/bun/launcher/java-runtimes"
+    );
+    const runtimeManifestUrl =
+      "https://runtime.test/link-escape/java-runtime-all.json";
+    const packageManifestUrl =
+      "https://runtime.test/link-escape/java-runtime-gamma/manifest.json";
+    const versionName = "17.0.escape";
+    const fetcher = async (
+      input: string | URL | Request,
+    ): Promise<Response> => {
+      const url = input instanceof Request ? input.url : input.toString();
+
+      if (url === runtimeManifestUrl) {
+        return jsonResponse(
+          runtimeAllDocument([
+            runtimeEntryDocument({
+              manifestUrl: packageManifestUrl,
+              versionName,
+            }),
+          ]),
+        );
+      }
+
+      if (url === packageManifestUrl) {
+        return jsonResponse({
+          files: {
+            bin: {
+              type: "directory",
+            },
+            "bin/java": {
+              downloads: {
+                raw: {
+                  url: "https://runtime.test/link-escape/bin/java",
+                },
+              },
+              executable: true,
+              type: "file",
+            },
+            "bin/libjli.so": {
+              target: "../../escape/libjli.so",
+              type: "link",
+            },
+          },
+        });
+      }
+
+      return fakeFetch(input);
+    };
+
+    await expect(
+      resolveManagedJavaRuntime(
+        {
+          component: "java-runtime-gamma",
+          majorVersion: 17,
+        },
+        {
+          fetcher,
+          manifestCacheTtlMs: 0,
+          manifestUrl: runtimeManifestUrl,
+        },
+      ),
+    ).rejects.toThrow("Java runtime link target path cannot leave");
+  });
+
   test("plans managed Java runtime artifacts when app-controlled", async () => {
     const { createLauncherInstance } = await import(
       "../src/bun/launcher/instances"
@@ -1351,6 +1673,8 @@ describe("launcher backend", () => {
       expect(plan.java.majorVersion).toBe(17);
       expect(plan.java.runtimePlatform).toBe(currentJavaRuntimePlatform());
       expect(plan.java.runtimeVersion).toBe("17.0.1");
+      expect(plan.java.runtimeDirectory).toContain("java-runtime-gamma");
+      expect(plan.java.runtimeDirectory).toContain("17.0.1");
       expect(plan.java.executable).toContain(runtimeExecutablePath);
       expect(plan.java.executable).not.toBe("/usr/bin/java");
       expect(runtimeArtifacts).toHaveLength(2);
@@ -1366,6 +1690,129 @@ describe("launcher backend", () => {
         value: "auto",
       });
     }
+  });
+
+  test("keeps runtime root entries as directories", async () => {
+    const { createLauncherInstance } = await import(
+      "../src/bun/launcher/instances"
+    );
+    const { createLaunchPlan } = await import(
+      "../src/bun/launcher/launch-plan"
+    );
+    const { getLauncherDirectories } = await import(
+      "../src/bun/launcher/paths"
+    );
+    const { getMinecraftVersionDetails, refreshMinecraftVersionManifest } =
+      await import("../src/bun/launcher/versions");
+    const { updateSetting } = await import("../src/bun/settings/store");
+
+    updateSetting({
+      key: "launcher.javaManagement",
+      value: "app-controlled",
+    });
+
+    try {
+      await refreshMinecraftVersionManifest({ fetcher: fakeFetch });
+      await getMinecraftVersionDetails(
+        { versionId: "1.20.4" },
+        { fetcher: fakeFetch },
+      );
+
+      const instance = createLauncherInstance({
+        name: "Runtime Root Layout",
+        versionId: "1.20.4",
+      });
+
+      await createLaunchPlan(
+        { instanceId: instance.id },
+        { fetcher: fakeRuntimeFetch, manifestCacheTtlMs: 0 },
+      );
+
+      const directories = getLauncherDirectories();
+      const runtimeRootEntries = readdirSync(directories.runtimes, {
+        withFileTypes: true,
+      });
+
+      expect(runtimeRootEntries.length).toBeGreaterThan(0);
+      expect(
+        runtimeRootEntries
+          .filter((entry) => !entry.isDirectory())
+          .map((entry) => entry.name),
+      ).toEqual([]);
+    } finally {
+      updateSetting({
+        key: "launcher.javaManagement",
+        value: "auto",
+      });
+    }
+  });
+
+  test("migrates legacy runtime metadata files out of the runtime root", async () => {
+    const { resolveManagedJavaRuntime } = await import(
+      "../src/bun/launcher/java-runtimes"
+    );
+    const { getLauncherDirectories } = await import(
+      "../src/bun/launcher/paths"
+    );
+    const directories = getLauncherDirectories();
+    const packageManifestUrl =
+      "https://runtime.test/legacy/java-runtime-gamma/manifest.json";
+    const versionName = "17.0.legacy-root";
+    const legacyMetadataPath = join(
+      directories.runtimes,
+      "java-runtime-all.json",
+    );
+    const migratedMetadataPath = join(
+      directories.runtimes,
+      "_meta",
+      "java-runtime-all.json",
+    );
+    const fetcher = async (
+      input: string | URL | Request,
+    ): Promise<Response> => {
+      const url = input instanceof Request ? input.url : input.toString();
+
+      if (url === packageManifestUrl) {
+        return jsonResponse(runtimePackageManifestDocument());
+      }
+
+      throw new Error("Expected Java runtime metadata to come from cache.");
+    };
+
+    rmSync(legacyMetadataPath, { force: true });
+    rmSync(migratedMetadataPath, { force: true });
+    mkdirSync(directories.runtimes, { recursive: true });
+    writeFileSync(
+      legacyMetadataPath,
+      JSON.stringify(
+        runtimeAllDocument([
+          runtimeEntryDocument({
+            manifestUrl: packageManifestUrl,
+            versionName,
+          }),
+        ]),
+      ),
+    );
+
+    const runtime = await resolveManagedJavaRuntime(
+      {
+        component: "java-runtime-gamma",
+        majorVersion: 17,
+      },
+      {
+        fetcher,
+      },
+    );
+    const runtimeRootFiles = readdirSync(directories.runtimes, {
+      withFileTypes: true,
+    })
+      .filter((entry) => entry.isFile())
+      .map((entry) => entry.name);
+
+    expect(runtime.versionName).toBe(versionName);
+    expect(existsSync(legacyMetadataPath)).toBe(false);
+    expect(existsSync(migratedMetadataPath)).toBe(true);
+    expect(runtimeRootFiles).toEqual([]);
   });
 
   test("reuses cached Java runtime metadata for repeated app-controlled plans", async () => {

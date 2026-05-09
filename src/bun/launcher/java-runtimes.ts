@@ -2,7 +2,9 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   chmodSync,
   existsSync,
+  lstatSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   renameSync,
   statSync,
@@ -22,7 +24,11 @@ import {
   getLauncherDirectories,
   normalizeLauncherPathSegment,
 } from "./paths";
-import { joinArtifactPath, normalizeArtifactRelativePath } from "./validation";
+import {
+  assertPathInsideDirectory,
+  joinArtifactPath,
+  normalizeArtifactRelativePath,
+} from "./validation";
 
 export const JAVA_RUNTIME_MANIFEST_URL =
   "https://piston-meta.mojang.com/v1/products/java-runtime/2ec0cc96c44e5a76b9c8b7c39df7210883d12871/all.json";
@@ -45,6 +51,7 @@ type RequiredJavaVersion = {
 };
 
 export type ManagedJavaRuntime = RequiredJavaVersion & {
+  directory: string;
   executable: string;
   missingArtifacts: Array<LaunchPlanMissingArtifact>;
   platform: string;
@@ -170,6 +177,24 @@ const fetchJson = async (
 const readCachedJson = (path: string): unknown =>
   JSON.parse(readFileSync(path, "utf8"));
 
+const pathEntryExists = (path: string): boolean => {
+  try {
+    lstatSync(path);
+    return true;
+  } catch (error) {
+    const code =
+      error && typeof error === "object" && "code" in error
+        ? error.code
+        : undefined;
+
+    if (code === "ENOENT") {
+      return false;
+    }
+
+    throw error;
+  }
+};
+
 const cacheNameForUrl = (url: string): string => {
   if (url === JAVA_RUNTIME_MANIFEST_URL) {
     return "java-runtime-all.json";
@@ -178,6 +203,40 @@ const cacheNameForUrl = (url: string): string => {
   const hash = createHash("sha1").update(url).digest("hex").slice(0, 12);
 
   return `java-runtime-all-${hash}.json`;
+};
+
+const legacyRuntimeMetadataFilePattern =
+  /^java-runtime-all(?:-[a-f0-9]{12})?\.json$/;
+
+const migrateLegacyRuntimeMetadataCache = (runtimesDirectory: string): void => {
+  if (!existsSync(runtimesDirectory)) {
+    return;
+  }
+
+  const metadataDirectory = join(runtimesDirectory, "_meta");
+  const entries = readdirSync(runtimesDirectory, { withFileTypes: true });
+
+  for (const entry of entries) {
+    if (
+      !entry.isFile() ||
+      !legacyRuntimeMetadataFilePattern.test(entry.name)
+    ) {
+      continue;
+    }
+
+    const legacyPath = join(runtimesDirectory, entry.name);
+    const migratedPath = join(metadataDirectory, entry.name);
+
+    ensurePrivateDirectory(metadataDirectory);
+
+    if (existsSync(migratedPath)) {
+      unlinkSync(legacyPath);
+      continue;
+    }
+
+    renameSync(legacyPath, migratedPath);
+    ensurePrivateFile(migratedPath);
+  }
 };
 
 const isCacheFresh = (path: string, maxAgeMs: number): boolean => {
@@ -304,6 +363,7 @@ const getRuntimeManifest = async (
 ): Promise<RuntimeManifest> => {
   const directories = getLauncherDirectories();
   const manifestUrl = options.manifestUrl ?? JAVA_RUNTIME_MANIFEST_URL;
+  migrateLegacyRuntimeMetadataCache(directories.runtimes);
   const manifest = await readOrFetchJson(
     manifestUrl,
     join(directories.runtimes, "_meta", cacheNameForUrl(manifestUrl)),
@@ -383,18 +443,34 @@ const createRuntimeLink = (
     return;
   }
 
+  const rawTarget = target.trim().replaceAll("\\", "/");
+
+  if (posix.isAbsolute(rawTarget)) {
+    throw new Error("Java runtime link target path must be relative.");
+  }
+
   const linkPath = joinArtifactPath(
     runtimeDirectory,
     relativePath,
     "Java runtime link",
   );
+  const normalizedTarget = normalizeArtifactRelativePath(
+    posix.join(posix.dirname(relativePath), rawTarget),
+    "Java runtime link target",
+  );
   const targetPath = joinArtifactPath(
     runtimeDirectory,
-    target,
+    normalizedTarget,
     "Java runtime link target",
   );
 
-  if (existsSync(linkPath)) {
+  assertPathInsideDirectory(
+    targetPath,
+    runtimeDirectory,
+    "Java runtime link target",
+  );
+
+  if (pathEntryExists(linkPath)) {
     return;
   }
 
@@ -554,6 +630,7 @@ export const resolveManagedJavaRuntime = async (
 
   return {
     component: requiredJava.component,
+    directory: runtimeDirectory,
     executable: artifacts.executable,
     majorVersion: requiredJava.majorVersion,
     missingArtifacts: artifacts.missingArtifacts,

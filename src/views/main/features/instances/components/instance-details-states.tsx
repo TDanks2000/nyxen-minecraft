@@ -13,12 +13,15 @@ import { Skeleton } from "@/views/main/components/ui/skeleton";
 
 export function InstanceDetailsLoadingState() {
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-5 p-5">
-      <Skeleton className="h-9 w-28" />
-      <Skeleton className="h-12 w-80" />
-      <div className="grid grid-cols-[minmax(0,1fr)_22rem] gap-3 max-xl:grid-cols-1">
-        <Skeleton className="h-96 rounded-lg" />
-        <Skeleton className="h-96 rounded-lg" />
+    <div className="flex flex-col">
+      <Skeleton className="h-[300px] rounded-none" />
+      <div className="mx-auto w-full max-w-7xl flex flex-col gap-5 px-5 pt-5 pb-8">
+        <div className="grid grid-cols-[minmax(0,1fr)_22rem] gap-3 max-xl:grid-cols-1">
+          <Skeleton className="h-96 rounded-lg" />
+          <Skeleton className="h-96 rounded-lg" />
+        </div>
+        <Skeleton className="h-12 rounded-lg" />
+        <Skeleton className="h-64 rounded-lg" />
       </div>
     </div>
   );

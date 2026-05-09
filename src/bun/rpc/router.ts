@@ -1,4 +1,5 @@
 import { BrowserView } from "electrobun/bun";
+import { MAIN_VIEW_RPC_MAX_REQUEST_TIME_MS } from "../../shared/constants";
 import type { MainViewRPC } from "../../shared/rpc/types";
 import {
   closeWindow,
@@ -7,6 +8,7 @@ import {
   createLauncherProfile,
   createLaunchPlan,
   downloadArtifacts,
+  getCurseForgeStatus,
   getDatabaseStatus,
   getEnvironment,
   getLauncherStatus,
@@ -25,6 +27,7 @@ import {
   openExternal,
   pollMicrosoftProfileSignIn,
   refreshMinecraftVersionManifest,
+  searchCurseForgeProjects,
   startMicrosoftProfileLogin,
   toggleMaximizeWindow,
   updateSetting,
@@ -42,6 +45,7 @@ export const mainViewRPC = BrowserView.defineRPC<MainViewRPC>({
       createLauncherInstance,
       createLauncherProfile,
       downloadArtifacts,
+      getCurseForgeStatus,
       getDatabaseStatus,
       getEnvironment,
       getLauncherStatus,
@@ -59,10 +63,11 @@ export const mainViewRPC = BrowserView.defineRPC<MainViewRPC>({
       openExternal,
       pollMicrosoftProfileSignIn,
       refreshMinecraftVersionManifest,
+      searchCurseForgeProjects,
       startMicrosoftProfileLogin,
       toggleMaximizeWindow,
       updateSetting,
     },
   },
-  maxRequestTime: 300_000,
+  maxRequestTime: MAIN_VIEW_RPC_MAX_REQUEST_TIME_MS,
 });

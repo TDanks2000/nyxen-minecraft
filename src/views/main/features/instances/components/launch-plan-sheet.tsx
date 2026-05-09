@@ -2,6 +2,7 @@ import {
   AlertCircleIcon,
   CheckCircle2Icon,
   DownloadIcon,
+  FolderDownIcon,
   HardDriveIcon,
   Loader2Icon,
   MemoryStickIcon,
@@ -47,6 +48,9 @@ export function LaunchPlanSheet({ open, onOpenChange, plan }: Props) {
     plan?.missingArtifacts.length === 0 ||
     launchState === "downloaded" ||
     launchState === "launched";
+  const javaRuntimeArtifactCount =
+    plan?.missingArtifacts.filter((artifact) => artifact.kind === "javaRuntime")
+      .length ?? 0;
 
   const handleOpenChange = (next: boolean) => {
     onOpenChange(next);
@@ -105,6 +109,10 @@ export function LaunchPlanSheet({ open, onOpenChange, plan }: Props) {
       <SheetContent
         side="right"
         className="flex w-[440px] flex-col overflow-hidden p-0"
+        style={{
+          height: "calc(100vh - 3rem)",
+          top: "3rem",
+        }}
       >
         {/* Header */}
         <SheetHeader className="border-b px-5 py-4">
@@ -185,8 +193,40 @@ export function LaunchPlanSheet({ open, onOpenChange, plan }: Props) {
                   <p className="text-xs text-muted-foreground mt-0.5">
                     {plan.java.management === "app-controlled"
                       ? `Managed Java ${plan.java.majorVersion ?? "runtime"}${plan.java.runtimeVersion ? ` (${plan.java.runtimeVersion})` : ""}`
-                      : `Automatic${plan.java.majorVersion ? ` · Java ${plan.java.majorVersion}` : ""}`}
+                      : `System Java${plan.java.majorVersion ? ` · Java ${plan.java.majorVersion}` : ""}`}
                   </p>
+                  {plan.java.management === "app-controlled" ? (
+                    <div className="mt-2 flex flex-col gap-1.5">
+                      <p className="text-xs text-muted-foreground">
+                        Nyxen downloads the Mojang runtime required by this
+                        Minecraft version, then launches with the managed Java
+                        executable below.
+                      </p>
+                      {plan.java.runtimeDirectory && (
+                        <div className="flex items-start gap-2 rounded-md bg-muted/60 px-2 py-1.5">
+                          <FolderDownIcon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                          <div className="min-w-0">
+                            <p className="text-[0.65rem] font-bold uppercase tracking-widest text-muted-foreground">
+                              Installed under
+                            </p>
+                            <p className="break-all font-mono text-muted-foreground text-xs">
+                              {plan.java.runtimeDirectory}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        {javaRuntimeArtifactCount > 0
+                          ? `${javaRuntimeArtifactCount} Java runtime file${javaRuntimeArtifactCount === 1 ? "" : "s"} pending download.`
+                          : "Managed Java files are already present for this plan."}
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Nyxen will use the instance Java executable when set,
+                      otherwise it will ask the operating system for java.
+                    </p>
+                  )}
                   <p className="text-xs text-muted-foreground mt-0.5 font-mono break-all">
                     {plan.java.executable}
                   </p>

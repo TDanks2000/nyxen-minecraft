@@ -77,6 +77,10 @@ export const launchInstance = async (
 };
 
 export {
+  getCurseForgeStatus,
+  searchCurseForgeProjects,
+} from "../../launcher/curseforge";
+export {
   createLauncherInstance,
   listLauncherInstances,
 } from "../../launcher/instances";

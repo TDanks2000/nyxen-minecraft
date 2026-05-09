@@ -110,6 +110,7 @@ Nyxen API, analytics endpoint, or account sync service.
 - Minecraft Java version manifest refresh and caching
 - Version detail caching for launch metadata
 - Launch preflight plans with missing artifact reporting
+- Optional CurseForge catalog search using a local API key
 - Local launcher directory and settings status
 - Typed Electrobun RPC between Bun and the React webview
 
@@ -200,6 +201,17 @@ bun run dev
 For a persistent local setup, put the export in your shell profile or the script
 you use to launch the app. Keep using only the client id for this desktop app;
 do not create or ship a client secret.
+
+## CurseForge Catalog Setup
+
+Nyxen can refresh the Modpacks catalog from CurseForge when a local API key is
+configured. The key stays on the user's machine and is sent only from the Bun
+backend to the CurseForge API.
+
+```bash
+export NYXEN_CURSEFORGE_API_KEY="paste-curseforge-api-key-here"
+bun run dev
+```
 
 ## Minecraft Services App Registration
 

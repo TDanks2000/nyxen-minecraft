@@ -2,13 +2,20 @@ import {
   BoxesIcon,
   DownloadIcon,
   FilterIcon,
+  Globe2Icon,
   HardDriveDownloadIcon,
+  Loader2Icon,
   PackagePlusIcon,
   RefreshCcwIcon,
   StarIcon,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import type {
+  CurseForgeProjectSummary,
+  CurseForgeStatus,
+  ModLoader,
+} from "@/shared/types";
 import { Badge } from "@/views/main/components/ui/badge";
 import { Button } from "@/views/main/components/ui/button";
 import {
@@ -36,6 +43,7 @@ import {
   PageEmpty,
   SearchBox,
 } from "@/views/main/features/catalog/page-primitives";
+import { rpc } from "@/views/main/lib/rpc";
 import { cn } from "@/views/main/lib/utils";
 
 type ModpackCategory = "adventure" | "all" | "featured" | "performance";
@@ -51,6 +59,15 @@ const MODPACK_ART_BLOCKS = Array.from(
   { length: 18 },
   (_, index) => `modpack-art-block-${index}`,
 );
+
+const LOADER_LABELS: Partial<Record<ModLoader, Modpack["loader"]>> = {
+  fabric: "Fabric",
+  forge: "Forge",
+  neoforge: "NeoForge",
+  quilt: "Quilt",
+};
+
+const MINECRAFT_VERSION_PATTERN = /^\d+(?:\.\d+)+(?:[-\w.]*)?$/;
 
 function ModpackArt({ index }: { index: number }) {
   return (
@@ -82,12 +99,34 @@ export function ModpacksPage() {
     () => MODPACKS,
   );
   const [category, setCategory] = useState<ModpackCategory>("all");
+  const [curseForgeStatus, setCurseForgeStatus] =
+    useState<CurseForgeStatus | null>(null);
   const [favorites, setFavorites] = useState(() => new Set(["valhelsia-six"]));
   const [installed, setInstalled] = useState(
     () =>
       new Set(MODPACKS.filter((pack) => pack.installed).map((pack) => pack.id)),
   );
   const [query, setQuery] = useState("");
+  const [refreshingCurseForge, setRefreshingCurseForge] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadStatus() {
+      try {
+        const status = await rpc.requestProxy.getCurseForgeStatus(null);
+        if (mounted) setCurseForgeStatus(status);
+      } catch {
+        if (mounted) setCurseForgeStatus(null);
+      }
+    }
+
+    loadStatus();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const filteredPacks = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -157,6 +196,44 @@ export function ModpacksPage() {
     toast.success("Imported Local Pack added to your library.");
   };
 
+  const refreshCurseForgeCatalog = async () => {
+    setRefreshingCurseForge(true);
+
+    try {
+      const status =
+        curseForgeStatus ?? (await rpc.requestProxy.getCurseForgeStatus(null));
+      setCurseForgeStatus(status);
+
+      if (!status.configured) {
+        toast.error(
+          "Set NYXEN_CURSEFORGE_API_KEY to refresh the CurseForge catalog.",
+        );
+        return;
+      }
+
+      const result = await rpc.requestProxy.searchCurseForgeProjects({
+        pageSize: 18,
+        section: "modpacks",
+        sortField: "downloads",
+        sortOrder: "desc",
+      });
+      const curseForgePacks = result.data.map(mapCurseForgeModpack);
+      const curseForgeIds = new Set(curseForgePacks.map((pack) => pack.id));
+
+      setCatalogPacks((current) => [
+        ...curseForgePacks,
+        ...current.filter((pack) => !curseForgeIds.has(pack.id)),
+      ]);
+      toast.success(`Loaded ${curseForgePacks.length} CurseForge modpacks.`);
+    } catch (e) {
+      toast.error(
+        e instanceof Error ? e.message : "Failed to refresh CurseForge catalog",
+      );
+    } finally {
+      setRefreshingCurseForge(false);
+    }
+  };
+
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-5 p-5">
       <LibraryPageHeader
@@ -167,10 +244,18 @@ export function ModpacksPage() {
           <>
             <Button
               variant="outline"
-              onClick={() => toast.success("Modpack catalog refreshed.")}
+              onClick={refreshCurseForgeCatalog}
+              disabled={refreshingCurseForge}
             >
-              <RefreshCcwIcon data-icon="inline-start" />
-              Refresh
+              {refreshingCurseForge ? (
+                <Loader2Icon
+                  data-icon="inline-start"
+                  className="animate-spin"
+                />
+              ) : (
+                <RefreshCcwIcon data-icon="inline-start" />
+              )}
+              {refreshingCurseForge ? "Refreshing" : "Refresh"}
             </Button>
             <Button onClick={importPack}>
               <PackagePlusIcon data-icon="inline-start" />
@@ -194,10 +279,14 @@ export function ModpacksPage() {
           caption="Packs already staged in your launcher library."
         />
         <MetricCard
-          icon={FilterIcon}
-          label="Loaders"
-          value="4 supported"
-          caption="Fabric, Forge, NeoForge, and Quilt profiles."
+          icon={curseForgeStatus?.configured ? Globe2Icon : FilterIcon}
+          label="CurseForge"
+          value={curseForgeStatus?.configured ? "Connected" : "Not configured"}
+          caption={
+            curseForgeStatus?.configured
+              ? "Refresh pulls live Minecraft modpacks."
+              : "Set NYXEN_CURSEFORGE_API_KEY for live catalog search."
+          }
         />
       </section>
 
@@ -297,4 +386,79 @@ export function ModpacksPage() {
       </Tabs>
     </div>
   );
+}
+
+function formatDownloads(downloadCount: number) {
+  return new Intl.NumberFormat(undefined, {
+    maximumFractionDigits: 1,
+    notation: "compact",
+  }).format(downloadCount);
+}
+
+function formatUpdated(value: string | null) {
+  if (!value) return "Updated recently";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "Updated recently";
+  }
+
+  return `Updated ${new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+  }).format(date)}`;
+}
+
+function inferModpackCategory(
+  project: CurseForgeProjectSummary,
+): Exclude<ModpackCategory, "all"> {
+  const text = [project.name, project.summary, ...project.categories]
+    .join(" ")
+    .toLowerCase();
+
+  if (
+    text.includes("performance") ||
+    text.includes("optimized") ||
+    text.includes("fps")
+  ) {
+    return "performance";
+  }
+
+  if (
+    text.includes("adventure") ||
+    text.includes("quest") ||
+    text.includes("rpg")
+  ) {
+    return "adventure";
+  }
+
+  return "featured";
+}
+
+function mapCurseForgeModpack(project: CurseForgeProjectSummary): Modpack {
+  const loader = project.modLoaders[0]
+    ? (LOADER_LABELS[project.modLoaders[0]] ?? "Unknown")
+    : "Unknown";
+  const minecraft =
+    project.gameVersions.find((version) =>
+      MINECRAFT_VERSION_PATTERN.test(version),
+    ) ?? "Unknown";
+  const tags = [
+    ...project.categories.slice(0, 3),
+    ...(project.categories.length === 0 ? ["CurseForge"] : []),
+  ];
+
+  return {
+    category: inferModpackCategory(project),
+    downloads: formatDownloads(project.downloadCount),
+    id: `curseforge-${project.id}`,
+    installed: false,
+    loader,
+    minecraft,
+    name: project.name,
+    performance: project.allowDistribution === false ? "Restricted" : "Varies",
+    summary: project.summary || "CurseForge modpack catalog entry.",
+    tags,
+    updated: formatUpdated(project.dateModified),
+  };
 }

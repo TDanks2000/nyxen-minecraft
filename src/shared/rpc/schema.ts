@@ -5,6 +5,8 @@ import type {
   CreateLauncherInstanceInput,
   CreateLauncherProfileInput,
   CreateLaunchPlanInput,
+  CurseForgeSearchResult,
+  CurseForgeStatus,
   DatabaseStatus,
   DownloadArtifactsInput,
   DownloadArtifactsResult,
@@ -24,6 +26,7 @@ import type {
   MinecraftVersionDetails,
   MinecraftVersionManifest,
   MinecraftVersionSummary,
+  SearchCurseForgeProjectsInput,
   SettingsStatus,
   SettingValue,
 } from "../types";
@@ -55,6 +58,14 @@ export type MainViewRPC = {
       getLauncherStatus: {
         params: null;
         response: LauncherStatus;
+      };
+      getCurseForgeStatus: {
+        params: null;
+        response: CurseForgeStatus;
+      };
+      searchCurseForgeProjects: {
+        params: SearchCurseForgeProjectsInput;
+        response: CurseForgeSearchResult;
       };
       refreshMinecraftVersionManifest: {
         params: null;

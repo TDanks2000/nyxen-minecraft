@@ -9,8 +9,19 @@ import {
   PlusIcon,
   SearchIcon,
 } from "lucide-react";
+import { useState } from "react";
 import type { LauncherInstance } from "@/shared/types";
+import { Button } from "@/views/main/components/ui/button";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from "@/views/main/components/ui/input-group";
 import { Skeleton } from "@/views/main/components/ui/skeleton";
+import {
+  InstanceArtwork,
+  InstanceIcon,
+} from "@/views/main/features/instances/components/instance-artwork";
 import { cn } from "@/views/main/lib/utils";
 
 type DashboardInstanceGridProps = {
@@ -34,9 +45,20 @@ export function DashboardInstanceGrid({
   onCreateInstance,
   onPlayInstance,
 }: DashboardInstanceGridProps) {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+
+  const filtered = searchQuery.trim()
+    ? instances.filter(
+        (i) =>
+          i.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          i.versionId.toLowerCase().includes(searchQuery.toLowerCase()),
+      )
+    : instances;
+
   return (
-    <section className="px-5 pt-5 pb-4">
-      <div className="mb-4 flex items-center gap-2.5">
+    <section className="px-4 pt-5 pb-4 sm:px-5">
+      <div className="mb-4 flex flex-wrap items-center gap-2.5">
         <h2 className="mr-auto font-bold text-foreground text-sm">
           My Instances{" "}
           <span className="font-normal text-muted-foreground">
@@ -44,56 +66,97 @@ export function DashboardInstanceGrid({
           </span>
         </h2>
 
-        <div className="flex h-8 w-44 shrink-0 items-center gap-2 rounded-md border border-border bg-background/60 px-3 text-muted-foreground text-xs">
-          <SearchIcon className="size-3.5 shrink-0" />
-          <span>Search instances...</span>
-        </div>
+        <InputGroup className="w-full sm:w-56">
+          <InputGroupAddon>
+            <SearchIcon />
+          </InputGroupAddon>
+          <InputGroupInput
+            placeholder="Search instances..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </InputGroup>
 
-        <div className="flex shrink-0 overflow-hidden rounded-md border border-border">
+        <div className="flex shrink-0 overflow-hidden rounded-md border border-border bg-background/60">
           <button
             type="button"
-            className="flex size-8 items-center justify-center bg-accent text-accent-foreground transition-colors"
+            onClick={() => setViewMode("grid")}
+            className={cn(
+              "flex size-8 items-center justify-center transition-colors",
+              viewMode === "grid"
+                ? "bg-accent text-accent-foreground"
+                : "text-muted-foreground hover:text-foreground",
+            )}
           >
             <LayoutGridIcon className="size-3.5" />
           </button>
           <button
             type="button"
-            className="flex size-8 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
+            onClick={() => setViewMode("list")}
+            className={cn(
+              "flex size-8 items-center justify-center transition-colors",
+              viewMode === "list"
+                ? "bg-accent text-accent-foreground"
+                : "text-muted-foreground hover:text-foreground",
+            )}
           >
             <ListIcon className="size-3.5" />
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-5 gap-3">
-        {loading ? (
-          SKELETON_IDS.map((key) => (
-            <div
-              key={key}
-              className="overflow-hidden rounded-md border border-border"
-            >
-              <Skeleton className="h-28" />
-              <div className="flex flex-col gap-1.5 bg-card px-2.5 pt-2.5 pb-2.5">
-                <Skeleton className="h-3 w-20" />
-                <Skeleton className="h-2.5 w-16" />
-                <Skeleton className="mt-1 h-5 w-full" />
+      {loading ? (
+        <div
+          className={cn(
+            viewMode === "grid"
+              ? "grid grid-cols-[repeat(auto-fill,minmax(10.5rem,1fr))] gap-3"
+              : "flex flex-col gap-2",
+          )}
+        >
+          {SKELETON_IDS.map((key) =>
+            viewMode === "grid" ? (
+              <div
+                key={key}
+                className="overflow-hidden rounded-md border border-border bg-card"
+              >
+                <Skeleton className="h-28" />
+                <div className="flex flex-col gap-1.5 bg-card px-2.5 pt-2.5 pb-2.5">
+                  <Skeleton className="h-3 w-20" />
+                  <Skeleton className="h-2.5 w-16" />
+                  <Skeleton className="mt-1 h-5 w-full" />
+                </div>
               </div>
-            </div>
-          ))
-        ) : instances.length === 0 ? (
-          <div className="col-span-5 flex flex-col items-center justify-center gap-3 py-12 text-center">
-            <p className="text-muted-foreground text-sm">No instances yet.</p>
-            <button
-              type="button"
-              onClick={onCreateInstance}
-              className="flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 font-semibold text-primary-foreground text-xs transition-colors hover:bg-primary/90"
-            >
-              <PlusIcon className="size-3.5" />
-              New Instance
-            </button>
-          </div>
-        ) : (
-          instances.map((instance) => (
+            ) : (
+              <div
+                key={key}
+                className="flex items-center gap-3 rounded-md border border-border bg-card px-3 py-2.5"
+              >
+                <Skeleton className="size-8 shrink-0 rounded-sm" />
+                <Skeleton className="h-3 w-32" />
+                <Skeleton className="ml-auto h-3 w-16" />
+              </div>
+            ),
+          )}
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
+          {instances.length === 0 ? (
+            <>
+              <p className="text-muted-foreground text-sm">No instances yet.</p>
+              <Button size="sm" onClick={onCreateInstance}>
+                <PlusIcon data-icon="inline-start" />
+                New Instance
+              </Button>
+            </>
+          ) : (
+            <p className="text-muted-foreground text-sm">
+              No instances match &ldquo;{searchQuery}&rdquo;.
+            </p>
+          )}
+        </div>
+      ) : viewMode === "grid" ? (
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(10.5rem,1fr))] gap-3">
+          {filtered.map((instance) => (
             <div
               key={instance.id}
               className={cn(
@@ -103,12 +166,20 @@ export function DashboardInstanceGrid({
                   : "border-border hover:border-border/80",
               )}
             >
-              <div className="relative flex h-28 shrink-0 items-center justify-center bg-gradient-to-br from-primary/80 to-primary/20">
-                <span className="absolute inset-0 bg-[repeating-linear-gradient(90deg,color-mix(in_oklch,var(--foreground)_5%,transparent)_0_1px,transparent_1px_18px)]" />
+              <Link
+                to="/instances/$instanceId"
+                params={{ instanceId: instance.id }}
+                className="relative block h-28 shrink-0"
+              >
+                <InstanceArtwork
+                  instance={instance}
+                  showBadge={false}
+                  className="h-full"
+                />
                 {instance.id === featuredInstanceId && (
                   <div className="pointer-events-none absolute inset-0 rounded-md ring-2 ring-primary/50 ring-inset" />
                 )}
-              </div>
+              </Link>
 
               <div className="bg-card px-2.5 pt-2.5 pb-2.5">
                 <div className="truncate font-semibold text-foreground text-xs leading-none">
@@ -140,19 +211,68 @@ export function DashboardInstanceGrid({
                     >
                       <PlayIcon className="size-2.5 fill-primary-foreground text-primary-foreground" />
                     </button>
-                    <button
-                      type="button"
+                    <Link
+                      to="/instances/$instanceId"
+                      params={{ instanceId: instance.id }}
                       className="flex size-5 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
                     >
                       <MoreHorizontalIcon className="size-3" />
-                    </button>
+                    </Link>
                   </div>
                 </div>
               </div>
             </div>
-          ))
-        )}
-      </div>
+          ))}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-1">
+          {filtered.map((instance) => (
+            <div
+              key={instance.id}
+              className={cn(
+                "flex items-center gap-3 rounded-md border px-3 py-2 transition-colors hover:bg-accent/40",
+                instance.id === featuredInstanceId
+                  ? "border-primary/40 bg-primary/5"
+                  : "border-border bg-card",
+              )}
+            >
+              <InstanceIcon instance={instance} className="size-8 rounded-sm" />
+              <Link
+                to="/instances/$instanceId"
+                params={{ instanceId: instance.id }}
+                className="min-w-0 flex-1"
+              >
+                <div className="truncate font-semibold text-foreground text-xs">
+                  {instance.name}
+                </div>
+                <div className="truncate text-[0.6rem] text-muted-foreground">
+                  {instance.versionId} · {instance.loader}
+                </div>
+              </Link>
+              <span className="shrink-0 text-[0.58rem] text-muted-foreground/60">
+                {instance.lastLaunchedAt
+                  ? formatDistanceToNow(new Date(instance.lastLaunchedAt), {
+                      addSuffix: true,
+                    })
+                  : "Never played"}
+              </span>
+              <button
+                type="button"
+                disabled={launchLoadingId !== null}
+                onClick={() => onPlayInstance(instance.id)}
+                className={cn(
+                  "flex size-6 shrink-0 items-center justify-center rounded-sm transition-colors",
+                  launchLoadingId === instance.id
+                    ? "cursor-wait bg-primary/50"
+                    : "bg-primary hover:bg-primary/80",
+                )}
+              >
+                <PlayIcon className="size-3 fill-primary-foreground text-primary-foreground" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {instances.length > 5 && (
         <div className="mt-4 flex justify-center">
