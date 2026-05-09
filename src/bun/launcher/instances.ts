@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync } from "node:fs";
+import { existsSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { asc, eq } from "drizzle-orm";
 import type {
   CreateLauncherInstanceInput,
@@ -8,7 +9,13 @@ import type {
 } from "../../shared/types";
 import { db } from "../db/client";
 import * as schema from "../db/schema";
-import { getInstanceDirectory, normalizeLauncherPathSegment } from "./paths";
+import {
+  ensureInstanceFolders,
+  ensurePrivateDirectory,
+  ensurePrivateFile,
+  getInstanceMetadataPath,
+  normalizeLauncherPathSegment,
+} from "./paths";
 import { getLauncherProfile } from "./profiles";
 import { normalizeJavaExecutable } from "./validation";
 
@@ -146,24 +153,69 @@ const parseStringArray = (value: string): Array<string> => {
   return [];
 };
 
-const toInstance = (row: InstanceRow): LauncherInstance => ({
-  createdAt: row.createdAt,
-  gameArgs: parseStringArray(row.gameArgs),
-  gameDirectory: row.gameDirectory,
-  iconUrl: row.iconUrl,
-  id: row.id,
-  javaArgs: parseStringArray(row.javaArgs),
-  javaExecutable: row.javaExecutable,
-  lastLaunchedAt: row.lastLaunchedAt,
-  loader: row.loader as ModLoader,
-  loaderVersion: row.loaderVersion,
-  memoryMaxMb: row.memoryMaxMb,
-  memoryMinMb: row.memoryMinMb,
-  name: row.name,
-  profileId: row.profileId,
-  updatedAt: row.updatedAt,
-  versionId: row.versionId,
-});
+const writeInstanceMetadata = (instance: LauncherInstance): void => {
+  const metadataPath = instance.metadataPath;
+  const tempPath = `${metadataPath}.write-${process.pid}-${randomUUID()}.tmp`;
+  const metadata = {
+    app: {
+      name: "nyxen",
+      schemaVersion: 1,
+    },
+    folders: instance.folders,
+    gameDirectory: instance.gameDirectory,
+    instanceDirectory: instance.instanceDirectory,
+    instanceId: instance.id,
+    loader: instance.loader,
+    loaderVersion: instance.loaderVersion,
+    name: instance.name,
+    updatedAt: instance.updatedAt,
+    versionId: instance.versionId,
+  };
+
+  ensurePrivateDirectory(dirname(metadataPath));
+
+  try {
+    writeFileSync(tempPath, `${JSON.stringify(metadata, null, 2)}\n`, {
+      flag: "wx",
+    });
+    ensurePrivateFile(tempPath);
+    renameSync(tempPath, metadataPath);
+    ensurePrivateFile(metadataPath);
+  } finally {
+    if (existsSync(tempPath)) {
+      unlinkSync(tempPath);
+    }
+  }
+};
+
+const toInstance = (row: InstanceRow): LauncherInstance => {
+  const folders = ensureInstanceFolders(row.id);
+  const instance = {
+    createdAt: row.createdAt,
+    folders,
+    gameArgs: parseStringArray(row.gameArgs),
+    gameDirectory: folders.game,
+    iconUrl: row.iconUrl,
+    id: row.id,
+    instanceDirectory: folders.root,
+    javaArgs: parseStringArray(row.javaArgs),
+    javaExecutable: row.javaExecutable,
+    lastLaunchedAt: row.lastLaunchedAt,
+    loader: row.loader as ModLoader,
+    loaderVersion: row.loaderVersion,
+    metadataPath: getInstanceMetadataPath(row.id),
+    memoryMaxMb: row.memoryMaxMb,
+    memoryMinMb: row.memoryMinMb,
+    name: row.name,
+    profileId: row.profileId,
+    updatedAt: row.updatedAt,
+    versionId: row.versionId,
+  };
+
+  writeInstanceMetadata(instance);
+
+  return instance;
+};
 
 const assertVersionExists = (versionId: string): void => {
   const version =
@@ -234,11 +286,11 @@ export const createLauncherInstance = (
   );
   const now = new Date().toISOString();
   const instanceId = `instance_${randomUUID()}`;
-  const gameDirectory = getInstanceDirectory(instanceId);
+  const folders = ensureInstanceFolders(instanceId);
   const instance = {
     createdAt: now,
     gameArgs: JSON.stringify(normalizeStringArray(input.gameArgs, "Game args")),
-    gameDirectory,
+    gameDirectory: folders.game,
     iconUrl: normalizeIconUrl(input.iconUrl),
     id: instanceId,
     javaArgs: JSON.stringify(normalizeStringArray(input.javaArgs, "Java args")),
@@ -254,7 +306,6 @@ export const createLauncherInstance = (
     versionId,
   };
 
-  mkdirSync(gameDirectory, { recursive: true });
   db.insert(schema.launcherInstances).values(instance).run();
 
   return toInstance(instance);

@@ -15,6 +15,16 @@ const cache = new Map<string, CacheEntry>();
 const TTL = 5 * 60 * 1000;
 const DEFAULT_LOADER_REQUEST_TIMEOUT_MS = 15_000;
 
+type Fetcher = (
+  input: string | URL | Request,
+  init?: RequestInit,
+) => Promise<Response>;
+
+export type LoaderVersionOptions = {
+  fetcher?: Fetcher;
+  requestTimeoutMs?: number;
+};
+
 const cached = (key: string): Array<LoaderVersionSummary> | null => {
   const e = cache.get(key);
   return e && Date.now() < e.expiresAt ? e.versions : null;
@@ -24,7 +34,13 @@ const store = (key: string, versions: Array<LoaderVersionSummary>): void => {
   cache.set(key, { versions, expiresAt: Date.now() + TTL });
 };
 
-const getLoaderRequestTimeoutMs = (): number => {
+const getLoaderRequestTimeoutMs = (
+  options: LoaderVersionOptions = {},
+): number => {
+  if (options.requestTimeoutMs !== undefined) {
+    return Math.max(1, Math.trunc(options.requestTimeoutMs));
+  }
+
   const configured = Number(process.env.NYXEN_LOADER_REQUEST_TIMEOUT_MS ?? "");
 
   if (!Number.isFinite(configured) || configured <= 0) {
@@ -34,19 +50,23 @@ const getLoaderRequestTimeoutMs = (): number => {
   return Math.max(1_000, Math.trunc(configured));
 };
 
-const fetchLoaderMetadata = async (url: string): Promise<Response> => {
+const fetchLoaderMetadata = async (
+  url: string,
+  options: LoaderVersionOptions = {},
+): Promise<Response> => {
   const parsedUrl = new URL(url);
 
   if (parsedUrl.protocol !== "https:") {
     throw new Error("Loader metadata URL must use HTTPS.");
   }
 
-  const timeoutMs = getLoaderRequestTimeoutMs();
+  const timeoutMs = getLoaderRequestTimeoutMs(options);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const fetcher = options.fetcher ?? fetch;
 
   try {
-    return await fetch(url, { signal: controller.signal });
+    return await fetcher(url, { signal: controller.signal });
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
       throw new Error(
@@ -62,8 +82,11 @@ const fetchLoaderMetadata = async (url: string): Promise<Response> => {
   }
 };
 
-const getText = async (url: string): Promise<string> => {
-  const r = await fetchLoaderMetadata(url);
+const getText = async (
+  url: string,
+  options: LoaderVersionOptions = {},
+): Promise<string> => {
+  const r = await fetchLoaderMetadata(url, options);
   if (!r.ok) throw new Error(`HTTP ${r.status} fetching ${url}`);
   return r.text();
 };
@@ -71,8 +94,9 @@ const getText = async (url: string): Promise<string> => {
 const getJsonOrEmpty = async <T>(
   url: string,
   emptyStatuses: Array<number>,
+  options: LoaderVersionOptions = {},
 ): Promise<T | null> => {
-  const r = await fetchLoaderMetadata(url);
+  const r = await fetchLoaderMetadata(url, options);
   if (emptyStatuses.includes(r.status)) return null;
   if (!r.ok) throw new Error(`HTTP ${r.status} fetching ${url}`);
   return r.json() as Promise<T>;
@@ -85,6 +109,7 @@ const xmlVersions = (xml: string): Array<string> =>
 
 const listFabric = async (
   mcVersion: string,
+  options: LoaderVersionOptions = {},
 ): Promise<Array<LoaderVersionSummary>> => {
   const key = `fabric:${mcVersion}`;
   const hit = cached(key);
@@ -95,6 +120,7 @@ const listFabric = async (
   >(
     `${FABRIC_META}/versions/loader/${encodeURIComponent(mcVersion)}`,
     [400, 404],
+    options,
   );
   const versions =
     data?.map((e) => ({ id: e.loader.version, stable: e.loader.stable })) ?? [];
@@ -104,6 +130,7 @@ const listFabric = async (
 
 const listQuilt = async (
   mcVersion: string,
+  options: LoaderVersionOptions = {},
 ): Promise<Array<LoaderVersionSummary>> => {
   const key = `quilt:${mcVersion}`;
   const hit = cached(key);
@@ -112,6 +139,7 @@ const listQuilt = async (
   const data = await getJsonOrEmpty<Array<{ loader: { version: string } }>>(
     `${QUILT_META}/versions/loader/${encodeURIComponent(mcVersion)}`,
     [400, 404],
+    options,
   );
   const versions =
     data?.map((e) => ({
@@ -126,12 +154,13 @@ const listQuilt = async (
 
 const listForge = async (
   mcVersion: string,
+  options: LoaderVersionOptions = {},
 ): Promise<Array<LoaderVersionSummary>> => {
   const key = `forge:${mcVersion}`;
   const hit = cached(key);
   if (hit) return hit;
 
-  const xml = await getText(FORGE_MAVEN);
+  const xml = await getText(FORGE_MAVEN, options);
   const prefix = `${mcVersion}-`;
   const versions = xmlVersions(xml)
     .filter((v) => v.startsWith(prefix))
@@ -166,6 +195,7 @@ const neoforgePrefix = (mcVersion: string): string | null => {
 
 const listNeoForge = async (
   mcVersion: string,
+  options: LoaderVersionOptions = {},
 ): Promise<Array<LoaderVersionSummary>> => {
   const prefix = neoforgePrefix(mcVersion);
   if (!prefix) return [];
@@ -174,7 +204,7 @@ const listNeoForge = async (
   const hit = cached(key);
   if (hit) return hit;
 
-  const xml = await getText(NEOFORGE_MAVEN);
+  const xml = await getText(NEOFORGE_MAVEN, options);
   const versions = xmlVersions(xml)
     .filter((v) => v.startsWith(prefix))
     .map((v) => ({
@@ -189,19 +219,20 @@ const listNeoForge = async (
 
 export const listLoaderVersions = async (
   input: ListLoaderVersionsInput,
+  options: LoaderVersionOptions = {},
 ): Promise<Array<LoaderVersionSummary>> => {
   const { loader, mcVersion } = input;
   if (loader === "vanilla" || !mcVersion.trim()) return [];
 
   switch (loader) {
     case "fabric":
-      return listFabric(mcVersion);
+      return listFabric(mcVersion, options);
     case "quilt":
-      return listQuilt(mcVersion);
+      return listQuilt(mcVersion, options);
     case "forge":
-      return listForge(mcVersion);
+      return listForge(mcVersion, options);
     case "neoforge":
-      return listNeoForge(mcVersion);
+      return listNeoForge(mcVersion, options);
     default:
       return [];
   }

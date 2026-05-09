@@ -2,7 +2,10 @@ import { chmodSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { APP_CHANNEL, APP_IDENTIFIER } from "../../shared/constants";
-import type { LauncherDirectories } from "../../shared/types";
+import type {
+  LauncherDirectories,
+  LauncherInstanceFolders,
+} from "../../shared/types";
 
 const defaultDataDirectory = (): string => {
   switch (process.platform) {
@@ -105,6 +108,47 @@ export const getInstanceDirectory = (instanceId: string): string =>
     getLauncherDirectories().instances,
     normalizeLauncherPathSegment(instanceId, "Launcher instance id"),
   );
+
+export const getInstanceGameDirectory = (instanceId: string): string =>
+  join(getInstanceDirectory(instanceId), ".minecraft");
+
+export const getInstanceFolders = (
+  instanceId: string,
+): LauncherInstanceFolders => {
+  const root = getInstanceDirectory(instanceId);
+  const app = join(root, ".nyxen");
+  const game = join(root, ".minecraft");
+
+  return {
+    app,
+    cache: join(app, "cache"),
+    config: join(game, "config"),
+    game,
+    logs: join(game, "logs"),
+    metadata: join(app, "metadata"),
+    mods: join(game, "mods"),
+    resourcePacks: join(game, "resourcepacks"),
+    root,
+    saves: join(game, "saves"),
+    screenshots: join(game, "screenshots"),
+    shaderPacks: join(game, "shaderpacks"),
+  };
+};
+
+export const ensureInstanceFolders = (
+  instanceId: string,
+): LauncherInstanceFolders => {
+  const folders = getInstanceFolders(instanceId);
+
+  for (const directory of Object.values(folders)) {
+    ensurePrivateDirectory(directory);
+  }
+
+  return folders;
+};
+
+export const getInstanceMetadataPath = (instanceId: string): string =>
+  join(getInstanceFolders(instanceId).metadata, "instance.json");
 
 export const getVersionDirectory = (versionId: string): string =>
   join(

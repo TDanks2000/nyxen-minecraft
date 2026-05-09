@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   renameSync,
@@ -27,6 +28,11 @@ type DownloadFetcher = (
 type DownloadOptions = {
   concurrency?: number;
   fetcher?: DownloadFetcher;
+  installerRunner?: (input: {
+    javaExecutable: string;
+    installerPath: string;
+    launcherRoot: string;
+  }) => Promise<void> | void;
   requestTimeoutMs?: number;
 };
 
@@ -99,7 +105,17 @@ const fetchArtifact = async (
   }
 };
 
-const writeArtifactFile = (path: string, data: Uint8Array): void => {
+const makeExecutable = (path: string): void => {
+  if (process.platform !== "win32") {
+    chmodSync(path, 0o755);
+  }
+};
+
+const writeArtifactFile = (
+  path: string,
+  data: Uint8Array,
+  executable = false,
+): void => {
   mkdirSync(dirname(path), { recursive: true });
 
   const tempPath = `${path}.download-${process.pid}-${randomUUID()}.tmp`;
@@ -111,6 +127,10 @@ const writeArtifactFile = (path: string, data: Uint8Array): void => {
     if (existsSync(tempPath)) {
       unlinkSync(tempPath);
     }
+  }
+
+  if (executable) {
+    makeExecutable(path);
   }
 };
 
@@ -134,7 +154,7 @@ const downloadOne = async (
     throw new Error(`Checksum mismatch for ${artifact.id}`);
   }
 
-  writeArtifactFile(artifact.path, data);
+  writeArtifactFile(artifact.path, data, artifact.executable);
 };
 
 const quotePowerShellString = (value: string): string =>
@@ -224,6 +244,54 @@ const runWithConcurrency = async <T>(
   );
 };
 
+const runModLoaderInstaller = async (
+  plan: LaunchPlan,
+  options: DownloadOptions,
+): Promise<void> => {
+  const installerPath = plan.modLoader.installerPath;
+
+  if (!installerPath) {
+    throw new Error("No mod loader installer is available for this plan.");
+  }
+
+  if (!existsSync(installerPath)) {
+    throw new Error("Mod loader installer has not been downloaded.");
+  }
+
+  if (options.installerRunner) {
+    await options.installerRunner({
+      installerPath,
+      javaExecutable: plan.java.executable,
+      launcherRoot: plan.directories.root,
+    });
+    return;
+  }
+
+  const result = spawnSync(
+    plan.java.executable,
+    ["-jar", installerPath, "--installClient", plan.directories.root],
+    {
+      cwd: plan.directories.root,
+      encoding: "utf8",
+      timeout: 10 * 60 * 1000,
+    },
+  );
+
+  if (result.error) {
+    throw result.error;
+  }
+
+  if (result.status !== 0) {
+    const detail = (result.stderr || result.stdout || "").trim();
+
+    throw new Error(
+      detail
+        ? `Mod loader installer failed: ${detail}`
+        : "Mod loader installer failed.",
+    );
+  }
+};
+
 export const downloadArtifacts = async (
   plan: LaunchPlan,
   options: DownloadOptions = {},
@@ -231,15 +299,24 @@ export const downloadArtifacts = async (
   const failed: Array<{ error: string; id: string }> = [];
   let succeeded = 0;
   const artifacts = uniqueArtifacts(plan.missingArtifacts);
+  const immediatelyDownloadable = artifacts.filter(
+    (artifact) => artifact.url || existsSync(artifact.path),
+  );
+  const installerGenerated = artifacts.filter(
+    (artifact) => !artifact.url && !existsSync(artifact.path),
+  );
 
   await runWithConcurrency(
-    artifacts,
+    immediatelyDownloadable,
     getDownloadConcurrency(options),
     async (artifact) => {
       try {
         assertArtifactStoragePath(artifact);
 
         if (existsSync(artifact.path)) {
+          if (artifact.executable) {
+            makeExecutable(artifact.path);
+          }
           succeeded++;
           return;
         }
@@ -254,6 +331,57 @@ export const downloadArtifacts = async (
       }
     },
   );
+
+  if (installerGenerated.length > 0) {
+    if (plan.modLoader.installerPath) {
+      try {
+        await runModLoaderInstaller(plan, options);
+      } catch (error) {
+        for (const artifact of installerGenerated) {
+          failed.push({
+            error:
+              error instanceof Error
+                ? error.message
+                : "Mod loader installer failed",
+            id: artifact.id,
+          });
+        }
+      }
+    } else {
+      for (const artifact of installerGenerated) {
+        failed.push({
+          error: `No download URL for ${artifact.id}`,
+          id: artifact.id,
+        });
+      }
+    }
+
+    for (const artifact of installerGenerated) {
+      try {
+        assertArtifactStoragePath(artifact);
+
+        if (!existsSync(artifact.path)) {
+          if (!failed.some((failure) => failure.id === artifact.id)) {
+            failed.push({
+              error: "Mod loader installer did not create this artifact.",
+              id: artifact.id,
+            });
+          }
+          continue;
+        }
+
+        if (artifact.executable) {
+          makeExecutable(artifact.path);
+        }
+        succeeded++;
+      } catch (error) {
+        failed.push({
+          error: error instanceof Error ? error.message : "Download failed",
+          id: artifact.id,
+        });
+      }
+    }
+  }
 
   // Extract native JARs after all downloads complete
   const downloadedNatives = plan.nativeArtifactPaths.filter(existsSync);

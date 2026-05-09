@@ -182,6 +182,11 @@ export function LaunchPlanSheet({ open, onOpenChange, plan }: Props) {
                       {plan.java.memoryMinMb}–{plan.java.memoryMaxMb} MB
                     </span>
                   </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {plan.java.management === "app-controlled"
+                      ? `Managed Java ${plan.java.majorVersion ?? "runtime"}${plan.java.runtimeVersion ? ` (${plan.java.runtimeVersion})` : ""}`
+                      : `Automatic${plan.java.majorVersion ? ` · Java ${plan.java.majorVersion}` : ""}`}
+                  </p>
                   <p className="text-xs text-muted-foreground mt-0.5 font-mono break-all">
                     {plan.java.executable}
                   </p>

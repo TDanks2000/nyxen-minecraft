@@ -98,6 +98,12 @@ const versionDetailsSchema = z.object({
   assets: z.string().optional(),
   downloads: z.record(z.string(), downloadSchema).optional(),
   id: z.string().min(1),
+  javaVersion: z
+    .object({
+      component: z.string().min(1),
+      majorVersion: z.number().int().positive(),
+    })
+    .optional(),
   libraries: z.array(librarySchema).optional(),
   mainClass: z.string().optional(),
   minecraftArguments: z.string().optional(),
@@ -355,6 +361,7 @@ const toVersionDetails = (
   cachedAt,
   downloads: document.downloads,
   id: document.id,
+  javaVersion: document.javaVersion,
   libraries: document.libraries ?? [],
   mainClass: document.mainClass,
   minecraftArguments: document.minecraftArguments,

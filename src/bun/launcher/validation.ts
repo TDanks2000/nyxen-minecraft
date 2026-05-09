@@ -109,9 +109,13 @@ export const assertArtifactStoragePath = (
   const root =
     artifact.kind === "assetIndex"
       ? directories.assets
-      : artifact.kind === "library" || artifact.kind === "nativeLibrary"
-        ? directories.libraries
-        : directories.versions;
+      : artifact.kind === "javaRuntime"
+        ? directories.runtimes
+        : artifact.kind === "modLoaderInstaller"
+          ? directories.downloads
+          : artifact.kind === "library" || artifact.kind === "nativeLibrary"
+            ? directories.libraries
+            : directories.versions;
 
   assertPathInsideDirectory(
     artifact.path,

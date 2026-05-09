@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import {
+  CpuIcon,
   FolderIcon,
   GaugeIcon,
   HardDriveIcon,
@@ -13,6 +14,7 @@ import { useTheme } from "@/views/main/components/theme-provider";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -105,6 +107,10 @@ function SettingsPage() {
   const dirs = statusHook.data?.directories;
 
   const theme = (settings?.["app.theme"] as string) ?? "system";
+  const javaManagement =
+    settings?.["launcher.javaManagement"] === "app-controlled"
+      ? "app-controlled"
+      : "auto";
   const keepOpen = !!settings?.["launcher.keepOpenAfterLaunch"];
   const showSnapshots = !!settings?.["launcher.showSnapshots"];
 
@@ -145,9 +151,44 @@ function SettingsPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="system">System</SelectItem>
-                    <SelectItem value="light">Light</SelectItem>
-                    <SelectItem value="dark">Dark</SelectItem>
+                    <SelectGroup>
+                      <SelectItem value="system">System</SelectItem>
+                      <SelectItem value="light">Light</SelectItem>
+                      <SelectItem value="dark">Dark</SelectItem>
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </SettingRow>
+            )}
+          </SettingGroup>
+
+          <SettingGroup icon={CpuIcon} title="Java">
+            {settingsHook.loading ? (
+              <div className="px-4 py-3">
+                <Skeleton className="h-8 w-full rounded-md" />
+              </div>
+            ) : (
+              <SettingRow
+                label="Java management"
+                description="Use system Java, or let Nyxen download the runtime required by each Minecraft version"
+              >
+                <Select
+                  value={javaManagement}
+                  onValueChange={(v) =>
+                    v &&
+                    settingsHook.updateSetting("launcher.javaManagement", v)
+                  }
+                >
+                  <SelectTrigger className="h-8 w-40">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectItem value="auto">Automatic</SelectItem>
+                      <SelectItem value="app-controlled">
+                        App controlled
+                      </SelectItem>
+                    </SelectGroup>
                   </SelectContent>
                 </Select>
               </SettingRow>
@@ -214,6 +255,7 @@ function SettingsPage() {
                   path={dirs.instances}
                 />
                 <PathRow icon={Volume2Icon} label="Assets" path={dirs.assets} />
+                <PathRow icon={CpuIcon} label="Runtimes" path={dirs.runtimes} />
                 <PathRow
                   icon={MonitorIcon}
                   label="Versions"

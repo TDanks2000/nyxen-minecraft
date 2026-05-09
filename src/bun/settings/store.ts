@@ -2,6 +2,7 @@ import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type {
   AppSettings,
+  JavaManagementMode,
   SettingsStatus,
   SettingValue,
 } from "../../shared/types";
@@ -11,11 +12,19 @@ import {
   getDataRoot,
 } from "../launcher/paths";
 
+export const JAVA_MANAGEMENT_SETTING_KEY = "launcher.javaManagement";
+
 const defaultSettings: AppSettings = {
   "app.theme": "system",
+  [JAVA_MANAGEMENT_SETTING_KEY]: "auto",
   "launcher.keepOpenAfterLaunch": false,
   "launcher.showSnapshots": false,
 };
+
+export const isJavaManagementMode = (
+  value: unknown,
+): value is JavaManagementMode =>
+  value === "auto" || value === "app-controlled";
 
 export const settingsPath = join(getDataRoot(), "settings.json");
 
@@ -38,7 +47,13 @@ const normalizeSettings = (value: unknown): AppSettings => {
     }
   }
 
-  return { ...defaultSettings, ...settings };
+  const normalized = { ...defaultSettings, ...settings };
+
+  if (!isJavaManagementMode(normalized[JAVA_MANAGEMENT_SETTING_KEY])) {
+    normalized[JAVA_MANAGEMENT_SETTING_KEY] = "auto";
+  }
+
+  return normalized;
 };
 
 const writeSettingsFile = (settings: AppSettings): void => {
@@ -65,6 +80,13 @@ const readSettingsFile = (): AppSettings => {
   }
 };
 
+export const getJavaManagementMode = (): JavaManagementMode => {
+  const settings = readSettingsFile();
+  const mode = settings[JAVA_MANAGEMENT_SETTING_KEY];
+
+  return isJavaManagementMode(mode) ? mode : "auto";
+};
+
 export const getSettingsStatus = (): SettingsStatus => {
   const values = readSettingsFile();
 
@@ -87,6 +109,13 @@ export const updateSetting = ({
 
   if (!normalizedKey) {
     throw new Error("Setting key is required.");
+  }
+
+  if (
+    normalizedKey === JAVA_MANAGEMENT_SETTING_KEY &&
+    !isJavaManagementMode(value)
+  ) {
+    throw new Error("Java management mode must be auto or app-controlled.");
   }
 
   const values = readSettingsFile();

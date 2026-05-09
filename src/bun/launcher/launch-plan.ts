@@ -8,10 +8,19 @@ import type {
   LaunchPlanMissingArtifact,
   MinecraftDownload,
   MinecraftLibrary,
+  MinecraftVersionDetails,
 } from "../../shared/types";
+import { getJavaManagementMode } from "../settings/store";
 import { getLauncherInstance } from "./instances";
-import { ensureMicrosoftProfileLaunchAuth } from "./microsoft-auth";
 import {
+  getRequiredJavaVersion,
+  type ManagedJavaRuntime,
+  resolveManagedJavaRuntime,
+} from "./java-runtimes";
+import { ensureMicrosoftProfileLaunchAuth } from "./microsoft-auth";
+import { type ResolvedModLoader, resolveModLoader } from "./mod-loaders";
+import {
+  ensureInstanceFolders,
   ensureLauncherDirectories,
   normalizeLauncherPathSegment,
 } from "./paths";
@@ -24,6 +33,18 @@ import {
   getMinecraftVersionDetails,
   getMinecraftVersionSummary,
 } from "./versions";
+
+type Fetcher = (
+  input: string | URL | Request,
+  init?: RequestInit,
+) => Promise<Response>;
+
+type LaunchPlanOptions = {
+  fetcher?: Fetcher;
+  manifestCacheTtlMs?: number;
+  javaRuntimeManifestUrl?: string;
+  requestTimeoutMs?: number;
+};
 
 const minecraftOsName = (): "linux" | "osx" | "windows" => {
   if (process.platform === "darwin") {
@@ -70,6 +91,37 @@ const libraryArtifactPath = (
   return rawPath
     ? normalizeArtifactRelativePath(rawPath, `Library ${library.name}`)
     : null;
+};
+
+const libraryArtifactDownload = (
+  library: MinecraftLibrary,
+  download: MinecraftDownload | undefined,
+): MinecraftDownload | undefined => {
+  const path = libraryArtifactPath(library, download);
+
+  if (!path) {
+    return download;
+  }
+
+  if (download?.url) {
+    return download;
+  }
+
+  if (!library.url) {
+    return download;
+  }
+
+  try {
+    const baseUrl = library.url.endsWith("/") ? library.url : `${library.url}/`;
+
+    return {
+      ...download,
+      path,
+      url: new URL(path, baseUrl).toString(),
+    };
+  } catch {
+    return download;
+  }
 };
 
 const isOsMatch = (
@@ -158,8 +210,65 @@ const resolveProfile = (
   return getFirstVerifiedMicrosoftProfile();
 };
 
+type EffectiveVersionDetails = Pick<
+  MinecraftVersionDetails,
+  "arguments" | "libraries" | "mainClass" | "minecraftArguments"
+> & {
+  id: string;
+};
+
+const mergeArgumentList = (
+  base: Array<unknown> | undefined,
+  loader: Array<unknown> | undefined,
+): Array<unknown> | undefined => {
+  if (!base && !loader) {
+    return undefined;
+  }
+
+  return [...(base ?? []), ...(loader ?? [])];
+};
+
+const mergeModLoaderDetails = (
+  versionDetails: MinecraftVersionDetails,
+  loader: ResolvedModLoader | null,
+): EffectiveVersionDetails => {
+  if (!loader) {
+    return versionDetails;
+  }
+
+  const mergedArguments =
+    versionDetails.arguments || loader.arguments
+      ? {
+          game: mergeArgumentList(
+            versionDetails.arguments?.game,
+            loader.arguments?.game,
+          ),
+          jvm: mergeArgumentList(
+            versionDetails.arguments?.jvm,
+            loader.arguments?.jvm,
+          ),
+        }
+      : undefined;
+
+  const minecraftArguments = [
+    versionDetails.minecraftArguments,
+    loader.minecraftArguments,
+  ]
+    .filter((value): value is string => !!value)
+    .join(" ");
+
+  return {
+    arguments: mergedArguments,
+    id: loader.id,
+    libraries: [...versionDetails.libraries, ...loader.libraries],
+    mainClass: loader.mainClass ?? versionDetails.mainClass,
+    minecraftArguments: minecraftArguments || undefined,
+  };
+};
+
 export const createLaunchPlan = async (
   input: CreateLaunchPlanInput,
+  options: LaunchPlanOptions = {},
 ): Promise<LaunchPlan> => {
   const instanceId = input.instanceId.trim();
 
@@ -174,24 +283,44 @@ export const createLaunchPlan = async (
   }
 
   const versionSummary = getMinecraftVersionSummary(instance.versionId);
-  const versionDetails = await getMinecraftVersionDetails({
-    refresh: input.refreshVersionDetails,
-    versionId: instance.versionId,
-  });
+  const versionDetails = await getMinecraftVersionDetails(
+    {
+      refresh: input.refreshVersionDetails,
+      versionId: instance.versionId,
+    },
+    {
+      fetcher: options.fetcher,
+      requestTimeoutMs: options.requestTimeoutMs,
+    },
+  );
   const versionDetailsId = normalizeLauncherPathSegment(
     versionDetails.id,
     "Minecraft version id",
   );
+  const modLoader = await resolveModLoader(instance, versionDetails, {
+    fetcher: options.fetcher,
+    requestTimeoutMs: options.requestTimeoutMs,
+  });
+  const launchDetails = mergeModLoaderDetails(versionDetails, modLoader);
+  const launchVersionId = normalizeLauncherPathSegment(
+    launchDetails.id,
+    "Launch version id",
+  );
   const directories = ensureLauncherDirectories();
+  const instanceFolders = ensureInstanceFolders(instance.id);
   const nativesDirectory = join(
     directories.temp,
     "natives",
     instance.id,
-    versionDetailsId,
+    launchVersionId,
   );
   const missingArtifacts: Array<LaunchPlanMissingArtifact> = [];
   const nativeArtifactPaths: Array<string> = [];
   const warnings: Array<string> = [];
+  const javaManagement = getJavaManagementMode();
+  const requiredJava = getRequiredJavaVersion(versionDetails);
+  let javaExecutable = instance.javaExecutable ?? "java";
+  let managedRuntime: ManagedJavaRuntime | null = null;
   let assetIndexId: string | null = null;
 
   let profile: LauncherProfile | null = resolveProfile(
@@ -212,9 +341,36 @@ export const createLaunchPlan = async (
     );
   }
 
-  mkdirSync(instance.gameDirectory, { recursive: true });
+  mkdirSync(instanceFolders.game, { recursive: true });
   mkdirSync(nativesDirectory, { recursive: true });
   mkdirSync(join(directories.assets, "indexes"), { recursive: true });
+
+  if (javaManagement === "app-controlled") {
+    managedRuntime = await resolveManagedJavaRuntime(requiredJava, {
+      fetcher: options.fetcher,
+      manifestCacheTtlMs: options.manifestCacheTtlMs,
+      manifestUrl: options.javaRuntimeManifestUrl,
+      requestTimeoutMs: options.requestTimeoutMs,
+    });
+    javaExecutable = managedRuntime.executable;
+
+    if (instance.javaExecutable) {
+      warnings.push(
+        "Instance Java executable is ignored while app-controlled Java management is enabled.",
+      );
+    }
+
+    missingArtifacts.push(...managedRuntime.missingArtifacts);
+  }
+
+  if (modLoader?.installerPath) {
+    addMissingArtifact(missingArtifacts, {
+      id: `${instance.loader}:${modLoader.version}:installer`,
+      kind: "modLoaderInstaller",
+      path: modLoader.installerPath,
+      url: modLoader.installerUrl ?? undefined,
+    });
+  }
 
   const clientDownload = versionDetails.downloads?.client;
   const clientJarPath = join(
@@ -248,8 +404,11 @@ export const createLaunchPlan = async (
 
   const classpathLibraries: Array<string> = [];
 
-  for (const library of versionDetails.libraries.filter(isLibraryAllowed)) {
-    const artifact = library.downloads?.artifact;
+  for (const library of launchDetails.libraries.filter(isLibraryAllowed)) {
+    const artifact = libraryArtifactDownload(
+      library,
+      library.downloads?.artifact,
+    );
     const artifactPath = libraryArtifactPath(library, artifact);
 
     if (artifactPath) {
@@ -270,7 +429,10 @@ export const createLaunchPlan = async (
 
     const classifierKey = nativeClassifierKey(library);
     const nativeArtifact = classifierKey
-      ? library.downloads?.classifiers?.[classifierKey]
+      ? libraryArtifactDownload(
+          library,
+          library.downloads?.classifiers?.[classifierKey],
+        )
       : undefined;
     const nativePath = libraryArtifactPath(library, nativeArtifact);
 
@@ -293,7 +455,7 @@ export const createLaunchPlan = async (
 
   const classpath = [...classpathLibraries, clientJarPath];
 
-  if (!versionDetails.mainClass) {
+  if (!launchDetails.mainClass) {
     warnings.push("Version metadata does not include a main class.");
   }
 
@@ -301,10 +463,6 @@ export const createLaunchPlan = async (
     warnings.push(
       "This Minecraft version is marked as legacy by Mojang metadata.",
     );
-  }
-
-  if (instance.loader !== "vanilla") {
-    warnings.push("Mod loader resolution is not implemented yet.");
   }
 
   if (missingArtifacts.length > 0) {
@@ -316,33 +474,56 @@ export const createLaunchPlan = async (
   return {
     arguments: {
       game: [
-        ...(versionDetails.arguments?.game ??
-          versionDetails.minecraftArguments?.split(" ") ??
+        ...(launchDetails.arguments?.game ??
+          launchDetails.minecraftArguments?.split(" ") ??
           []),
         ...instance.gameArgs,
       ],
-      jvm: [...(versionDetails.arguments?.jvm ?? []), ...instance.javaArgs],
+      jvm: [...(launchDetails.arguments?.jvm ?? []), ...instance.javaArgs],
     },
     classpath,
     createdAt: new Date().toISOString(),
     directories: {
       ...directories,
-      game: instance.gameDirectory,
+      game: instanceFolders.game,
+      instance: instanceFolders.root,
+      instanceCache: instanceFolders.cache,
+      instanceConfig: instanceFolders.config,
+      instanceLogs: instanceFolders.logs,
+      instanceMetadata: instanceFolders.metadata,
+      mods: instanceFolders.mods,
       natives: nativesDirectory,
+      resourcePacks: instanceFolders.resourcePacks,
+      saves: instanceFolders.saves,
+      screenshots: instanceFolders.screenshots,
+      shaderPacks: instanceFolders.shaderPacks,
     },
     instance,
     java: {
-      executable: instance.javaExecutable ?? "java",
+      component: requiredJava.component,
+      executable: javaExecutable,
+      management: javaManagement,
+      majorVersion: requiredJava.majorVersion,
       memoryMaxMb: instance.memoryMaxMb,
       memoryMinMb: instance.memoryMinMb,
+      runtimePlatform: managedRuntime?.platform ?? null,
+      runtimeVersion: managedRuntime?.versionName ?? null,
     },
-    legacyArgFormat: !versionDetails.arguments,
+    legacyArgFormat: !launchDetails.arguments,
     minecraft: {
       assetIndexId,
-      mainClass: versionDetails.mainClass ?? null,
-      versionId: versionDetailsId,
+      baseVersionId: versionDetailsId,
+      mainClass: launchDetails.mainClass ?? null,
+      versionId: launchVersionId,
     },
     missingArtifacts,
+    modLoader: {
+      installerPath: modLoader?.installerPath ?? null,
+      installerUrl: modLoader?.installerUrl ?? null,
+      kind: instance.loader,
+      minecraftVersionId: versionDetailsId,
+      version: modLoader?.version ?? null,
+    },
     nativeArtifactPaths,
     profile,
     warnings,

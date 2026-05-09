@@ -1,7 +1,14 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { LauncherDirectories, LaunchPlan } from "../src/shared/types";
 
 const manifestDocument = {
@@ -58,6 +65,10 @@ const versionDetailsDocument = {
     },
   },
   id: "1.20.4",
+  javaVersion: {
+    component: "java-runtime-gamma",
+    majorVersion: 17,
+  },
   libraries: [
     {
       downloads: {
@@ -244,59 +255,399 @@ const fakeInvalidMinecraftAppRegistrationFetch = async (
   return fakeFetch(input);
 };
 
+const currentJavaRuntimePlatform = (): string => {
+  if (process.platform === "win32") {
+    if (process.arch === "arm64") return "windows-arm64";
+    if (process.arch === "ia32") {
+      return "windows-x86";
+    }
+    return "windows-x64";
+  }
+
+  if (process.platform === "darwin") {
+    return process.arch === "arm64" ? "mac-os-arm64" : "mac-os";
+  }
+
+  return process.arch === "ia32" ? "linux-i386" : "linux";
+};
+
+const runtimeExecutablePath =
+  process.platform === "win32" ? "bin/javaw.exe" : "bin/java";
+
+const runtimeEntryDocument = ({
+  manifestUrl = "https://runtime.test/java-runtime-gamma/manifest.json",
+  released = "2024-01-04T00:00:00+00:00",
+  versionName = "17.0.1",
+}: {
+  manifestUrl?: string;
+  released?: string;
+  versionName?: string;
+} = {}) => ({
+  manifest: {
+    url: manifestUrl,
+  },
+  version: {
+    name: versionName,
+    released,
+  },
+});
+
+const runtimeAllDocument = (entries = [runtimeEntryDocument()]) => ({
+  [currentJavaRuntimePlatform()]: {
+    "java-runtime-gamma": entries,
+  },
+});
+
+const runtimePackageManifestDocument = () => ({
+  files: {
+    bin: {
+      type: "directory",
+    },
+    [runtimeExecutablePath]: {
+      downloads: {
+        raw: {
+          url: "https://runtime.test/java-runtime-gamma/bin/java",
+        },
+      },
+      executable: true,
+      type: "file",
+    },
+    "lib/modules": {
+      downloads: {
+        raw: {
+          url: "https://runtime.test/java-runtime-gamma/lib/modules",
+        },
+      },
+      executable: false,
+      type: "file",
+    },
+  },
+});
+
+const fakeRuntimeFetch = async (
+  input: string | URL | Request,
+): Promise<Response> => {
+  const url = input instanceof Request ? input.url : input.toString();
+
+  if (
+    url.endsWith(
+      "/java-runtime/2ec0cc96c44e5a76b9c8b7c39df7210883d12871/all.json",
+    )
+  ) {
+    return jsonResponse(runtimeAllDocument());
+  }
+
+  if (url === "https://runtime.test/java-runtime-gamma/manifest.json") {
+    return jsonResponse(runtimePackageManifestDocument());
+  }
+
+  return fakeFetch(input);
+};
+
+const fabricProfileDocument = {
+  id: "fabric-loader-0.15.7-1.20.4",
+  libraries: [
+    {
+      name: "net.fabricmc:fabric-loader:0.15.7",
+      url: "https://maven.fabricmc.net/",
+    },
+    {
+      name: "net.fabricmc:intermediary:1.20.4",
+      url: "https://maven.fabricmc.net/",
+    },
+  ],
+  mainClass: "net.fabricmc.loader.impl.launch.knot.KnotClient",
+};
+
+const fakeFabricFetch = async (
+  input: string | URL | Request,
+): Promise<Response> => {
+  const url = input instanceof Request ? input.url : input.toString();
+
+  if (
+    url ===
+    "https://meta.fabricmc.net/v2/versions/loader/1.20.4/0.15.7/profile/json"
+  ) {
+    return jsonResponse(fabricProfileDocument);
+  }
+
+  return fakeFetch(input);
+};
+
+const quiltProfileDocument = {
+  id: "quilt-loader-0.26.4-1.20.4",
+  libraries: [
+    {
+      name: "org.quiltmc:quilt-loader:0.26.4",
+      url: "https://maven.quiltmc.org/repository/release/",
+    },
+  ],
+  mainClass: "org.quiltmc.loader.impl.launch.knot.KnotClient",
+};
+
+const fakeQuiltFetch = async (
+  input: string | URL | Request,
+): Promise<Response> => {
+  const url = input instanceof Request ? input.url : input.toString();
+
+  if (
+    url ===
+    "https://meta.quiltmc.org/v3/versions/loader/1.20.4/0.26.4/profile/json"
+  ) {
+    return jsonResponse(quiltProfileDocument);
+  }
+
+  return fakeFetch(input);
+};
+
+const createStoredZip = (entries: Record<string, string>): Uint8Array => {
+  const localParts: Array<Buffer> = [];
+  const centralParts: Array<Buffer> = [];
+  let offset = 0;
+
+  for (const [name, content] of Object.entries(entries)) {
+    const nameBuffer = Buffer.from(name, "utf8");
+    const contentBuffer = Buffer.from(content, "utf8");
+    const localHeader = Buffer.alloc(30);
+    localHeader.writeUInt32LE(0x04034b50, 0);
+    localHeader.writeUInt16LE(20, 4);
+    localHeader.writeUInt16LE(0, 6);
+    localHeader.writeUInt16LE(0, 8);
+    localHeader.writeUInt32LE(0, 10);
+    localHeader.writeUInt32LE(0, 14);
+    localHeader.writeUInt32LE(contentBuffer.length, 18);
+    localHeader.writeUInt32LE(contentBuffer.length, 22);
+    localHeader.writeUInt16LE(nameBuffer.length, 26);
+    localHeader.writeUInt16LE(0, 28);
+
+    const centralHeader = Buffer.alloc(46);
+    centralHeader.writeUInt32LE(0x02014b50, 0);
+    centralHeader.writeUInt16LE(20, 4);
+    centralHeader.writeUInt16LE(20, 6);
+    centralHeader.writeUInt16LE(0, 8);
+    centralHeader.writeUInt16LE(0, 10);
+    centralHeader.writeUInt32LE(0, 12);
+    centralHeader.writeUInt32LE(0, 16);
+    centralHeader.writeUInt32LE(contentBuffer.length, 20);
+    centralHeader.writeUInt32LE(contentBuffer.length, 24);
+    centralHeader.writeUInt16LE(nameBuffer.length, 28);
+    centralHeader.writeUInt16LE(0, 30);
+    centralHeader.writeUInt16LE(0, 32);
+    centralHeader.writeUInt16LE(0, 34);
+    centralHeader.writeUInt16LE(0, 36);
+    centralHeader.writeUInt32LE(0, 38);
+    centralHeader.writeUInt32LE(offset, 42);
+
+    localParts.push(localHeader, nameBuffer, contentBuffer);
+    centralParts.push(centralHeader, nameBuffer);
+    offset += localHeader.length + nameBuffer.length + contentBuffer.length;
+  }
+
+  const centralDirectory = Buffer.concat(centralParts);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(0, 4);
+  end.writeUInt16LE(0, 6);
+  end.writeUInt16LE(Object.keys(entries).length, 8);
+  end.writeUInt16LE(Object.keys(entries).length, 10);
+  end.writeUInt32LE(centralDirectory.length, 12);
+  end.writeUInt32LE(offset, 16);
+  end.writeUInt16LE(0, 20);
+
+  return new Uint8Array(Buffer.concat([...localParts, centralDirectory, end]));
+};
+
+const forgeVersionDocument = {
+  id: "1.20.4-forge-49.0.50",
+  libraries: [
+    {
+      downloads: {
+        artifact: {
+          path: "net/minecraftforge/forge/1.20.4-49.0.50/forge-1.20.4-49.0.50-client.jar",
+          sha1: "generated-sha",
+          url: "",
+        },
+      },
+      name: "net.minecraftforge:forge:1.20.4-49.0.50:client",
+    },
+    {
+      downloads: {
+        artifact: {
+          path: "net/minecraftforge/bootstrap/1.0/bootstrap-1.0.jar",
+          url: "https://maven.minecraftforge.net/net/minecraftforge/bootstrap/1.0/bootstrap-1.0.jar",
+        },
+      },
+      name: "net.minecraftforge:bootstrap:1.0",
+    },
+  ],
+  mainClass: "net.minecraftforge.bootstrap.ForgeBootstrap",
+};
+
+const neoForgeVersionDocument = {
+  id: "1.20.4-neoforge-20.4.237",
+  libraries: [
+    {
+      downloads: {
+        artifact: {
+          path: "net/neoforged/neoforge/20.4.237/neoforge-20.4.237-client.jar",
+          url: "",
+        },
+      },
+      name: "net.neoforged:neoforge:20.4.237:client",
+    },
+  ],
+  mainClass: "cpw.mods.bootstraplauncher.BootstrapLauncher",
+};
+
+const fakeForgeInstallerFetch = async (
+  input: string | URL | Request,
+): Promise<Response> => {
+  const url = input instanceof Request ? input.url : input.toString();
+
+  if (
+    url ===
+    "https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.4-49.0.50/forge-1.20.4-49.0.50-installer.jar"
+  ) {
+    const archive = createStoredZip({
+      "install_profile.json": "{}",
+      "version.json": JSON.stringify(forgeVersionDocument),
+    });
+
+    return new Response(
+      archive.buffer.slice(
+        archive.byteOffset,
+        archive.byteOffset + archive.byteLength,
+      ) as ArrayBuffer,
+    );
+  }
+
+  return fakeFetch(input);
+};
+
+const fakeNeoForgeInstallerFetch = async (
+  input: string | URL | Request,
+): Promise<Response> => {
+  const url = input instanceof Request ? input.url : input.toString();
+
+  if (
+    url ===
+    "https://maven.neoforged.net/releases/net/neoforged/neoforge/20.4.237/neoforge-20.4.237-installer.jar"
+  ) {
+    const archive = createStoredZip({
+      "install_profile.json": "{}",
+      "version.json": JSON.stringify(neoForgeVersionDocument),
+    });
+
+    return new Response(
+      archive.buffer.slice(
+        archive.byteOffset,
+        archive.byteOffset + archive.byteLength,
+      ) as ArrayBuffer,
+    );
+  }
+
+  return fakeFetch(input);
+};
+
 const wait = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
 const createTestLaunchPlan = (
   directories: LauncherDirectories,
   overrides: Partial<LaunchPlan> = {},
-): LaunchPlan => ({
-  arguments: {
-    game: [],
-    jvm: [],
-  },
-  classpath: [],
-  createdAt: "2024-01-04T00:00:00.000Z",
-  directories: {
-    ...directories,
-    game: join(directories.instances, "instance_test"),
-    natives: join(directories.temp, "natives", "instance_test", "1.20.4"),
-  },
-  instance: {
+): LaunchPlan => {
+  const root = join(directories.instances, "instance_test");
+  const app = join(root, ".nyxen");
+  const game = join(root, ".minecraft");
+  const folders = {
+    app,
+    cache: join(app, "cache"),
+    config: join(game, "config"),
+    game,
+    logs: join(game, "logs"),
+    metadata: join(app, "metadata"),
+    mods: join(game, "mods"),
+    resourcePacks: join(game, "resourcepacks"),
+    root,
+    saves: join(game, "saves"),
+    screenshots: join(game, "screenshots"),
+    shaderPacks: join(game, "shaderpacks"),
+  };
+
+  return {
+    arguments: {
+      game: [],
+      jvm: [],
+    },
+    classpath: [],
     createdAt: "2024-01-04T00:00:00.000Z",
-    gameArgs: [],
-    gameDirectory: join(directories.instances, "instance_test"),
-    iconUrl: null,
-    id: "instance_test",
-    javaArgs: [],
-    javaExecutable: null,
-    lastLaunchedAt: null,
-    loader: "vanilla",
-    loaderVersion: null,
-    memoryMaxMb: 4096,
-    memoryMinMb: 512,
-    name: "Test Instance",
-    profileId: null,
-    updatedAt: "2024-01-04T00:00:00.000Z",
-    versionId: "1.20.4",
-  },
-  java: {
-    executable: "java",
-    memoryMaxMb: 4096,
-    memoryMinMb: 512,
-  },
-  legacyArgFormat: false,
-  minecraft: {
-    assetIndexId: null,
-    mainClass: "net.minecraft.client.main.Main",
-    versionId: "1.20.4",
-  },
-  missingArtifacts: [],
-  nativeArtifactPaths: [],
-  profile: null,
-  warnings: [],
-  ...overrides,
-});
+    directories: {
+      ...directories,
+      game,
+      instance: root,
+      instanceCache: folders.cache,
+      instanceConfig: folders.config,
+      instanceLogs: folders.logs,
+      instanceMetadata: folders.metadata,
+      mods: folders.mods,
+      natives: join(directories.temp, "natives", "instance_test", "1.20.4"),
+      resourcePacks: folders.resourcePacks,
+      saves: folders.saves,
+      screenshots: folders.screenshots,
+      shaderPacks: folders.shaderPacks,
+    },
+    instance: {
+      createdAt: "2024-01-04T00:00:00.000Z",
+      folders,
+      gameArgs: [],
+      gameDirectory: game,
+      iconUrl: null,
+      id: "instance_test",
+      instanceDirectory: root,
+      javaArgs: [],
+      javaExecutable: null,
+      lastLaunchedAt: null,
+      loader: "vanilla",
+      loaderVersion: null,
+      metadataPath: join(folders.metadata, "instance.json"),
+      memoryMaxMb: 4096,
+      memoryMinMb: 512,
+      name: "Test Instance",
+      profileId: null,
+      updatedAt: "2024-01-04T00:00:00.000Z",
+      versionId: "1.20.4",
+    },
+    java: {
+      component: "java-runtime-gamma",
+      executable: "java",
+      management: "auto",
+      majorVersion: 17,
+      memoryMaxMb: 4096,
+      memoryMinMb: 512,
+      runtimePlatform: null,
+      runtimeVersion: null,
+    },
+    legacyArgFormat: false,
+    minecraft: {
+      assetIndexId: null,
+      baseVersionId: "1.20.4",
+      mainClass: "net.minecraft.client.main.Main",
+      versionId: "1.20.4",
+    },
+    missingArtifacts: [],
+    modLoader: {
+      installerPath: null,
+      installerUrl: null,
+      kind: "vanilla",
+      minecraftVersionId: "1.20.4",
+      version: null,
+    },
+    nativeArtifactPaths: [],
+    profile: null,
+    warnings: [],
+    ...overrides,
+  };
+};
 
 describe("launcher backend", () => {
   const dataRoot = mkdtempSync(join(tmpdir(), "nyxen-launcher-"));
@@ -629,11 +980,14 @@ describe("launcher backend", () => {
     const { createLauncherInstance } = await import(
       "../src/bun/launcher/instances"
     );
-    const { refreshMinecraftVersionManifest } = await import(
-      "../src/bun/launcher/versions"
-    );
+    const { getMinecraftVersionDetails, refreshMinecraftVersionManifest } =
+      await import("../src/bun/launcher/versions");
 
     await refreshMinecraftVersionManifest({ fetcher: fakeFetch });
+    await getMinecraftVersionDetails(
+      { versionId: "1.20.4" },
+      { fetcher: fakeFetch },
+    );
 
     expect(() =>
       createLauncherInstance({
@@ -642,6 +996,551 @@ describe("launcher backend", () => {
         versionId: "1.20.4",
       }),
     ).toThrow("Java executable must point to java or javaw");
+  });
+
+  test("creates isolated Prism-style folders for each instance", async () => {
+    const { createLauncherInstance } = await import(
+      "../src/bun/launcher/instances"
+    );
+    const { createLaunchPlan } = await import(
+      "../src/bun/launcher/launch-plan"
+    );
+    const { getLauncherDirectories } = await import(
+      "../src/bun/launcher/paths"
+    );
+    const { refreshMinecraftVersionManifest } = await import(
+      "../src/bun/launcher/versions"
+    );
+
+    await refreshMinecraftVersionManifest({ fetcher: fakeFetch });
+
+    const instance = createLauncherInstance({
+      name: "Folder Layout",
+      versionId: "1.20.4",
+    });
+    const directories = getLauncherDirectories();
+    const expectedRoot = join(directories.instances, instance.id);
+    const expectedGame = join(expectedRoot, ".minecraft");
+    const expectedApp = join(expectedRoot, ".nyxen");
+    const plan = await createLaunchPlan(
+      { instanceId: instance.id },
+      { fetcher: fakeFetch },
+    );
+    const metadata = JSON.parse(readFileSync(instance.metadataPath, "utf8"));
+
+    expect(instance.instanceDirectory).toBe(expectedRoot);
+    expect(instance.gameDirectory).toBe(expectedGame);
+    expect(instance.metadataPath).toBe(
+      join(expectedApp, "metadata", "instance.json"),
+    );
+    expect(instance.folders.app).toBe(expectedApp);
+    expect(instance.folders.cache).toBe(join(expectedApp, "cache"));
+    expect(instance.folders.metadata).toBe(join(expectedApp, "metadata"));
+    expect(instance.folders.mods).toBe(join(expectedGame, "mods"));
+    expect(instance.folders.resourcePacks).toBe(
+      join(expectedGame, "resourcepacks"),
+    );
+    expect(plan.directories.instance).toBe(expectedRoot);
+    expect(plan.directories.instanceCache).toBe(join(expectedApp, "cache"));
+    expect(plan.directories.instanceMetadata).toBe(
+      join(expectedApp, "metadata"),
+    );
+    expect(plan.directories.game).toBe(expectedGame);
+    expect(plan.directories.mods).toBe(join(expectedGame, "mods"));
+    expect(plan.directories.saves).toBe(join(expectedGame, "saves"));
+    expect(metadata).toMatchObject({
+      app: {
+        name: "nyxen",
+        schemaVersion: 1,
+      },
+      gameDirectory: expectedGame,
+      instanceDirectory: expectedRoot,
+      instanceId: instance.id,
+      loader: "vanilla",
+      name: "Folder Layout",
+      versionId: "1.20.4",
+    });
+
+    for (const directory of Object.values(instance.folders)) {
+      expect(existsSync(directory)).toBe(true);
+    }
+  });
+
+  test("resolves Fabric launch metadata and maven artifacts", async () => {
+    const { createLauncherInstance } = await import(
+      "../src/bun/launcher/instances"
+    );
+    const { createLaunchPlan } = await import(
+      "../src/bun/launcher/launch-plan"
+    );
+    const { getMinecraftVersionDetails, refreshMinecraftVersionManifest } =
+      await import("../src/bun/launcher/versions");
+
+    await refreshMinecraftVersionManifest({ fetcher: fakeFetch });
+    await getMinecraftVersionDetails(
+      { versionId: "1.20.4" },
+      { fetcher: fakeFetch },
+    );
+
+    const instance = createLauncherInstance({
+      loader: "fabric",
+      loaderVersion: "0.15.7",
+      name: "Fabric Survival",
+      versionId: "1.20.4",
+    });
+    const plan = await createLaunchPlan(
+      { instanceId: instance.id },
+      { fetcher: fakeFabricFetch },
+    );
+
+    expect(plan.modLoader).toMatchObject({
+      installerPath: null,
+      kind: "fabric",
+      minecraftVersionId: "1.20.4",
+      version: "0.15.7",
+    });
+    expect(plan.minecraft.baseVersionId).toBe("1.20.4");
+    expect(plan.minecraft.versionId).toBe("fabric-loader-0.15.7-1.20.4");
+    expect(plan.minecraft.mainClass).toBe(
+      "net.fabricmc.loader.impl.launch.knot.KnotClient",
+    );
+    expect(plan.classpath.some((path) => path.includes("fabric-loader"))).toBe(
+      true,
+    );
+    expect(
+      plan.missingArtifacts.some(
+        (artifact) =>
+          artifact.id === "net.fabricmc:fabric-loader:0.15.7" &&
+          artifact.url ===
+            "https://maven.fabricmc.net/net/fabricmc/fabric-loader/0.15.7/fabric-loader-0.15.7.jar",
+      ),
+    ).toBe(true);
+    expect(plan.warnings).not.toContain(
+      "Mod loader resolution is not implemented yet.",
+    );
+  });
+
+  test("resolves Quilt launch metadata and maven artifacts", async () => {
+    const { createLauncherInstance } = await import(
+      "../src/bun/launcher/instances"
+    );
+    const { createLaunchPlan } = await import(
+      "../src/bun/launcher/launch-plan"
+    );
+    const { getMinecraftVersionDetails, refreshMinecraftVersionManifest } =
+      await import("../src/bun/launcher/versions");
+
+    await refreshMinecraftVersionManifest({ fetcher: fakeFetch });
+    await getMinecraftVersionDetails(
+      { versionId: "1.20.4" },
+      { fetcher: fakeFetch },
+    );
+
+    const instance = createLauncherInstance({
+      loader: "quilt",
+      loaderVersion: "0.26.4",
+      name: "Quilt Survival",
+      versionId: "1.20.4",
+    });
+    const plan = await createLaunchPlan(
+      { instanceId: instance.id },
+      { fetcher: fakeQuiltFetch },
+    );
+
+    expect(plan.modLoader).toMatchObject({
+      installerPath: null,
+      kind: "quilt",
+      minecraftVersionId: "1.20.4",
+      version: "0.26.4",
+    });
+    expect(plan.minecraft.versionId).toBe("quilt-loader-0.26.4-1.20.4");
+    expect(plan.minecraft.mainClass).toBe(
+      "org.quiltmc.loader.impl.launch.knot.KnotClient",
+    );
+    expect(
+      plan.missingArtifacts.some(
+        (artifact) =>
+          artifact.id === "org.quiltmc:quilt-loader:0.26.4" &&
+          artifact.url ===
+            "https://maven.quiltmc.org/repository/release/org/quiltmc/quilt-loader/0.26.4/quilt-loader-0.26.4.jar",
+      ),
+    ).toBe(true);
+  });
+
+  test("resolves Forge installer metadata and generated artifacts", async () => {
+    const { createLauncherInstance } = await import(
+      "../src/bun/launcher/instances"
+    );
+    const { createLaunchPlan } = await import(
+      "../src/bun/launcher/launch-plan"
+    );
+    const { getMinecraftVersionDetails, refreshMinecraftVersionManifest } =
+      await import("../src/bun/launcher/versions");
+
+    await refreshMinecraftVersionManifest({ fetcher: fakeFetch });
+    await getMinecraftVersionDetails(
+      { versionId: "1.20.4" },
+      { fetcher: fakeFetch },
+    );
+
+    const instance = createLauncherInstance({
+      loader: "forge",
+      loaderVersion: "49.0.50",
+      name: "Forge Survival",
+      versionId: "1.20.4",
+    });
+    const plan = await createLaunchPlan(
+      { instanceId: instance.id },
+      { fetcher: fakeForgeInstallerFetch, requestTimeoutMs: 100 },
+    );
+    const generatedArtifact = plan.missingArtifacts.find(
+      (artifact) =>
+        artifact.id === "net.minecraftforge:forge:1.20.4-49.0.50:client",
+    );
+
+    expect(plan.modLoader.kind).toBe("forge");
+    expect(plan.modLoader.version).toBe("49.0.50");
+    expect(plan.modLoader.installerPath).toContain(
+      "forge-1.20.4-49.0.50-installer.jar",
+    );
+    expect(existsSync(plan.modLoader.installerPath ?? "")).toBe(true);
+    expect(plan.minecraft.versionId).toBe("1.20.4-forge-49.0.50");
+    expect(plan.minecraft.mainClass).toBe(
+      "net.minecraftforge.bootstrap.ForgeBootstrap",
+    );
+    expect(generatedArtifact?.url).toBe("");
+    expect(generatedArtifact?.path).toContain(
+      "forge-1.20.4-49.0.50-client.jar",
+    );
+  });
+
+  test("resolves NeoForge installer metadata and generated artifacts", async () => {
+    const { createLauncherInstance } = await import(
+      "../src/bun/launcher/instances"
+    );
+    const { createLaunchPlan } = await import(
+      "../src/bun/launcher/launch-plan"
+    );
+    const { getMinecraftVersionDetails, refreshMinecraftVersionManifest } =
+      await import("../src/bun/launcher/versions");
+
+    await refreshMinecraftVersionManifest({ fetcher: fakeFetch });
+    await getMinecraftVersionDetails(
+      { versionId: "1.20.4" },
+      { fetcher: fakeFetch },
+    );
+
+    const instance = createLauncherInstance({
+      loader: "neoforge",
+      loaderVersion: "20.4.237",
+      name: "NeoForge Survival",
+      versionId: "1.20.4",
+    });
+    const plan = await createLaunchPlan(
+      { instanceId: instance.id },
+      { fetcher: fakeNeoForgeInstallerFetch, requestTimeoutMs: 100 },
+    );
+    const generatedArtifact = plan.missingArtifacts.find(
+      (artifact) => artifact.id === "net.neoforged:neoforge:20.4.237:client",
+    );
+
+    expect(plan.modLoader.kind).toBe("neoforge");
+    expect(plan.modLoader.version).toBe("20.4.237");
+    expect(plan.modLoader.installerPath).toContain(
+      "neoforge-20.4.237-installer.jar",
+    );
+    expect(existsSync(plan.modLoader.installerPath ?? "")).toBe(true);
+    expect(plan.minecraft.versionId).toBe("1.20.4-neoforge-20.4.237");
+    expect(plan.minecraft.mainClass).toBe(
+      "cpw.mods.bootstraplauncher.BootstrapLauncher",
+    );
+    expect(generatedArtifact?.url).toBe("");
+    expect(generatedArtifact?.path).toContain("neoforge-20.4.237-client.jar");
+  });
+
+  test("runs mod loader installers for generated artifacts without URLs", async () => {
+    const { downloadArtifacts } = await import("../src/bun/launcher/download");
+    const { getLauncherDirectories } = await import(
+      "../src/bun/launcher/paths"
+    );
+    const directories = getLauncherDirectories();
+    const installerPath = join(
+      directories.downloads,
+      "loaders",
+      "forge",
+      "installer.jar",
+    );
+    const generatedPath = join(
+      directories.libraries,
+      "net",
+      "minecraftforge",
+      "forge",
+      "1.20.4-49.0.50",
+      "forge-1.20.4-49.0.50-client.jar",
+    );
+    mkdirSync(dirname(installerPath), { recursive: true });
+    writeFileSync(installerPath, "installer");
+    const plan = createTestLaunchPlan(directories, {
+      missingArtifacts: [
+        {
+          id: "net.minecraftforge:forge:1.20.4-49.0.50:client",
+          kind: "library",
+          path: generatedPath,
+        },
+      ],
+      modLoader: {
+        installerPath,
+        installerUrl:
+          "https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.4-49.0.50/forge-1.20.4-49.0.50-installer.jar",
+        kind: "forge",
+        minecraftVersionId: "1.20.4",
+        version: "49.0.50",
+      },
+    });
+
+    const result = await downloadArtifacts(plan, {
+      installerRunner: () => {
+        mkdirSync(dirname(generatedPath), { recursive: true });
+        writeFileSync(generatedPath, "generated");
+      },
+    });
+
+    expect(result).toEqual({ failed: [], succeeded: 1 });
+    expect(existsSync(generatedPath)).toBe(true);
+  });
+
+  test("plans managed Java runtime artifacts when app-controlled", async () => {
+    const { createLauncherInstance } = await import(
+      "../src/bun/launcher/instances"
+    );
+    const { createLaunchPlan } = await import(
+      "../src/bun/launcher/launch-plan"
+    );
+    const { getMinecraftVersionDetails, refreshMinecraftVersionManifest } =
+      await import("../src/bun/launcher/versions");
+    const { updateSetting } = await import("../src/bun/settings/store");
+
+    updateSetting({
+      key: "launcher.javaManagement",
+      value: "app-controlled",
+    });
+
+    try {
+      await refreshMinecraftVersionManifest({ fetcher: fakeFetch });
+      await getMinecraftVersionDetails(
+        { versionId: "1.20.4" },
+        { fetcher: fakeFetch },
+      );
+
+      const instance = createLauncherInstance({
+        javaExecutable: "/usr/bin/java",
+        name: "Managed Java",
+        versionId: "1.20.4",
+      });
+      const plan = await createLaunchPlan(
+        { instanceId: instance.id },
+        { fetcher: fakeRuntimeFetch },
+      );
+      const runtimeArtifacts = plan.missingArtifacts.filter(
+        (artifact) => artifact.kind === "javaRuntime",
+      );
+
+      expect(plan.java.management).toBe("app-controlled");
+      expect(plan.java.component).toBe("java-runtime-gamma");
+      expect(plan.java.majorVersion).toBe(17);
+      expect(plan.java.runtimePlatform).toBe(currentJavaRuntimePlatform());
+      expect(plan.java.runtimeVersion).toBe("17.0.1");
+      expect(plan.java.executable).toContain(runtimeExecutablePath);
+      expect(plan.java.executable).not.toBe("/usr/bin/java");
+      expect(runtimeArtifacts).toHaveLength(2);
+      expect(runtimeArtifacts.some((artifact) => artifact.executable)).toBe(
+        true,
+      );
+      expect(plan.warnings).toContain(
+        "Instance Java executable is ignored while app-controlled Java management is enabled.",
+      );
+    } finally {
+      updateSetting({
+        key: "launcher.javaManagement",
+        value: "auto",
+      });
+    }
+  });
+
+  test("reuses cached Java runtime metadata for repeated app-controlled plans", async () => {
+    const { createLauncherInstance } = await import(
+      "../src/bun/launcher/instances"
+    );
+    const { createLaunchPlan } = await import(
+      "../src/bun/launcher/launch-plan"
+    );
+    const { getMinecraftVersionDetails, refreshMinecraftVersionManifest } =
+      await import("../src/bun/launcher/versions");
+    const { updateSetting } = await import("../src/bun/settings/store");
+    const runtimeManifestUrl =
+      "https://runtime.test/cache-speed/java-runtime-all.json";
+    const packageManifestUrl =
+      "https://runtime.test/cache-speed/java-runtime-gamma/manifest.json";
+    let runtimeMetadataRequests = 0;
+    const seedRuntimeFetch = async (
+      input: string | URL | Request,
+    ): Promise<Response> => {
+      const url = input instanceof Request ? input.url : input.toString();
+
+      if (url === runtimeManifestUrl) {
+        runtimeMetadataRequests++;
+        return jsonResponse(
+          runtimeAllDocument([
+            runtimeEntryDocument({
+              manifestUrl: packageManifestUrl,
+              versionName: "17.0.9",
+            }),
+          ]),
+        );
+      }
+
+      if (url === packageManifestUrl) {
+        runtimeMetadataRequests++;
+        return jsonResponse(runtimePackageManifestDocument());
+      }
+
+      return fakeFetch(input);
+    };
+    const offlineRuntimeFetch = async (
+      input: string | URL | Request,
+    ): Promise<Response> => {
+      const url = input instanceof Request ? input.url : input.toString();
+
+      if (url === runtimeManifestUrl || url === packageManifestUrl) {
+        runtimeMetadataRequests++;
+        throw new Error("Expected Java runtime metadata to come from cache.");
+      }
+
+      return fakeFetch(input);
+    };
+
+    updateSetting({
+      key: "launcher.javaManagement",
+      value: "app-controlled",
+    });
+
+    try {
+      await refreshMinecraftVersionManifest({ fetcher: fakeFetch });
+      await getMinecraftVersionDetails(
+        { versionId: "1.20.4" },
+        { fetcher: fakeFetch },
+      );
+
+      const instance = createLauncherInstance({
+        name: "Cached Managed Java",
+        versionId: "1.20.4",
+      });
+
+      await createLaunchPlan(
+        { instanceId: instance.id },
+        {
+          fetcher: seedRuntimeFetch,
+          javaRuntimeManifestUrl: runtimeManifestUrl,
+        },
+      );
+
+      const requestsAfterSeed = runtimeMetadataRequests;
+      const cachedPlan = await createLaunchPlan(
+        { instanceId: instance.id },
+        {
+          fetcher: offlineRuntimeFetch,
+          javaRuntimeManifestUrl: runtimeManifestUrl,
+        },
+      );
+
+      expect(cachedPlan.java.runtimeVersion).toBe("17.0.9");
+      expect(runtimeMetadataRequests).toBe(requestsAfterSeed);
+    } finally {
+      updateSetting({
+        key: "launcher.javaManagement",
+        value: "auto",
+      });
+    }
+  });
+
+  test("selects the newest managed Java runtime when metadata order is stale", async () => {
+    const { createLauncherInstance } = await import(
+      "../src/bun/launcher/instances"
+    );
+    const { createLaunchPlan } = await import(
+      "../src/bun/launcher/launch-plan"
+    );
+    const { getMinecraftVersionDetails, refreshMinecraftVersionManifest } =
+      await import("../src/bun/launcher/versions");
+    const { updateSetting } = await import("../src/bun/settings/store");
+    const runtimeManifestUrl =
+      "https://runtime.test/newest/java-runtime-all.json";
+    const oldManifestUrl =
+      "https://runtime.test/java-runtime-gamma/17.0.1/manifest.json";
+    const newManifestUrl =
+      "https://runtime.test/java-runtime-gamma/17.0.2/manifest.json";
+    const newestFirstFetch = async (
+      input: string | URL | Request,
+    ): Promise<Response> => {
+      const url = input instanceof Request ? input.url : input.toString();
+
+      if (url === runtimeManifestUrl) {
+        return jsonResponse(
+          runtimeAllDocument([
+            runtimeEntryDocument({
+              manifestUrl: oldManifestUrl,
+              released: "2024-01-04T00:00:00+00:00",
+              versionName: "17.0.1",
+            }),
+            runtimeEntryDocument({
+              manifestUrl: newManifestUrl,
+              released: "2024-02-04T00:00:00+00:00",
+              versionName: "17.0.2",
+            }),
+          ]),
+        );
+      }
+
+      if (url === oldManifestUrl || url === newManifestUrl) {
+        return jsonResponse(runtimePackageManifestDocument());
+      }
+
+      return fakeFetch(input);
+    };
+
+    updateSetting({
+      key: "launcher.javaManagement",
+      value: "app-controlled",
+    });
+
+    try {
+      await refreshMinecraftVersionManifest({ fetcher: fakeFetch });
+      await getMinecraftVersionDetails(
+        { versionId: "1.20.4" },
+        { fetcher: fakeFetch },
+      );
+
+      const instance = createLauncherInstance({
+        name: "Newest Managed Java",
+        versionId: "1.20.4",
+      });
+      const plan = await createLaunchPlan(
+        { instanceId: instance.id },
+        {
+          fetcher: newestFirstFetch,
+          javaRuntimeManifestUrl: runtimeManifestUrl,
+          manifestCacheTtlMs: 0,
+        },
+      );
+
+      expect(plan.java.runtimeVersion).toBe("17.0.2");
+      expect(plan.java.executable).toContain("17.0.2");
+    } finally {
+      updateSetting({
+        key: "launcher.javaManagement",
+        value: "auto",
+      });
+    }
   });
 
   test("does not fetch artifacts whose paths leave launcher storage", async () => {
@@ -706,6 +1605,42 @@ describe("launcher backend", () => {
 
     expect(result).toEqual({ failed: [], succeeded: 4 });
     expect(maxActive).toBeLessThanOrEqual(2);
+  });
+
+  test("marks downloaded managed Java executables as runnable", async () => {
+    const { existsSync, statSync } = await import("node:fs");
+    const { downloadArtifacts } = await import("../src/bun/launcher/download");
+    const { getLauncherDirectories } = await import(
+      "../src/bun/launcher/paths"
+    );
+    const directories = getLauncherDirectories();
+    const executablePath = join(
+      directories.runtimes,
+      "test-runtime",
+      runtimeExecutablePath,
+    );
+    const plan = createTestLaunchPlan(directories, {
+      missingArtifacts: [
+        {
+          executable: true,
+          id: "java-runtime-gamma:17.0.1:bin/java",
+          kind: "javaRuntime",
+          path: executablePath,
+          url: "https://runtime.test/java-runtime-gamma/bin/java",
+        },
+      ],
+    });
+
+    const result = await downloadArtifacts(plan, {
+      fetcher: async () => new Response("java-binary"),
+    });
+
+    expect(result).toEqual({ failed: [], succeeded: 1 });
+    expect(existsSync(executablePath)).toBe(true);
+
+    if (process.platform !== "win32") {
+      expect(statSync(executablePath).mode & 0o111).not.toBe(0);
+    }
   });
 
   test("launch RPC rebuilds renderer-provided plans before launching", async () => {

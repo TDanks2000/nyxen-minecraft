@@ -14,6 +14,8 @@ export type SettingValue = string | number | boolean | null;
 
 export type AppSettings = Record<string, SettingValue>;
 
+export type JavaManagementMode = "app-controlled" | "auto";
+
 export type SettingsStatus = {
   path: string;
   storage: "json" | "database";
@@ -31,6 +33,21 @@ export type LauncherDirectories = {
   downloads: string;
   logs: string;
   temp: string;
+};
+
+export type LauncherInstanceFolders = {
+  root: string;
+  app: string;
+  cache: string;
+  metadata: string;
+  game: string;
+  mods: string;
+  config: string;
+  resourcePacks: string;
+  shaderPacks: string;
+  saves: string;
+  screenshots: string;
+  logs: string;
 };
 
 export type LauncherStatus = {
@@ -110,6 +127,7 @@ export type MinecraftLibrary = {
       version?: string;
     };
   }>;
+  url?: string;
 };
 
 export type MinecraftVersionDetails = {
@@ -122,6 +140,10 @@ export type MinecraftVersionDetails = {
   cachedAt: string;
   downloads?: Record<string, MinecraftDownload>;
   id: string;
+  javaVersion?: {
+    component: string;
+    majorVersion: number;
+  };
   libraries: Array<MinecraftLibrary>;
   mainClass?: string;
   minecraftArguments?: string;
@@ -196,15 +218,18 @@ export type ModLoader = "fabric" | "forge" | "neoforge" | "quilt" | "vanilla";
 
 export type LauncherInstance = {
   createdAt: string;
+  folders: LauncherInstanceFolders;
   gameArgs: Array<string>;
   gameDirectory: string;
   iconUrl: string | null;
   id: string;
+  instanceDirectory: string;
   javaArgs: Array<string>;
   javaExecutable: string | null;
   lastLaunchedAt: string | null;
   loader: ModLoader;
   loaderVersion: string | null;
+  metadataPath: string;
   memoryMaxMb: number;
   memoryMinMb: number;
   name: string;
@@ -232,10 +257,13 @@ export type LaunchPlanMissingArtifact = {
   kind:
     | "assetIndex"
     | "clientJar"
+    | "javaRuntime"
     | "library"
+    | "modLoaderInstaller"
     | "nativeLibrary"
     | "versionMetadata";
   path: string;
+  executable?: boolean;
   sha1?: string;
   url?: string;
 };
@@ -249,21 +277,44 @@ export type LaunchPlan = {
   createdAt: string;
   directories: LauncherDirectories & {
     game: string;
+    instance: string;
+    instanceCache: string;
+    instanceConfig: string;
+    instanceLogs: string;
+    instanceMetadata: string;
+    mods: string;
     natives: string;
+    resourcePacks: string;
+    saves: string;
+    screenshots: string;
+    shaderPacks: string;
   };
   instance: LauncherInstance;
   java: {
+    component: string | null;
     executable: string;
+    management: JavaManagementMode;
+    majorVersion: number | null;
     memoryMaxMb: number;
     memoryMinMb: number;
+    runtimePlatform: string | null;
+    runtimeVersion: string | null;
   };
   legacyArgFormat: boolean;
   minecraft: {
     assetIndexId: string | null;
+    baseVersionId: string;
     mainClass: string | null;
     versionId: string;
   };
   missingArtifacts: Array<LaunchPlanMissingArtifact>;
+  modLoader: {
+    installerPath: string | null;
+    installerUrl: string | null;
+    kind: ModLoader;
+    minecraftVersionId: string;
+    version: string | null;
+  };
   nativeArtifactPaths: Array<string>;
   profile: LauncherProfile | null;
   warnings: Array<string>;
