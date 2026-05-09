@@ -1,6 +1,7 @@
 import { Loader2Icon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import type { LauncherInstance, ModLoader } from "@/shared/types";
 import { Button } from "@/views/main/components/ui/button";
 import {
   Dialog,
@@ -26,7 +27,6 @@ import { useSettings } from "@/views/main/hooks/use-settings";
 import { useVersions } from "@/views/main/hooks/use-versions";
 import { rpc } from "@/views/main/lib/rpc";
 import { cn } from "@/views/main/lib/utils";
-import type { LauncherInstance, ModLoader } from "../../../../../shared/types";
 
 type Props = {
   open: boolean;

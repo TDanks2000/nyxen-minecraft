@@ -759,6 +759,7 @@ describe("launcher backend", () => {
     ]);
     expect(profile.kind).toBe("microsoft");
     expect(profile.ownershipCheckedAt).toBe("2099-01-04T00:00:00.000Z");
+    expect(profile.skinUrl).toBe("https://textures.minecraft.net/texture/test");
     expect(listLauncherProfiles()).toHaveLength(1);
     expect(listLauncherInstances()).toHaveLength(1);
     expect(plan.profile?.id).toBe(profile.id);

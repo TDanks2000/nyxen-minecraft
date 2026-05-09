@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
+import type { LauncherInstance } from "@/shared/types";
 import { rpc } from "@/views/main/lib/rpc";
-import type { LauncherInstance } from "../../../shared/types";
 
 export function useInstances(): {
   data: Array<LauncherInstance> | null;

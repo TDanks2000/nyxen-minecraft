@@ -7,6 +7,10 @@ import {
 } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
+import type {
+  LauncherProfile,
+  MicrosoftProfileLoginStart,
+} from "@/shared/types";
 import {
   Alert,
   AlertDescription,
@@ -22,10 +26,6 @@ import {
   DialogTitle,
 } from "@/views/main/components/ui/dialog";
 import { rpc } from "@/views/main/lib/rpc";
-import type {
-  LauncherProfile,
-  MicrosoftProfileLoginStart,
-} from "../../../../../shared/types";
 
 type Props = {
   open: boolean;

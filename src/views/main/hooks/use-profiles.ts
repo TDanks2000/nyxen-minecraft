@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
+import type { LauncherProfile } from "@/shared/types";
 import { rpc } from "@/views/main/lib/rpc";
-import type { LauncherProfile } from "../../../shared/types";
 
 type ProfilesState = {
   data: Array<LauncherProfile> | null;

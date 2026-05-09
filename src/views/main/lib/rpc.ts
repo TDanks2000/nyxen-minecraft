@@ -1,5 +1,5 @@
 import { Electroview } from "electrobun/view";
-import type { MainViewRPC } from "../../../shared/rpc/types";
+import type { MainViewRPC } from "@/shared/rpc/types";
 
 const viewRpc = Electroview.defineRPC<MainViewRPC>({
   handlers: {

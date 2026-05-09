@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { LoaderVersionSummary, ModLoader } from "@/shared/types";
 import { rpc } from "@/views/main/lib/rpc";
-import type { LoaderVersionSummary, ModLoader } from "../../../shared/types";
 
 export function useLoaderVersions(loader: ModLoader, mcVersion: string) {
   const [data, setData] = useState<Array<LoaderVersionSummary> | null>(null);

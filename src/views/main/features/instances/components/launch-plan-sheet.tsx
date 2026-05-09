@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import type { LaunchPlan } from "@/shared/types";
 import { Button } from "@/views/main/components/ui/button";
 import {
   Sheet,
@@ -22,7 +23,6 @@ import {
   SheetTitle,
 } from "@/views/main/components/ui/sheet";
 import { rpc } from "@/views/main/lib/rpc";
-import type { LaunchPlan } from "../../../../../shared/types";
 
 type Props = {
   open: boolean;

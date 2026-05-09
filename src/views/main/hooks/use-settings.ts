@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import type { SettingsStatus, SettingValue } from "@/shared/types";
 import { rpc } from "@/views/main/lib/rpc";
-import type { SettingsStatus, SettingValue } from "../../../shared/types";
 
 export function useSettings(): {
   data: SettingsStatus | null;

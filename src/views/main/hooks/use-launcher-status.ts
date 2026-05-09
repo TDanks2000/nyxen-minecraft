@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
+import type { LauncherStatus } from "@/shared/types";
 import { rpc } from "@/views/main/lib/rpc";
-import type { LauncherStatus } from "../../../shared/types";
 
 export function useLauncherStatus(): {
   data: LauncherStatus | null;

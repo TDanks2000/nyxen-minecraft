@@ -11,13 +11,12 @@ import {
   SettingsIcon,
   UserRoundIcon,
 } from "lucide-react";
-import { type ComponentType, type SVGProps, useState } from "react";
-import { toast } from "sonner";
+import { type ComponentType, type SVGProps, useMemo } from "react";
+import type { ModLoader } from "@/shared/types";
 import { LaunchPlanSheet } from "@/views/main/features/instances/components/launch-plan-sheet";
+import { useLaunchPlan } from "@/views/main/features/instances/hooks/use-launch-plan";
 import { useInstances } from "@/views/main/hooks/use-instances";
-import { rpc } from "@/views/main/lib/rpc";
 import { cn } from "@/views/main/lib/utils";
-import type { LaunchPlan, ModLoader } from "../../../../shared/types";
 
 type NavItem = {
   label: string;
@@ -72,37 +71,24 @@ const LOADER_COLORS: Record<ModLoader, string> = {
 export function AppSidebar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const instancesHook = useInstances();
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [activePlan, setActivePlan] = useState<LaunchPlan | null>(null);
-  const [planLoadingId, setPlanLoadingId] = useState<string | null>(null);
+  const launchPlan = useLaunchPlan();
 
-  const quickPlayInstances = [...(instancesHook.data ?? [])]
-    .sort((a, b) => {
-      if (a.lastLaunchedAt && b.lastLaunchedAt)
+  const quickPlayInstances = useMemo(() => {
+    return [...(instancesHook.data ?? [])]
+      .sort((a, b) => {
+        if (a.lastLaunchedAt && b.lastLaunchedAt)
+          return (
+            new Date(b.lastLaunchedAt).getTime() -
+            new Date(a.lastLaunchedAt).getTime()
+          );
+        if (a.lastLaunchedAt) return -1;
+        if (b.lastLaunchedAt) return 1;
         return (
-          new Date(b.lastLaunchedAt).getTime() -
-          new Date(a.lastLaunchedAt).getTime()
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         );
-      if (a.lastLaunchedAt) return -1;
-      if (b.lastLaunchedAt) return 1;
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    })
-    .slice(0, 3);
-
-  async function handlePlay(instanceId: string) {
-    setPlanLoadingId(instanceId);
-    try {
-      const plan = await rpc.requestProxy.createLaunchPlan({ instanceId });
-      setActivePlan(plan);
-      setSheetOpen(true);
-    } catch (e) {
-      toast.error(
-        e instanceof Error ? e.message : "Failed to create launch plan",
-      );
-    } finally {
-      setPlanLoadingId(null);
-    }
-  }
+      })
+      .slice(0, 3);
+  }, [instancesHook.data]);
 
   return (
     <aside className="flex flex-col w-52 shrink-0 bg-sidebar border-r border-sidebar-border overflow-y-auto">
@@ -182,11 +168,13 @@ export function AppSidebar() {
               </div>
               <button
                 type="button"
-                disabled={planLoadingId !== null}
-                onClick={() => handlePlay(item.id)}
+                disabled={launchPlan.loadingInstanceId !== null}
+                onClick={() => {
+                  void launchPlan.createLaunchPlan(item.id);
+                }}
                 className="size-6 bg-primary hover:bg-primary/80 rounded-sm flex items-center justify-center shrink-0 opacity-40 group-hover:opacity-100 transition-opacity disabled:cursor-wait"
               >
-                {planLoadingId === item.id ? (
+                {launchPlan.loadingInstanceId === item.id ? (
                   <Loader2Icon className="size-2.5 text-primary-foreground animate-spin" />
                 ) : (
                   <PlayIcon className="size-2.5 fill-primary-foreground text-primary-foreground" />
@@ -232,9 +220,9 @@ export function AppSidebar() {
         </div>
       </div>
       <LaunchPlanSheet
-        open={sheetOpen}
-        onOpenChange={setSheetOpen}
-        plan={activePlan}
+        open={launchPlan.sheetOpen}
+        onOpenChange={launchPlan.setSheetOpen}
+        plan={launchPlan.activePlan}
       />
     </aside>
   );
