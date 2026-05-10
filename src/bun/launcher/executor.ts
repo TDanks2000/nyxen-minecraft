@@ -107,6 +107,35 @@ const substituteVars = (
 ): string =>
   template.replace(/\$\{([^}]+)\}/g, (_, key: string) => vars[key] ?? "");
 
+const includeBaseClientJarInIgnoreList = (
+  arg: string,
+  plan: LaunchPlan,
+): string => {
+  const prefix = "-DignoreList=";
+
+  if (!arg.startsWith(prefix)) {
+    return arg;
+  }
+
+  const baseClientJar = `${plan.minecraft.baseVersionId}.jar`;
+
+  if (plan.minecraft.baseVersionId === plan.minecraft.versionId) {
+    return arg;
+  }
+
+  const ignored = arg
+    .slice(prefix.length)
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  if (ignored.includes(baseClientJar)) {
+    return arg;
+  }
+
+  return `${prefix}${[...ignored, baseClientJar].join(",")}`;
+};
+
 export type LaunchOptions = {
   accessToken?: string;
 };
@@ -230,7 +259,11 @@ const buildCommand = (
     );
   } else {
     for (const arg of plan.arguments.jvm) {
-      jvmArgs.push(...evaluateArg(arg).map((a) => substituteVars(a, vars)));
+      jvmArgs.push(
+        ...evaluateArg(arg).map((a) =>
+          includeBaseClientJarInIgnoreList(substituteVars(a, vars), plan),
+        ),
+      );
     }
   }
 
@@ -326,6 +359,20 @@ export const launchMinecraft = (
 
   const { executable, args } = buildCommand(plan, options);
   const processLog = createLauncherProcessLog(plan);
+  let processLogClosed = false;
+  const writeProcessLog = (chunk: Buffer | string): void => {
+    if (!processLogClosed && processLog.stream.writable) {
+      processLog.stream.write(chunk);
+    }
+  };
+  const endProcessLog = (message = ""): void => {
+    if (processLogClosed) {
+      return;
+    }
+
+    processLogClosed = true;
+    processLog.stream.end(message);
+  };
 
   let child: ChildProcess;
 
@@ -338,7 +385,7 @@ export const launchMinecraft = (
       stdio: ["ignore", "pipe", "pipe"],
     });
   } catch (error) {
-    processLog.stream.end();
+    endProcessLog();
     throw new Error(
       error instanceof Error
         ? `Failed to start Java: ${error.message}`
@@ -346,18 +393,18 @@ export const launchMinecraft = (
     );
   }
 
-  child.stdout?.pipe(processLog.stream, { end: false });
-  child.stderr?.pipe(processLog.stream, { end: false });
+  child.stdout?.on("data", writeProcessLog);
+  child.stderr?.on("data", writeProcessLog);
 
   child.once("error", () => {
-    processLog.stream.end("\nJava process failed to start.\n");
+    endProcessLog("\nJava process failed to start.\n");
     if (runningLaunches.get(plan.instance.id)?.child === child) {
       runningLaunches.delete(plan.instance.id);
     }
   });
 
   if (!child.pid) {
-    processLog.stream.end();
+    endProcessLog();
     throw new Error(
       "Failed to start Java. Make sure Java is installed and available on PATH.",
     );
@@ -374,7 +421,7 @@ export const launchMinecraft = (
 
   runningLaunches.set(plan.instance.id, launch);
   child.once("exit", (code, signal) => {
-    processLog.stream.end(
+    endProcessLog(
       `\nJava process exited with code ${code ?? "null"} and signal ${
         signal ?? "null"
       }.\n`,

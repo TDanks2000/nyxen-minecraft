@@ -387,6 +387,34 @@ export const createLaunchPlan = async (
     });
   }
 
+  for (const library of modLoader?.generatedLibraries ?? []) {
+    if (!isLibraryAllowed(library)) {
+      continue;
+    }
+
+    const artifact = libraryArtifactDownload(
+      library,
+      library.downloads?.artifact,
+    );
+    const artifactPath = libraryArtifactPath(library, artifact);
+
+    if (!artifactPath) {
+      continue;
+    }
+
+    addMissingArtifact(missingArtifacts, {
+      id: library.name,
+      kind: "library",
+      path: joinArtifactPath(
+        directories.libraries,
+        artifactPath,
+        `Generated library ${library.name}`,
+      ),
+      sha1: artifact?.sha1,
+      url: artifact?.url,
+    });
+  }
+
   const clientDownload = versionDetails.downloads?.client;
   const clientJarPath = join(
     directories.versions,
@@ -441,6 +469,7 @@ export const createLaunchPlan = async (
   }
 
   const classpathLibraries: Array<string> = [];
+  const classpathLibraryPaths = new Set<string>();
 
   for (const library of launchDetails.libraries.filter(isLibraryAllowed)) {
     const artifact = libraryArtifactDownload(
@@ -464,7 +493,11 @@ export const createLaunchPlan = async (
         sha1: artifact?.sha1,
         url: artifact?.url,
       });
-      classpathLibraries.push(fullPath);
+
+      if (!classpathLibraryPaths.has(fullPath)) {
+        classpathLibraryPaths.add(fullPath);
+        classpathLibraries.push(fullPath);
+      }
 
       if (isNativeArtifact) {
         nativeArtifactPaths.push(fullPath);

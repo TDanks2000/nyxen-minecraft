@@ -46,6 +46,7 @@ export type ResolvedModLoader = {
     game?: Array<unknown>;
     jvm?: Array<unknown>;
   };
+  generatedLibraries: Array<MinecraftLibrary>;
   id: string;
   installerPath: string | null;
   installerUrl: string | null;
@@ -291,12 +292,12 @@ const generatedClientLibraryFromInstallProfile = (
   };
 };
 
-const mergeGeneratedClientLibrary = (
+const generatedClientLibrariesFromInstallProfile = (
   libraries: Array<MinecraftLibrary>,
   generatedClientLibrary: MinecraftLibrary | null,
 ): Array<MinecraftLibrary> => {
   if (!generatedClientLibrary?.downloads?.artifact?.path) {
-    return libraries;
+    return [];
   }
 
   const generatedPath = generatedClientLibrary.downloads.artifact.path;
@@ -306,7 +307,7 @@ const mergeGeneratedClientLibrary = (
       library.downloads?.artifact?.path === generatedPath,
   );
 
-  return alreadyListed ? libraries : [...libraries, generatedClientLibrary];
+  return alreadyListed ? [] : [generatedClientLibrary];
 };
 
 const resolveLoaderVersion = async (
@@ -353,6 +354,7 @@ const resolveJsonLoader = async (
 
   return {
     arguments: profile.arguments,
+    generatedLibraries: [],
     id: normalizeLauncherPathSegment(profile.id, `${loader} profile id`),
     installerPath: null,
     installerUrl: null,
@@ -511,13 +513,15 @@ const resolveInstallerLoader = async (
   const profile = loaderProfileSchema.parse(
     versionProfile ?? installProfile.versionInfo,
   );
-  const libraries = mergeGeneratedClientLibrary(
-    profile.libraries ?? [],
+  const libraries = profile.libraries ?? [];
+  const generatedLibraries = generatedClientLibrariesFromInstallProfile(
+    libraries,
     generatedClientLibraryFromInstallProfile(installProfile),
   );
 
   return {
     arguments: profile.arguments,
+    generatedLibraries,
     id: normalizeLauncherPathSegment(profile.id, `${loader} profile id`),
     installerPath,
     installerUrl,

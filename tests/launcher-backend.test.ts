@@ -3135,13 +3135,13 @@ describe("launcher backend", () => {
 
       if (
         url ===
-        "https://maven.neoforged.net/releases/net/neoforged/neoforge/20.4.237/neoforge-20.4.237-installer.jar"
+        "https://maven.neoforged.net/releases/net/neoforged/neoforge/20.4.238/neoforge-20.4.238-installer.jar"
       ) {
         const archive = createStoredZip({
           "install_profile.json": JSON.stringify({
             data: {
               PATCHED: {
-                client: "[net.neoforged:neoforge:20.4.237:client]",
+                client: "[net.neoforged:neoforge:20.4.238:client]",
               },
             },
           }),
@@ -3150,7 +3150,7 @@ describe("launcher backend", () => {
               game: ["--launchTarget", "forgeclient"],
               jvm: [],
             },
-            id: "neoforge-20.4.237",
+            id: "neoforge-20.4.238",
             libraries: [
               {
                 downloads: {
@@ -3160,6 +3160,15 @@ describe("launcher backend", () => {
                   },
                 },
                 name: "cpw.mods:bootstraplauncher:2.0.2",
+              },
+              {
+                downloads: {
+                  artifact: {
+                    path: "com/mojang/brigadier/1.0.18/brigadier-1.0.18.jar",
+                    url: "https://libraries.minecraft.net/com/mojang/brigadier/1.0.18/brigadier-1.0.18.jar",
+                  },
+                },
+                name: "com.mojang:brigadier:1.0.18",
               },
             ],
             mainClass: "cpw.mods.bootstraplauncher.BootstrapLauncher",
@@ -3185,7 +3194,7 @@ describe("launcher backend", () => {
 
     const instance = createLauncherInstance({
       loader: "neoforge",
-      loaderVersion: "20.4.237",
+      loaderVersion: "20.4.238",
       name: "NeoForge Profile Generated",
       versionId: "1.20.4",
     });
@@ -3194,7 +3203,7 @@ describe("launcher backend", () => {
       { fetcher, requestTimeoutMs: 100 },
     );
     const generatedArtifact = plan.missingArtifacts.find(
-      (artifact) => artifact.id === "net.neoforged:neoforge:20.4.237:client",
+      (artifact) => artifact.id === "net.neoforged:neoforge:20.4.238:client",
     );
 
     expect(generatedArtifact).toMatchObject({
@@ -3204,8 +3213,11 @@ describe("launcher backend", () => {
     if (!generatedArtifact) {
       throw new Error("Expected generated NeoForge client artifact.");
     }
-    expect(generatedArtifact.path).toContain("neoforge-20.4.237-client.jar");
-    expect(plan.classpath).toContain(generatedArtifact.path);
+    expect(generatedArtifact.path).toContain("neoforge-20.4.238-client.jar");
+    expect(plan.classpath).not.toContain(generatedArtifact.path);
+    expect(
+      plan.classpath.filter((path) => path.endsWith("brigadier-1.0.18.jar")),
+    ).toHaveLength(1);
   });
 
   test("tracks platform native libraries listed as ordinary artifacts", async () => {
@@ -4123,6 +4135,7 @@ describe("launcher backend", () => {
         ],
         jvm: [
           `-DlibraryDirectory=${libraryDirectoryPlaceholder}`,
+          `-DignoreList=client-extra,${versionNamePlaceholder}.jar`,
           "-p",
           `${libraryDirectoryPlaceholder}/cpw/mods/bootstraplauncher/2.0.2/bootstraplauncher-2.0.2.jar${classpathSeparatorPlaceholder}${libraryDirectoryPlaceholder}/cpw/mods/securejarhandler/3.0.8/securejarhandler-3.0.8.jar`,
           "-cp",
@@ -4172,6 +4185,9 @@ describe("launcher backend", () => {
     const classpathArg = args[args.indexOf("-cp") + 1];
 
     expect(args).toContain(`-DlibraryDirectory=${directories.libraries}`);
+    expect(args).toContain(
+      "-DignoreList=client-extra,neoforge-21.1.224.jar,1.20.4.jar",
+    );
     expect(modulePathArg).toBe(modulePath);
     expect(modulePathArg).not.toContain("${");
     expect(classpathArg).toBe(classpath.join(launchPathSeparator));
