@@ -1,10 +1,13 @@
 import { Link } from "@tanstack/react-router";
-import { formatDistanceToNow } from "date-fns";
 import { FolderOpenIcon, PlayIcon, PlusIcon, WrenchIcon } from "lucide-react";
 import type { LauncherInstance } from "@/shared/types";
 import { Button } from "@/views/main/components/ui/button";
 import { Skeleton } from "@/views/main/components/ui/skeleton";
 import { HeroBackground } from "@/views/main/features/dashboard/components/hero-background";
+import {
+  formatInstanceLastPlayed,
+  LOADER_LABELS,
+} from "@/views/main/features/instances/components/instance-card";
 import { rpc } from "@/views/main/lib/rpc";
 
 type DashboardHeroProps = {
@@ -48,13 +51,12 @@ export function DashboardHero({
               </h1>
             </div>
             <p className="mt-1.5 font-medium text-sm text-white/60">
-              {instance.versionId} · {instance.loader}
+              {instance.versionId} · {LOADER_LABELS[instance.loader]}
             </p>
             {instance.lastLaunchedAt && (
               <p className="mt-1 text-white/40 text-xs">
-                Played{" "}
-                {formatDistanceToNow(new Date(instance.lastLaunchedAt), {
-                  addSuffix: true,
+                {formatInstanceLastPlayed(instance.lastLaunchedAt, {
+                  prefix: true,
                 })}
               </p>
             )}

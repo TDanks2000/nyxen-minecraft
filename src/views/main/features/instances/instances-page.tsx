@@ -1,22 +1,16 @@
 import { Link } from "@tanstack/react-router";
-import { formatDistanceToNow } from "date-fns";
 import {
   AlertTriangleIcon,
   BoxesIcon,
   InfoIcon,
-  Loader2Icon,
-  MoreHorizontalIcon,
   PackageIcon,
   PlayIcon,
   PlusIcon,
   SearchIcon,
+  Loader2Icon,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type {
-  DownloadQueueJob,
-  LauncherInstance,
-  ModLoader,
-} from "@/shared/types";
+import type { DownloadQueueJob, LauncherInstance } from "@/shared/types";
 import {
   Alert,
   AlertAction,
@@ -52,24 +46,15 @@ import {
   InstanceArtwork,
   InstanceIcon,
 } from "@/views/main/features/instances/components/instance-artwork";
+import {
+  formatInstanceLastPlayed,
+  InstanceCard,
+  LOADER_LABELS,
+} from "@/views/main/features/instances/components/instance-card";
 import { LaunchPlanSheet } from "@/views/main/features/instances/components/launch-plan-sheet";
 import { NewInstanceDialog } from "@/views/main/features/instances/components/new-instance-dialog";
 import { useLaunchPlan } from "@/views/main/features/instances/hooks/use-launch-plan";
 import { useInstances } from "@/views/main/hooks/use-instances";
-import { cn } from "@/views/main/lib/utils";
-
-const LOADER_LABELS: Record<ModLoader, string> = {
-  fabric: "Fabric",
-  forge: "Forge",
-  neoforge: "NeoForge",
-  quilt: "Quilt",
-  vanilla: "Vanilla",
-};
-
-const formatRelative = (value: string | null): string =>
-  value
-    ? `Played ${formatDistanceToNow(new Date(value), { addSuffix: true })}`
-    : "Never played";
 
 const getJobProgress = (job: DownloadQueueJob): number =>
   Math.max(0, Math.min(100, job.progress ?? 0));
@@ -146,7 +131,9 @@ function FeaturedInstancePanel({
             {instance.name}
           </h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            {formatRelative(instance.lastLaunchedAt)}
+            {formatInstanceLastPlayed(instance.lastLaunchedAt, {
+              prefix: true,
+            })}
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
             <Button onClick={() => onPlayInstance(instance.id)}>
@@ -165,71 +152,6 @@ function FeaturedInstancePanel({
         </div>
       </div>
     </div>
-  );
-}
-
-function InstanceCard({
-  instance,
-  launchLoading,
-  launchDisabled,
-  onPlay,
-}: {
-  instance: LauncherInstance;
-  launchDisabled: boolean;
-  launchLoading: boolean;
-  onPlay: () => void;
-}) {
-  return (
-    <Card className="group overflow-hidden pt-0 transition-shadow duration-200 hover:shadow-[0_24px_72px_-48px_black]">
-      <Link to="/instances/$instanceId" params={{ instanceId: instance.id }}>
-        <InstanceArtwork
-          className="transition-transform duration-500 group-hover:scale-[1.03]"
-          instance={instance}
-        />
-      </Link>
-      <CardHeader className="min-w-0 gap-1.5">
-        <div className="min-w-0 flex-1">
-          <CardTitle className="truncate">{instance.name}</CardTitle>
-          <CardDescription className="truncate">
-            Minecraft {instance.versionId} · {LOADER_LABELS[instance.loader]}
-          </CardDescription>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <p className="text-xs text-muted-foreground">
-          {formatRelative(instance.lastLaunchedAt)}
-        </p>
-      </CardContent>
-      <CardFooter className="justify-between gap-2">
-        <Badge variant={instance.profileId ? "secondary" : "outline"}>
-          {instance.profileId ? "Profile linked" : "Auto profile"}
-        </Badge>
-        <div className="flex shrink-0 items-center gap-1.5">
-          <Link
-            to="/instances/$instanceId"
-            params={{ instanceId: instance.id }}
-            aria-label={`View details for ${instance.name}`}
-            title={`View details for ${instance.name}`}
-            className={buttonVariants({ size: "icon-sm", variant: "ghost" })}
-          >
-            <MoreHorizontalIcon />
-          </Link>
-          <Button
-            size="icon-sm"
-            className={cn(launchLoading && "cursor-wait")}
-            onClick={onPlay}
-            disabled={launchDisabled}
-            aria-label={`Prepare launch for ${instance.name}`}
-          >
-            {launchLoading ? (
-              <Loader2Icon className="animate-spin" />
-            ) : (
-              <PlayIcon className="fill-current" />
-            )}
-          </Button>
-        </div>
-      </CardFooter>
-    </Card>
   );
 }
 

@@ -1,5 +1,4 @@
 import { Link } from "@tanstack/react-router";
-import { formatDistanceToNow } from "date-fns";
 import {
   ArrowLeftIcon,
   ChevronDownIcon,
@@ -28,6 +27,10 @@ import {
   InstanceArtwork,
   InstanceIcon,
 } from "@/views/main/features/instances/components/instance-artwork";
+import {
+  formatInstanceLastPlayed,
+  LOADER_LABELS,
+} from "@/views/main/features/instances/components/instance-card";
 import { rpc } from "@/views/main/lib/rpc";
 
 type InstanceDetailsHeaderProps = {
@@ -62,14 +65,6 @@ type LoaderColors = {
   glow: string;
 };
 
-const LOADER_LABELS: Record<ModLoader, string> = {
-  fabric: "Fabric",
-  forge: "Forge",
-  neoforge: "NeoForge",
-  quilt: "Quilt",
-  vanilla: "Vanilla",
-};
-
 const LOADER_COLORS: Record<ModLoader, LoaderColors> = {
   fabric: {
     accent: "text-primary",
@@ -93,11 +88,6 @@ const LOADER_COLORS: Record<ModLoader, LoaderColors> = {
   },
 };
 
-const formatRelative = (value: string | null): string =>
-  value
-    ? formatDistanceToNow(new Date(value), { addSuffix: true })
-    : "Never played";
-
 export function InstanceDetailsHeader({
   enabledModsCount,
   instance,
@@ -119,7 +109,7 @@ export function InstanceDetailsHeader({
 }: InstanceDetailsHeaderProps) {
   const colors = LOADER_COLORS[instance.loader];
   const loaderLabel = LOADER_LABELS[instance.loader];
-  const lastPlayed = formatRelative(instance.lastLaunchedAt);
+  const lastPlayed = formatInstanceLastPlayed(instance.lastLaunchedAt);
   const busy = planLoading || launchActionState !== "idle";
   const modpackBusy = modpackUpdateChecking || updatingModpack;
   const primaryDisabled = isRunning ? launchActionState === "stopping" : busy;

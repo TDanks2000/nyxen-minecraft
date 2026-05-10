@@ -1,11 +1,8 @@
 import { Link } from "@tanstack/react-router";
-import { formatDistanceToNow } from "date-fns";
 import {
   ChevronRightIcon,
   LayoutGridIcon,
   ListIcon,
-  MoreHorizontalIcon,
-  PlayIcon,
   PlusIcon,
   SearchIcon,
 } from "lucide-react";
@@ -19,9 +16,9 @@ import {
 } from "@/views/main/components/ui/input-group";
 import { Skeleton } from "@/views/main/components/ui/skeleton";
 import {
-  InstanceArtwork,
-  InstanceIcon,
-} from "@/views/main/features/instances/components/instance-artwork";
+  InstanceCard,
+  InstanceListItem,
+} from "@/views/main/features/instances/components/instance-card";
 import { cn } from "@/views/main/lib/utils";
 
 type DashboardInstanceGridProps = {
@@ -157,119 +154,28 @@ export function DashboardInstanceGrid({
       ) : viewMode === "grid" ? (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(10.5rem,1fr))] gap-3">
           {filtered.map((instance) => (
-            <div
+            <InstanceCard
               key={instance.id}
-              className={cn(
-                "group relative flex cursor-pointer flex-col overflow-hidden rounded-md border transition-all hover:-translate-y-0.5",
-                instance.id === featuredInstanceId
-                  ? "border-primary/60 ring-1 ring-primary/30"
-                  : "border-border hover:border-border/80",
-              )}
-            >
-              <Link
-                to="/instances/$instanceId"
-                params={{ instanceId: instance.id }}
-                className="relative block h-28 shrink-0"
-              >
-                <InstanceArtwork
-                  instance={instance}
-                  showBadge={false}
-                  className="h-full"
-                />
-                {instance.id === featuredInstanceId && (
-                  <div className="pointer-events-none absolute inset-0 rounded-md ring-2 ring-primary/50 ring-inset" />
-                )}
-              </Link>
-
-              <div className="bg-card px-2.5 pt-2.5 pb-2.5">
-                <div className="truncate font-semibold text-foreground text-xs leading-none">
-                  {instance.name}
-                </div>
-                <div className="mt-0.5 truncate text-[0.6rem] text-muted-foreground">
-                  {instance.versionId} · {instance.loader}
-                </div>
-
-                <div className="mt-2 flex items-center justify-between">
-                  <span className="text-[0.58rem] text-muted-foreground/60">
-                    {instance.lastLaunchedAt
-                      ? formatDistanceToNow(new Date(instance.lastLaunchedAt), {
-                          addSuffix: true,
-                        })
-                      : "Never played"}
-                  </span>
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      disabled={launchLoadingId !== null}
-                      onClick={() => onPlayInstance(instance.id)}
-                      className={cn(
-                        "flex size-5 items-center justify-center rounded-sm transition-colors",
-                        launchLoadingId === instance.id
-                          ? "cursor-wait bg-primary/50"
-                          : "bg-primary hover:bg-primary/80",
-                      )}
-                    >
-                      <PlayIcon className="size-2.5 fill-primary-foreground text-primary-foreground" />
-                    </button>
-                    <Link
-                      to="/instances/$instanceId"
-                      params={{ instanceId: instance.id }}
-                      className="flex size-5 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
-                    >
-                      <MoreHorizontalIcon className="size-3" />
-                    </Link>
-                  </div>
-                </div>
-              </div>
-            </div>
+              density="compact"
+              featured={instance.id === featuredInstanceId}
+              instance={instance}
+              launchDisabled={launchLoadingId !== null}
+              launchLoading={launchLoadingId === instance.id}
+              onPlay={() => onPlayInstance(instance.id)}
+            />
           ))}
         </div>
       ) : (
         <div className="flex flex-col gap-1">
           {filtered.map((instance) => (
-            <div
+            <InstanceListItem
               key={instance.id}
-              className={cn(
-                "flex items-center gap-3 rounded-md border px-3 py-2 transition-colors hover:bg-accent/40",
-                instance.id === featuredInstanceId
-                  ? "border-primary/40 bg-primary/5"
-                  : "border-border bg-card",
-              )}
-            >
-              <InstanceIcon instance={instance} className="size-8 rounded-sm" />
-              <Link
-                to="/instances/$instanceId"
-                params={{ instanceId: instance.id }}
-                className="min-w-0 flex-1"
-              >
-                <div className="truncate font-semibold text-foreground text-xs">
-                  {instance.name}
-                </div>
-                <div className="truncate text-[0.6rem] text-muted-foreground">
-                  {instance.versionId} · {instance.loader}
-                </div>
-              </Link>
-              <span className="shrink-0 text-[0.58rem] text-muted-foreground/60">
-                {instance.lastLaunchedAt
-                  ? formatDistanceToNow(new Date(instance.lastLaunchedAt), {
-                      addSuffix: true,
-                    })
-                  : "Never played"}
-              </span>
-              <button
-                type="button"
-                disabled={launchLoadingId !== null}
-                onClick={() => onPlayInstance(instance.id)}
-                className={cn(
-                  "flex size-6 shrink-0 items-center justify-center rounded-sm transition-colors",
-                  launchLoadingId === instance.id
-                    ? "cursor-wait bg-primary/50"
-                    : "bg-primary hover:bg-primary/80",
-                )}
-              >
-                <PlayIcon className="size-3 fill-primary-foreground text-primary-foreground" />
-              </button>
-            </div>
+              featured={instance.id === featuredInstanceId}
+              instance={instance}
+              launchDisabled={launchLoadingId !== null}
+              launchLoading={launchLoadingId === instance.id}
+              onPlay={() => onPlayInstance(instance.id)}
+            />
           ))}
         </div>
       )}

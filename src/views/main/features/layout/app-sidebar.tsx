@@ -5,14 +5,16 @@ import {
   CheckIcon,
   GlobeIcon,
   HomeIcon,
-  Loader2Icon,
   PackageIcon,
-  PlayIcon,
   SettingsIcon,
   UserRoundIcon,
 } from "lucide-react";
 import { type ComponentType, type SVGProps, useMemo } from "react";
 import { InstanceIcon } from "@/views/main/features/instances/components/instance-artwork";
+import {
+  InstanceQuickPlayItem,
+  LOADER_LABELS,
+} from "@/views/main/features/instances/components/instance-card";
 import { LaunchPlanSheet } from "@/views/main/features/instances/components/launch-plan-sheet";
 import { useLaunchPlan } from "@/views/main/features/instances/hooks/use-launch-plan";
 import { useInstances } from "@/views/main/hooks/use-instances";
@@ -143,34 +145,15 @@ export function AppSidebar() {
           </p>
         ) : (
           quickPlayInstances.map((item) => (
-            <div
+            <InstanceQuickPlayItem
               key={item.id}
-              className="flex items-center gap-2 h-10 px-2 rounded-md hover:bg-sidebar-accent cursor-pointer transition-colors group"
-            >
-              <InstanceIcon instance={item} className="size-8 rounded-sm" />
-              <div className="flex-1 min-w-0">
-                <div className="text-xs font-semibold text-sidebar-foreground truncate leading-none">
-                  {item.name}
-                </div>
-                <div className="text-[0.62rem] text-muted-foreground mt-0.5 leading-none">
-                  {item.versionId} · {item.loader}
-                </div>
-              </div>
-              <button
-                type="button"
-                disabled={launchPlan.loadingInstanceId !== null}
-                onClick={() => {
-                  void launchPlan.createLaunchPlan(item.id);
-                }}
-                className="size-6 bg-primary hover:bg-primary/80 rounded-sm flex items-center justify-center shrink-0 opacity-40 group-hover:opacity-100 transition-opacity disabled:cursor-wait"
-              >
-                {launchPlan.loadingInstanceId === item.id ? (
-                  <Loader2Icon className="size-2.5 text-primary-foreground animate-spin" />
-                ) : (
-                  <PlayIcon className="size-2.5 fill-primary-foreground text-primary-foreground" />
-                )}
-              </button>
-            </div>
+              instance={item}
+              launchDisabled={launchPlan.loadingInstanceId !== null}
+              launchLoading={launchPlan.loadingInstanceId === item.id}
+              onPlay={() => {
+                void launchPlan.createLaunchPlan(item.id);
+              }}
+            />
           ))
         )}
       </div>
@@ -196,7 +179,7 @@ export function AppSidebar() {
               <span className="size-1.5 rounded-full bg-primary mr-1 shrink-0 inline-block" />
               <span className="truncate text-[0.62rem] font-medium text-primary">
                 {activeInstance
-                  ? `${activeInstance.versionId} · ${activeInstance.loader}`
+                  ? `${activeInstance.versionId} · ${LOADER_LABELS[activeInstance.loader]}`
                   : "Create one to play"}
               </span>
             </div>
