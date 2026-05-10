@@ -1,12 +1,13 @@
 import {
-  CameraIcon,
   CopyIcon,
   FolderOpenIcon,
   ImageIcon,
   ImagesIcon,
+  RefreshCcwIcon,
+  ServerIcon,
   StarIcon,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/views/main/components/ui/badge";
 import { Button } from "@/views/main/components/ui/button";
@@ -26,83 +27,119 @@ import {
   TabsTrigger,
 } from "@/views/main/components/ui/tabs";
 import {
-  SCREENSHOTS,
-  type ScreenshotEntry,
-} from "@/views/main/features/catalog/catalog-data";
+  formatEntrySize,
+  formatRelativeDate,
+  getContentList,
+  getLatestContentRefresh,
+  type LocalScreenshotEntry,
+  mapLocalScreenshots,
+  toFileMediaUrl,
+} from "@/views/main/features/catalog/catalog-model";
 import {
   LibraryPageHeader,
   MetricCard,
   PageEmpty,
   SearchBox,
 } from "@/views/main/features/catalog/page-primitives";
+import { useInstanceContentStore } from "@/views/main/features/instances/hooks/use-instance-content-store";
+import { useRendererMediaUrl } from "@/views/main/features/instances/hooks/use-renderer-media-url";
+import { useInstances } from "@/views/main/hooks/use-instances";
+import { rpc } from "@/views/main/lib/rpc";
 import { cn } from "@/views/main/lib/utils";
 
 type ScreenshotFilter = "all" | "favorites" | "recent";
 
-const SCREENSHOT_PREVIEW_BLOCKS = Array.from(
-  { length: 24 },
-  (_, index) => `screenshot-preview-block-${index}`,
-);
+const recentCutoffMs = 14 * 24 * 60 * 60 * 1000;
 
-function ScreenshotPreview({ index }: { index: number }) {
+function ScreenshotPreview({
+  screenshot,
+}: {
+  screenshot: LocalScreenshotEntry;
+}) {
+  const imageUrl = useRendererMediaUrl(screenshot.imageUrl);
+
   return (
-    <div
-      className={cn(
-        "relative aspect-video overflow-hidden bg-gradient-to-br",
-        index % 4 === 0 && "from-primary/70 via-card to-background",
-        index % 4 === 1 &&
-          "from-[var(--chart-2)]/70 via-muted/60 to-background",
-        index % 4 === 2 && "from-[var(--chart-3)]/70 via-card to-background",
-        index % 4 === 3 &&
-          "from-[var(--chart-4)]/70 via-secondary/40 to-background",
+    <div className="relative aspect-video overflow-hidden rounded-t-[inherit] bg-muted/35">
+      {imageUrl ? (
+        <img
+          src={imageUrl}
+          alt=""
+          className="size-full object-cover"
+          loading="lazy"
+        />
+      ) : (
+        <div className="flex size-full items-center justify-center">
+          <ImageIcon className="size-8 text-muted-foreground/45" />
+        </div>
       )}
-      aria-hidden="true"
-    >
-      <div className="absolute inset-x-0 bottom-0 h-1/3 bg-background/70" />
-      <div className="absolute right-4 bottom-6 grid grid-cols-4 gap-1 opacity-70">
-        {SCREENSHOT_PREVIEW_BLOCKS.map((blockId) => (
-          <span
-            key={blockId}
-            className="size-4 rounded-[2px] bg-foreground/10"
-          />
-        ))}
-      </div>
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_24%,color-mix(in_oklch,var(--primary)_22%,transparent),transparent_38%)]" />
     </div>
   );
 }
 
 export function ScreenshotsPage() {
-  const [screenshots, setScreenshots] = useState<Array<ScreenshotEntry>>(
-    () => SCREENSHOTS,
+  const instancesHook = useInstances();
+  const byInstanceId = useInstanceContentStore((state) => state.byInstanceId);
+  const errors = useInstanceContentStore((state) => state.errors);
+  const loadingIds = useInstanceContentStore((state) => state.loadingIds);
+  const refreshManyInstanceContents = useInstanceContentStore(
+    (state) => state.refreshManyInstanceContents,
   );
-  const [favorites, setFavorites] = useState(
-    () =>
-      new Set(
-        SCREENSHOTS.filter((screenshot) => screenshot.favorite).map(
-          (screenshot) => screenshot.id,
-        ),
-      ),
-  );
+  const [favorites, setFavorites] = useState<Set<string>>(() => new Set());
   const [filter, setFilter] = useState<ScreenshotFilter>("all");
   const [query, setQuery] = useState("");
+  const deferredQuery = useDeferredValue(query);
+
+  const instances = instancesHook.data ?? [];
+  const instanceIds = useMemo(
+    () => instances.map((instance) => instance.id),
+    [instances],
+  );
+
+  useEffect(() => {
+    if (instancesHook.data === null || instanceIds.length === 0) return;
+
+    void refreshManyInstanceContents(instanceIds);
+  }, [instanceIds, instancesHook.data, refreshManyInstanceContents]);
+
+  const contents = useMemo(
+    () => getContentList(instances, byInstanceId),
+    [byInstanceId, instances],
+  );
+  const screenshots = useMemo(
+    () => mapLocalScreenshots(instances, byInstanceId),
+    [byInstanceId, instances],
+  );
+  const latestRefresh = useMemo(
+    () => getLatestContentRefresh(contents),
+    [contents],
+  );
+  const contentLoading =
+    instances.some((instance) => loadingIds[instance.id]) ||
+    (instances.length > 0 &&
+      instances.some(
+        (instance) => !byInstanceId[instance.id] && !errors[instance.id],
+      ));
 
   const filteredScreenshots = useMemo(() => {
-    const needle = query.trim().toLowerCase();
+    const needle = deferredQuery.trim().toLowerCase();
+    const now = Date.now();
 
-    return screenshots.filter((screenshot, index) => {
+    return screenshots.filter((screenshot) => {
+      const modifiedTime = new Date(screenshot.modifiedAt).getTime();
       const matchesFilter =
         filter === "all" ||
         (filter === "favorites" && favorites.has(screenshot.id)) ||
-        (filter === "recent" && index < 2);
+        (filter === "recent" &&
+          !Number.isNaN(modifiedTime) &&
+          now - modifiedTime <= recentCutoffMs);
       const matchesQuery =
         needle.length === 0 ||
         [
           screenshot.name,
-          screenshot.instance,
-          screenshot.world,
-          screenshot.resolution,
-          ...screenshot.tags,
+          screenshot.instance.name,
+          screenshot.instance.versionId,
+          screenshot.file.fileName,
+          screenshot.path,
         ]
           .join(" ")
           .toLowerCase()
@@ -110,7 +147,7 @@ export function ScreenshotsPage() {
 
       return matchesFilter && matchesQuery;
     });
-  }, [favorites, filter, query, screenshots]);
+  }, [deferredQuery, favorites, filter, screenshots]);
 
   const toggleFavorite = (id: string, name: string) => {
     setFavorites((current) => {
@@ -126,27 +163,14 @@ export function ScreenshotsPage() {
     });
   };
 
-  const captureScreenshot = () => {
-    const screenshot: ScreenshotEntry = {
-      captured: "Captured now",
-      favorite: false,
-      id: "fresh-capture",
-      instance: "Current Instance",
-      name: "Fresh capture",
-      path: "instances/current/screenshots/fresh-capture.png",
-      resolution: "2560 x 1440",
-      tags: ["Fresh", "Local"],
-      world: "Active World",
-    };
+  const refreshScreenshots = async () => {
+    if (instanceIds.length === 0) {
+      toast.message("Create an instance before scanning screenshots.");
+      return;
+    }
 
-    setScreenshots((current) => {
-      if (current.some((item) => item.id === screenshot.id)) {
-        toast.message("Fresh capture already exists.");
-        return current;
-      }
-      return [screenshot, ...current];
-    });
-    toast.success("Fresh capture added to the gallery.");
+    await refreshManyInstanceContents(instanceIds);
+    toast.success("Screenshot folders scanned.");
   };
 
   const copyPath = async (path: string, name: string) => {
@@ -158,26 +182,40 @@ export function ScreenshotsPage() {
     }
   };
 
+  const revealPath = async (path: string, name: string) => {
+    try {
+      const result = await rpc.requestProxy.openExternal({
+        url: toFileMediaUrl(path),
+      });
+
+      if (!result.opened) {
+        throw new Error("The path could not be opened.");
+      }
+
+      toast.success(`${name} opened.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Path unavailable.");
+    }
+  };
+
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-5 p-5">
       <LibraryPageHeader
         eyebrow="Media"
         title="Screenshots"
-        description="Browse captured moments across instances, favorite useful references, and reveal local file paths quickly."
+        description="Browse screenshots found in managed instance folders."
         actions={
-          <>
-            <Button
-              variant="outline"
-              onClick={() => toast.success("Screenshot folders scanned.")}
-            >
-              <ImagesIcon data-icon="inline-start" />
-              Scan
-            </Button>
-            <Button onClick={captureScreenshot}>
-              <CameraIcon data-icon="inline-start" />
-              Capture
-            </Button>
-          </>
+          <Button
+            variant="outline"
+            onClick={() => void refreshScreenshots()}
+            disabled={contentLoading}
+          >
+            <RefreshCcwIcon
+              data-icon="inline-start"
+              className={contentLoading ? "animate-spin" : undefined}
+            />
+            {contentLoading ? "Scanning" : "Scan"}
+          </Button>
         }
       />
 
@@ -186,19 +224,19 @@ export function ScreenshotsPage() {
           icon={ImageIcon}
           label="Screenshots"
           value={String(screenshots.length)}
-          caption="Indexed from managed instance folders."
+          caption="Indexed from local screenshot folders."
         />
         <MetricCard
           icon={StarIcon}
           label="Favorites"
           value={String(favorites.size)}
-          caption="Reference shots pinned for quick retrieval."
+          caption="Pinned in this launcher session."
         />
         <MetricCard
-          icon={FolderOpenIcon}
-          label="Storage"
-          value="Local"
-          caption="No media leaves disk without explicit sync."
+          icon={ServerIcon}
+          label="Last Scan"
+          value={latestRefresh ? formatRelativeDate(latestRefresh) : "Pending"}
+          caption="Image metadata stays on local disk."
         />
       </section>
 
@@ -215,28 +253,35 @@ export function ScreenshotsPage() {
           <SearchBox
             value={query}
             onChange={setQuery}
-            placeholder="Search screenshots, worlds, tags..."
+            placeholder="Search screenshots, instances, paths..."
           />
         </div>
 
         <TabsContent value={filter}>
-          {filteredScreenshots.length === 0 ? (
+          {instancesHook.loading || contentLoading ? (
             <PageEmpty
-              icon={CameraIcon}
+              icon={RefreshCcwIcon}
+              title="Scanning screenshots"
+              description="Screenshots will appear as soon as local image metadata is available."
+            />
+          ) : filteredScreenshots.length === 0 ? (
+            <PageEmpty
+              icon={ImagesIcon}
               title="No screenshots found"
-              description="Change the search or tab filter to show more captures."
+              description="Capture screenshots in Minecraft, then scan again."
             />
           ) : (
             <div className="grid grid-cols-3 gap-3 max-xl:grid-cols-2 max-md:grid-cols-1">
-              {filteredScreenshots.map((screenshot, index) => {
+              {filteredScreenshots.map((screenshot) => {
                 const isFavorite = favorites.has(screenshot.id);
                 return (
                   <Card key={screenshot.id} className="pt-0">
-                    <ScreenshotPreview index={index} />
+                    <ScreenshotPreview screenshot={screenshot} />
                     <CardHeader>
                       <CardTitle>{screenshot.name}</CardTitle>
                       <CardDescription>
-                        {screenshot.world} · {screenshot.captured}
+                        {screenshot.instance.name} ·{" "}
+                        {formatRelativeDate(screenshot.modifiedAt)}
                       </CardDescription>
                       <CardAction>
                         <Button
@@ -257,27 +302,31 @@ export function ScreenshotsPage() {
                     </CardHeader>
                     <CardContent className="flex flex-col gap-3">
                       <div className="flex flex-wrap gap-1.5">
-                        {screenshot.tags.map((tag) => (
-                          <Badge key={tag} variant="outline">
-                            {tag}
-                          </Badge>
-                        ))}
+                        <Badge variant="outline">
+                          {screenshot.file.extension ?? "image"}
+                        </Badge>
+                        <Badge variant="secondary">
+                          {formatEntrySize(screenshot.file)}
+                        </Badge>
+                        <Badge variant="outline">
+                          Minecraft {screenshot.instance.versionId}
+                        </Badge>
                       </div>
                       <p className="truncate text-xs text-muted-foreground">
                         {screenshot.path}
                       </p>
                     </CardContent>
                     <CardFooter className="justify-between gap-3">
-                      <span className="text-xs text-muted-foreground">
-                        {screenshot.instance} · {screenshot.resolution}
+                      <span className="min-w-0 truncate text-xs text-muted-foreground">
+                        {screenshot.file.fileName}
                       </span>
-                      <div className="flex gap-1">
+                      <div className="flex shrink-0 gap-1">
                         <Button
                           size="icon-sm"
                           variant="outline"
-                          aria-label="Copy path"
+                          aria-label={`Copy path for ${screenshot.name}`}
                           onClick={() =>
-                            copyPath(screenshot.path, screenshot.name)
+                            void copyPath(screenshot.path, screenshot.name)
                           }
                         >
                           <CopyIcon />
@@ -285,7 +334,7 @@ export function ScreenshotsPage() {
                         <Button
                           size="sm"
                           onClick={() =>
-                            toast.success(`${screenshot.name} revealed.`)
+                            void revealPath(screenshot.path, screenshot.name)
                           }
                         >
                           <FolderOpenIcon data-icon="inline-start" />

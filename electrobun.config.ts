@@ -14,6 +14,7 @@ export default {
     bun: {
       entrypoint: "src/bun/index.ts",
     },
+    targets: "all",
     copy: {
       ".electrobun/views/main": "views/main",
     },

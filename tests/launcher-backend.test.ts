@@ -4037,6 +4037,59 @@ describe("launcher backend", () => {
     }
   });
 
+  test("recognizes native library entries for Windows, macOS, and Linux", async () => {
+    const { isNativeLibraryZipEntry } = await import(
+      "../src/bun/launcher/download"
+    );
+
+    expect(isNativeLibraryZipEntry("org/lwjgl/lwjgl.dll", "win32")).toBe(true);
+    expect(isNativeLibraryZipEntry("org/lwjgl/lwjgl.dylib", "win32")).toBe(
+      false,
+    );
+    expect(isNativeLibraryZipEntry("liblwjgl.dylib", "darwin")).toBe(true);
+    expect(isNativeLibraryZipEntry("liblwjgl.jnilib", "darwin")).toBe(true);
+    expect(isNativeLibraryZipEntry("lwjgl.dll", "darwin")).toBe(false);
+    expect(isNativeLibraryZipEntry("liblwjgl.so", "linux")).toBe(true);
+    expect(isNativeLibraryZipEntry("liblwjgl.so.1", "linux")).toBe(true);
+    expect(isNativeLibraryZipEntry("lwjgl.dll", "linux")).toBe(false);
+  });
+
+  test("extracts native libraries without platform shell tools", async () => {
+    const { extractNatives } = await import("../src/bun/launcher/download");
+    const { getLauncherDirectories } = await import(
+      "../src/bun/launcher/paths"
+    );
+    const directories = getLauncherDirectories();
+    const jarPath = join(
+      directories.libraries,
+      "org",
+      "lwjgl",
+      "lwjgl-native-test.jar",
+    );
+    const nativesDir = join(directories.temp, "natives", "zip-reader-test");
+    const archive = createStoredZip({
+      "META-INF/readme.txt": "skip",
+      "nested/lwjgl.dll": "windows-native",
+      "nested/liblwjgl.dylib": "mac-native",
+      "nested/liblwjgl.jnilib": "mac-legacy-native",
+      "nested/liblwjgl.so": "linux-native",
+      "nested/liblwjgl.so.1": "linux-versioned-native",
+    });
+    const expectedFiles =
+      process.platform === "win32"
+        ? ["lwjgl.dll"]
+        : process.platform === "darwin"
+          ? ["liblwjgl.dylib", "liblwjgl.jnilib"]
+          : ["liblwjgl.so", "liblwjgl.so.1"];
+
+    mkdirSync(dirname(jarPath), { recursive: true });
+    writeFileSync(jarPath, archive);
+
+    extractNatives([jarPath], nativesDir);
+
+    expect(readdirSync(nativesDir).sort()).toEqual(expectedFiles.sort());
+  });
+
   test("rejects unsafe external URLs before opening them", async () => {
     const { openExternal } = await import("../src/bun/rpc/handlers/runtime");
 

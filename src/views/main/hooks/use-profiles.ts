@@ -1,71 +1,88 @@
-import { useCallback, useEffect, useSyncExternalStore } from "react";
+import { useCallback, useEffect } from "react";
+import { create } from "zustand";
 import type { LauncherProfile } from "@/shared/types";
 import { rpc } from "@/views/main/lib/rpc";
 
-type ProfilesState = {
+type ProfilesStore = {
   data: Array<LauncherProfile> | null;
-  loading: boolean;
   error: string | null;
+  loading: boolean;
+  loadPromise: Promise<Array<LauncherProfile>> | null;
+  refresh: () => Promise<Array<LauncherProfile>>;
 };
 
-const listeners = new Set<() => void>();
-let profilesState: ProfilesState = {
+export const useProfilesStore = create<ProfilesStore>((set, get) => ({
   data: null,
   error: null,
   loading: false,
-};
-let loadPromise: Promise<void> | null = null;
+  loadPromise: null,
+  refresh: async () => {
+    const existingLoad = get().loadPromise;
 
-const emitProfilesChange = (): void => {
-  for (const listener of listeners) {
-    listener();
-  }
-};
+    if (existingLoad) {
+      return existingLoad;
+    }
 
-const setProfilesState = (nextState: ProfilesState): void => {
-  profilesState = nextState;
-  emitProfilesChange();
-};
+    set({ loading: true });
 
-const subscribeProfiles = (listener: () => void): (() => void) => {
-  listeners.add(listener);
+    const loadPromise = rpc.requestProxy
+      .listLauncherProfiles(null)
+      .then((result) => {
+        set({
+          data: result,
+          error: null,
+          loading: false,
+        });
+        return result;
+      })
+      .catch((e: unknown) => {
+        const message =
+          e instanceof Error ? e.message : "Failed to load profiles";
+        set({ error: message, loading: false });
+        throw e;
+      })
+      .finally(() => {
+        if (get().loadPromise === loadPromise) {
+          set({ loadPromise: null });
+        }
+      });
 
-  return () => {
-    listeners.delete(listener);
-  };
-};
-
-const getProfilesSnapshot = (): ProfilesState => profilesState;
+    set({ loadPromise });
+    return loadPromise;
+  },
+}));
 
 export const refreshProfiles = (): void => {
-  if (loadPromise) {
-    return;
-  }
+  void useProfilesStore
+    .getState()
+    .refresh()
+    .catch(() => undefined);
+};
 
-  setProfilesState({
-    ...profilesState,
-    loading: true,
+export const setProfiles = (profiles: Array<LauncherProfile>): void => {
+  useProfilesStore.setState({
+    data: profiles,
+    error: null,
+    loading: false,
   });
+};
 
-  loadPromise = rpc.requestProxy
-    .listLauncherProfiles(null)
-    .then((result) => {
-      setProfilesState({
-        data: result,
-        error: null,
-        loading: false,
-      });
-    })
-    .catch((e: unknown) => {
-      setProfilesState({
-        ...profilesState,
-        error: e instanceof Error ? e.message : "Failed to load profiles",
-        loading: false,
-      });
-    })
-    .finally(() => {
-      loadPromise = null;
-    });
+export const upsertProfile = (profile: LauncherProfile): void => {
+  useProfilesStore.setState((state) => {
+    const next = state.data ? [...state.data] : [];
+    const existingIndex = next.findIndex((item) => item.id === profile.id);
+
+    if (existingIndex >= 0) {
+      next[existingIndex] = profile;
+    } else {
+      next.push(profile);
+    }
+
+    return {
+      data: next,
+      error: null,
+    };
+  });
 };
 
 export function useProfiles(): {
@@ -74,18 +91,23 @@ export function useProfiles(): {
   error: string | null;
   refresh: () => void;
 } {
-  const profiles = useSyncExternalStore(
-    subscribeProfiles,
-    getProfilesSnapshot,
-    getProfilesSnapshot,
-  );
-  const refresh = useCallback(() => refreshProfiles(), []);
+  const data = useProfilesStore((state) => state.data);
+  const error = useProfilesStore((state) => state.error);
+  const storeLoading = useProfilesStore((state) => state.loading);
+  const loadPromise = useProfilesStore((state) => state.loadPromise);
+  const refreshStore = useProfilesStore((state) => state.refresh);
+
+  const refresh = useCallback(() => {
+    void refreshStore().catch(() => undefined);
+  }, [refreshStore]);
 
   useEffect(() => {
-    if (!profiles.data && !profiles.loading && !profiles.error) {
-      refreshProfiles();
+    if (data === null && !storeLoading && !loadPromise && !error) {
+      void refreshStore().catch(() => undefined);
     }
-  }, [profiles.data, profiles.error, profiles.loading]);
+  }, [data, error, loadPromise, refreshStore, storeLoading]);
 
-  return { ...profiles, refresh };
+  const loading = storeLoading || (data === null && !error);
+
+  return { data, error, loading, refresh };
 }

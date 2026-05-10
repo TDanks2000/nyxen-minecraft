@@ -1,48 +1,27 @@
 import {
+  ActivityIcon,
   AlertCircleIcon,
   CheckCircle2Icon,
-  CloudIcon,
+  DatabaseIcon,
   DownloadCloudIcon,
   FilesIcon,
+  FolderTreeIcon,
   Loader2Icon,
+  PackageIcon,
+  RefreshCcwIcon,
+  UserRoundIcon,
   XIcon,
 } from "lucide-react";
-import { useEffect } from "react";
-import { Area, AreaChart, ResponsiveContainer } from "recharts";
+import { useEffect, useMemo } from "react";
 import type { DownloadQueueJob } from "@/shared/types";
 import { Button } from "@/views/main/components/ui/button";
 import { Progress } from "@/views/main/components/ui/progress";
+import { formatRelativeDate } from "@/views/main/features/catalog/catalog-model";
 import { useDownloadQueueStore } from "@/views/main/features/downloads/download-queue-store";
+import { useInstances } from "@/views/main/hooks/use-instances";
+import { useLauncherStatus } from "@/views/main/hooks/use-launcher-status";
+import { useProfiles } from "@/views/main/hooks/use-profiles";
 import { cn } from "@/views/main/lib/utils";
-
-const mkSpark = (values: Array<number>) => values.map((v, i) => ({ i, v }));
-
-const CPU_DATA = mkSpark([6, 14, 22, 10, 28, 18, 12, 24, 16, 14]);
-const MEM_DATA = mkSpark([54, 58, 62, 68, 60, 66, 72, 64, 68, 64]);
-const DISK_DATA = mkSpark([22, 24, 26, 25, 28, 26, 30, 27, 24, 25]);
-
-function SparkLine({ data }: { data: Array<{ i: number; v: number }> }) {
-  return (
-    <div style={{ height: 32, width: "100%" }}>
-      <ResponsiveContainer width="100%" height="100%">
-        <AreaChart
-          data={data}
-          margin={{ top: 2, right: 0, bottom: 0, left: 0 }}
-        >
-          <Area
-            type="monotone"
-            dataKey="v"
-            stroke="#4ade80"
-            strokeWidth={1.5}
-            fill="rgba(74,222,128,0.14)"
-            dot={false}
-            isAnimationActive={false}
-          />
-        </AreaChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
 
 const formatSidebarTime = (value: string): string =>
   new Intl.DateTimeFormat(undefined, {
@@ -241,7 +220,47 @@ function DownloadJobCard({
   );
 }
 
+type ActivityItem = {
+  description: string;
+  id: string;
+  initials: string;
+  tone: "destructive" | "muted" | "primary" | "warning";
+  time: string;
+  title: string;
+};
+
+const getInitials = (value: string): string => {
+  const initials = value
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+
+  return initials || "?";
+};
+
+const getDownloadActivityDescription = (job: DownloadQueueJob): string => {
+  if (job.status === "completed") return "Download completed";
+  if (job.status === "failed") return job.error ?? "Download failed";
+  if (job.status === "running") {
+    return job.activeLabel ?? "Download in progress";
+  }
+  return "Download queued";
+};
+
+const getDownloadTone = (job: DownloadQueueJob): ActivityItem["tone"] => {
+  if (job.status === "completed") return "primary";
+  if (job.status === "failed") return "destructive";
+  if (job.status === "running") return "warning";
+  return "muted";
+};
+
 export function RightSidebar() {
+  const instancesHook = useInstances();
+  const profilesHook = useProfiles();
+  const statusHook = useLauncherStatus();
   const jobs = useDownloadQueueStore((state) => state.jobs);
   const clearDownloadJob = useDownloadQueueStore(
     (state) => state.clearDownloadJob,
@@ -252,13 +271,79 @@ export function RightSidebar() {
   const refreshDownloadJobs = useDownloadQueueStore(
     (state) => state.refreshDownloadJobs,
   );
-  const hasActiveJobs = jobs.some(
-    (job) => job.status === "queued" || job.status === "running",
+  const instances = instancesHook.data ?? [];
+  const profiles = profilesHook.data ?? [];
+  const activeJobCount = useMemo(
+    () =>
+      jobs.filter((job) => job.status === "queued" || job.status === "running")
+        .length,
+    [jobs],
   );
-  const activeJobCount = jobs.filter(
-    (job) => job.status === "queued" || job.status === "running",
-  ).length;
+  const hasActiveJobs = activeJobCount > 0;
   const finishedJobCount = jobs.length - activeJobCount;
+  const activityItems = useMemo<Array<ActivityItem>>(() => {
+    const downloadActivities = jobs.map((job) => ({
+      description: getDownloadActivityDescription(job),
+      id: `download:${job.id}`,
+      initials: job.source === "curseforge" ? "CF" : "DL",
+      time: job.updatedAt,
+      title: job.title,
+      tone: getDownloadTone(job),
+    }));
+    const instanceActivities: Array<ActivityItem> = [];
+
+    for (const instance of instances) {
+      const metadataTime = instance.updatedAt || instance.createdAt;
+      const metadataDescription =
+        instance.updatedAt === instance.createdAt
+          ? "Instance created"
+          : "Instance metadata updated";
+
+      if (instance.lastLaunchedAt) {
+        instanceActivities.push({
+          description: "Minecraft launch recorded",
+          id: `launch:${instance.id}`,
+          initials: getInitials(instance.name),
+          time: instance.lastLaunchedAt,
+          title: instance.name,
+          tone: "primary",
+        });
+      }
+
+      instanceActivities.push({
+        description: metadataDescription,
+        id: `instance:${instance.id}`,
+        initials: getInitials(instance.name),
+        time: metadataTime,
+        title: instance.name,
+        tone: "muted",
+      });
+    }
+
+    return [...downloadActivities, ...instanceActivities]
+      .sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
+      .slice(0, 5);
+  }, [instances, jobs]);
+
+  const overviewRows = [
+    {
+      icon: PackageIcon,
+      label: "Instances",
+      value: String(statusHook.data?.counts.instances ?? instances.length),
+    },
+    {
+      icon: UserRoundIcon,
+      label: "Profiles",
+      value: String(statusHook.data?.counts.profiles ?? profiles.length),
+    },
+    {
+      icon: DatabaseIcon,
+      label: "Versions",
+      value: String(statusHook.data?.counts.versions ?? 0),
+    },
+  ];
+  const storageRoot = statusHook.data?.directories.root ?? "Not loaded";
+  const manifestRefreshedAt = statusHook.data?.manifest.refreshedAt ?? null;
 
   useEffect(() => {
     void refreshDownloadJobs().catch(() => undefined);
@@ -327,116 +412,114 @@ export function RightSidebar() {
         <div className="text-sm font-semibold text-foreground border-b border-sidebar-border/30 pb-2 mb-3">
           Recent Activity
         </div>
-        <div className="flex flex-col gap-2.5">
-          {[
-            {
-              id: "atm9",
-              bg: "bg-yellow-900",
-              abbr: "ATM",
-              name: "All the Mods 9",
-              desc: "Updated to 1.20.1",
-              time: "2h ago",
-            },
-            {
-              id: "cf",
-              bg: "bg-cyan-900",
-              abbr: "CF",
-              name: "Creative Flat",
-              desc: "World backup created",
-              time: "6h ago",
-            },
-            {
-              id: "rl",
-              bg: "bg-red-950",
-              abbr: "RL",
-              name: "RLCraft",
-              desc: "Played for 3h 24m",
-              time: "1d ago",
-            },
-          ].map((item) => (
-            <div key={item.id} className="flex items-start gap-2.5">
-              <div
-                className={`size-7 rounded shrink-0 flex items-center justify-center text-[0.5rem] font-bold text-white/60 ${item.bg}`}
-              >
-                {item.abbr}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-xs font-semibold text-foreground truncate leading-none">
-                  {item.name}
+        {activityItems.length > 0 ? (
+          <div className="flex flex-col gap-2.5">
+            {activityItems.map((item) => (
+              <div key={item.id} className="flex items-start gap-2.5">
+                <div
+                  className={cn(
+                    "flex size-7 shrink-0 items-center justify-center rounded text-[0.5rem] font-bold",
+                    item.tone === "primary" && "bg-primary/15 text-primary",
+                    item.tone === "warning" && "bg-amber-500/15 text-amber-500",
+                    item.tone === "destructive" &&
+                      "bg-destructive/15 text-destructive",
+                    item.tone === "muted" && "bg-muted text-muted-foreground",
+                  )}
+                >
+                  {item.initials}
                 </div>
-                <div className="text-[0.62rem] text-muted-foreground mt-0.5">
-                  {item.desc}
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-semibold text-foreground text-xs leading-none">
+                    {item.title}
+                  </div>
+                  <div className="mt-0.5 truncate text-[0.62rem] text-muted-foreground">
+                    {item.description}
+                  </div>
                 </div>
+                <span className="mt-0.5 shrink-0 text-[0.6rem] text-muted-foreground">
+                  {formatRelativeDate(item.time)}
+                </span>
               </div>
-              <span className="text-[0.6rem] text-muted-foreground shrink-0 mt-0.5">
-                {item.time}
-              </span>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-lg border border-dashed border-sidebar-border bg-background/35 px-3 py-4 text-center">
+            <ActivityIcon className="mx-auto size-5 text-muted-foreground" />
+            <div className="mt-2 font-semibold text-foreground text-xs">
+              No activity yet
             </div>
-          ))}
-        </div>
-        <button
-          type="button"
-          className="mt-3 text-[0.7rem] text-primary hover:text-primary/80 transition-colors"
-        >
-          View all activity →
-        </button>
+            <p className="mt-1 text-[0.62rem] text-muted-foreground">
+              Launches, instance changes, and downloads appear here.
+            </p>
+          </div>
+        )}
       </section>
 
-      {/* System Overview */}
+      {/* Launcher Overview */}
       <section className="p-4 border-b border-sidebar-border">
         <div className="text-sm font-semibold text-foreground border-b border-sidebar-border/30 pb-2 mb-3">
-          System Overview
+          Launcher Overview
         </div>
-        <div className="flex flex-col gap-2">
-          {(
-            [
-              { label: "CPU", value: "14%", data: CPU_DATA },
-              { label: "Memory", value: "5.1 / 8 GB", data: MEM_DATA },
-              { label: "Disk", value: "120 / 476 GB", data: DISK_DATA },
-            ] as const
-          ).map((row) => (
-            <div key={row.label} className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground w-12 shrink-0">
-                {row.label}
-              </span>
-              <span className="text-xs text-foreground w-24 shrink-0 tabular-nums">
-                {row.value}
-              </span>
-              <div className="flex-1 min-w-0">
-                <SparkLine data={row.data} />
+        <div className="grid gap-2">
+          {overviewRows.map((row) => {
+            const Icon = row.icon;
+
+            return (
+              <div
+                key={row.label}
+                className="flex items-center gap-2 rounded-md border border-sidebar-border bg-background/35 px-2.5 py-2"
+              >
+                <Icon className="size-3.5 text-primary" />
+                <span className="min-w-0 flex-1 truncate text-muted-foreground text-xs">
+                  {row.label}
+                </span>
+                <span className="font-semibold text-foreground text-xs tabular-nums">
+                  {row.value}
+                </span>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
-        <button
+        <Button
+          className="mt-3 w-full"
+          onClick={statusHook.refresh}
+          size="xs"
           type="button"
-          className="mt-3 text-[0.7rem] text-primary hover:text-primary/80 transition-colors"
+          variant="ghost"
         >
-          Open Performance Monitor
-        </button>
+          <RefreshCcwIcon data-icon="inline-start" />
+          Refresh Status
+        </Button>
       </section>
 
-      {/* Cloud Sync */}
+      {/* Launcher Storage */}
       <section className="p-4">
-        <div className="flex items-center justify-between mb-1.5">
-          <span className="text-sm font-semibold text-foreground">
-            Cloud Sync
+        <div className="mb-3 flex items-center justify-between border-sidebar-border/30 border-b pb-2">
+          <span className="font-semibold text-foreground text-sm">
+            Launcher Storage
           </span>
-          <div className="flex items-center gap-1.5 text-primary">
-            <span className="size-2 rounded-full bg-primary shrink-0" />
-            <span className="text-[0.65rem] font-semibold">Up to date</span>
+          <FolderTreeIcon className="size-4 text-primary" />
+        </div>
+        <div className="grid gap-2">
+          <div className="rounded-md border border-sidebar-border bg-background/35 px-2.5 py-2">
+            <div className="text-[0.6rem] font-semibold text-muted-foreground uppercase tracking-wide">
+              Root
+            </div>
+            <div className="mt-1 truncate font-mono text-[0.62rem] text-foreground">
+              {storageRoot}
+            </div>
+          </div>
+          <div className="rounded-md border border-sidebar-border bg-background/35 px-2.5 py-2">
+            <div className="text-[0.6rem] font-semibold text-muted-foreground uppercase tracking-wide">
+              Version Manifest
+            </div>
+            <div className="mt-1 text-[0.62rem] text-foreground">
+              {manifestRefreshedAt
+                ? `Refreshed ${formatRelativeDate(manifestRefreshedAt)}`
+                : "Not refreshed yet"}
+            </div>
           </div>
         </div>
-        <p className="text-[0.62rem] text-muted-foreground mb-3">
-          Last synced: 2m ago
-        </p>
-        <button
-          type="button"
-          className="w-full h-7 flex items-center justify-center gap-1.5 rounded-md border border-border bg-muted/40 hover:bg-muted/70 text-xs font-semibold text-foreground transition-colors"
-        >
-          <CloudIcon className="size-3.5" />
-          Manage
-        </button>
       </section>
     </aside>
   );

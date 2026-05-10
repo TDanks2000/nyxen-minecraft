@@ -4,11 +4,12 @@ import {
   chmodSync,
   existsSync,
   mkdirSync,
+  readFileSync,
   renameSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, posix } from "node:path";
 import type {
   DownloadArtifactsResult,
   LaunchPlan,
@@ -20,6 +21,7 @@ import {
   assertNativeJarPath,
   assertNativesDirectory,
 } from "./validation";
+import { listZipEntries } from "./zip";
 
 type DownloadFetcher = (
   input: string | URL | Request,
@@ -158,8 +160,24 @@ const downloadOne = async (
   writeArtifactFile(artifact.path, data, artifact.executable);
 };
 
-const quotePowerShellString = (value: string): string =>
-  `'${value.replaceAll("'", "''")}'`;
+export const isNativeLibraryZipEntry = (
+  entryName: string,
+  platform: NodeJS.Platform = process.platform,
+): boolean => {
+  const fileName = posix
+    .basename(entryName.replaceAll("\\", "/"))
+    .toLowerCase();
+
+  if (platform === "win32") {
+    return fileName.endsWith(".dll");
+  }
+
+  if (platform === "darwin") {
+    return fileName.endsWith(".dylib") || fileName.endsWith(".jnilib");
+  }
+
+  return fileName.endsWith(".so") || fileName.includes(".so.");
+};
 
 export const extractNatives = (
   jarPaths: Array<string>,
@@ -172,13 +190,6 @@ export const extractNatives = (
   assertNativesDirectory(nativesDir);
   mkdirSync(nativesDir, { recursive: true });
 
-  const nativeGlobs =
-    process.platform === "win32"
-      ? ["*.dll"]
-      : process.platform === "darwin"
-        ? ["*.dylib", "*.jnilib"]
-        : ["*.so", "*.so.*"];
-
   for (const jarPath of jarPaths) {
     if (!existsSync(jarPath)) {
       continue;
@@ -186,27 +197,18 @@ export const extractNatives = (
 
     assertNativeJarPath(jarPath);
 
-    if (process.platform === "win32") {
-      const quotedJarPath = quotePowerShellString(jarPath);
-      const quotedNativesDir = quotePowerShellString(`${nativesDir}\\`);
+    for (const entry of listZipEntries(readFileSync(jarPath))) {
+      if (!isNativeLibraryZipEntry(entry.name)) {
+        continue;
+      }
 
-      spawnSync(
-        "powershell",
-        [
-          "-Command",
-          `$zip=[System.IO.Compression.ZipFile]::OpenRead(${quotedJarPath});` +
-            `$zip.Entries | Where-Object {$_.Name -match '\\.(dll)$'} |` +
-            ` ForEach-Object { [System.IO.Compression.ZipFileExtensions]::ExtractToFile($_, ${quotedNativesDir}+$_.Name, $true) };` +
-            `$zip.Dispose()`,
-        ],
-        { timeout: 30_000 },
-      );
-    } else {
-      spawnSync(
-        "unzip",
-        ["-o", "-q", "-j", jarPath, ...nativeGlobs, "-d", nativesDir],
-        { timeout: 30_000 },
-      );
+      const fileName = posix.basename(entry.name.replaceAll("\\", "/"));
+
+      if (!fileName || fileName === "." || fileName === "..") {
+        continue;
+      }
+
+      writeArtifactFile(join(nativesDir, fileName), entry.data);
     }
   }
 };

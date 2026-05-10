@@ -1,23 +1,30 @@
+import { Link } from "@tanstack/react-router";
 import {
   BoxesIcon,
   DownloadIcon,
+  ExternalLinkIcon,
   FilterIcon,
   Globe2Icon,
   HardDriveDownloadIcon,
   Loader2Icon,
-  PackagePlusIcon,
+  PackageIcon,
   RefreshCcwIcon,
   StarIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { toast } from "sonner";
 import type {
   CurseForgeProjectSummary,
   CurseForgeStatus,
-  ModLoader,
 } from "@/shared/types";
 import { Badge } from "@/views/main/components/ui/badge";
-import { Button } from "@/views/main/components/ui/button";
+import { Button, buttonVariants } from "@/views/main/components/ui/button";
 import {
   Card,
   CardAction,
@@ -34,115 +41,264 @@ import {
   TabsTrigger,
 } from "@/views/main/components/ui/tabs";
 import {
-  MODPACKS,
-  type Modpack,
-} from "@/views/main/features/catalog/catalog-data";
+  formatRelativeDate,
+  type InstalledModpackEntry,
+  LOADER_LABELS,
+  mapInstalledModpacks,
+} from "@/views/main/features/catalog/catalog-model";
 import {
   LibraryPageHeader,
   MetricCard,
   PageEmpty,
   SearchBox,
 } from "@/views/main/features/catalog/page-primitives";
+import {
+  formatCurseForgeDate,
+  formatCurseForgeDownloads,
+  getVisibleMinecraftVersions,
+  MINECRAFT_VERSION_PATTERN,
+  requiresManualCurseForgeDownload,
+} from "@/views/main/features/curseforge/curseforge-browser-model";
+import { useCurseForgeInstall } from "@/views/main/features/curseforge/use-curseforge-install";
+import { useRendererMediaUrl } from "@/views/main/features/instances/hooks/use-renderer-media-url";
+import { useInstances } from "@/views/main/hooks/use-instances";
 import { rpc } from "@/views/main/lib/rpc";
 import { cn } from "@/views/main/lib/utils";
 
-type ModpackCategory = "adventure" | "all" | "featured" | "performance";
+type ModpackFilter = "all" | "available" | "installed";
 
-const CATEGORY_LABELS: Record<ModpackCategory, string> = {
-  adventure: "Adventure",
-  all: "All",
-  featured: "Featured",
-  performance: "Performance",
+type InstalledModpackCard = {
+  entry: InstalledModpackEntry;
+  id: string;
+  imageUrl: string | null;
+  installed: true;
+  kind: "installed";
+  loader: string;
+  minecraft: string;
+  name: string;
+  searchText: string;
+  summary: string;
+  tags: Array<string>;
+  updatedLabel: string;
 };
 
-const MODPACK_ART_BLOCKS = Array.from(
-  { length: 18 },
-  (_, index) => `modpack-art-block-${index}`,
-);
-
-const LOADER_LABELS: Partial<Record<ModLoader, Modpack["loader"]>> = {
-  fabric: "Fabric",
-  forge: "Forge",
-  neoforge: "NeoForge",
-  quilt: "Quilt",
+type CurseForgeModpackCard = {
+  downloads: string;
+  id: string;
+  imageUrl: string | null;
+  installed: false;
+  kind: "curseforge";
+  loader: string;
+  minecraft: string;
+  name: string;
+  project: CurseForgeProjectSummary;
+  searchText: string;
+  summary: string;
+  tags: Array<string>;
+  updatedLabel: string;
 };
 
-const MINECRAFT_VERSION_PATTERN = /^\d+(?:\.\d+)+(?:[-\w.]*)?$/;
+type ModpackCardItem = InstalledModpackCard | CurseForgeModpackCard;
 
-function ModpackArt({ index }: { index: number }) {
+function ModpackArtwork({ imageUrl }: { imageUrl: string | null }) {
+  const resolvedUrl = useRendererMediaUrl(imageUrl);
+
   return (
-    <div
-      className={cn(
-        "relative h-36 overflow-hidden bg-gradient-to-br",
-        index % 3 === 0 && "from-primary/80 via-primary/20 to-card",
-        index % 3 === 1 && "from-[var(--chart-2)]/70 via-primary/20 to-card",
-        index % 3 === 2 && "from-[var(--chart-3)]/70 via-secondary/30 to-card",
+    <div className="relative flex h-36 items-center justify-center overflow-hidden rounded-t-[inherit] bg-muted/35">
+      {resolvedUrl ? (
+        <img
+          src={resolvedUrl}
+          alt=""
+          className="size-full object-cover"
+          loading="lazy"
+        />
+      ) : (
+        <PackageIcon className="size-9 text-muted-foreground/45" />
       )}
-      aria-hidden="true"
-    >
-      <div className="absolute inset-0 bg-[linear-gradient(135deg,color-mix(in_oklch,var(--foreground)_10%,transparent)_0_1px,transparent_1px_18px)]" />
-      <div className="absolute right-5 bottom-0 grid grid-cols-3 gap-1 opacity-70">
-        {MODPACK_ART_BLOCKS.map((blockId) => (
-          <span
-            key={blockId}
-            className="size-5 rounded-sm bg-background/45 shadow-sm"
-          />
-        ))}
-      </div>
-      <div className="absolute bottom-0 left-0 h-16 w-2/3 bg-gradient-to-t from-background/80 to-transparent" />
     </div>
   );
 }
 
+const getProjectMinecraftVersion = (
+  project: CurseForgeProjectSummary,
+): string =>
+  getVisibleMinecraftVersions(project, 1)[0] ??
+  project.gameVersions.find((version) =>
+    MINECRAFT_VERSION_PATTERN.test(version),
+  ) ??
+  "Version varies";
+
+const getProjectLoader = (project: CurseForgeProjectSummary): string =>
+  project.modLoaders[0]
+    ? (LOADER_LABELS[project.modLoaders[0]] ?? "Loader varies")
+    : "Loader varies";
+
+const createInstalledCard = (
+  entry: InstalledModpackEntry,
+): InstalledModpackCard => {
+  const summary = `Installed as ${entry.instance.name}.`;
+
+  return {
+    entry,
+    id: entry.id,
+    imageUrl: entry.imageUrl,
+    installed: true,
+    kind: "installed",
+    loader: LOADER_LABELS[entry.loader],
+    minecraft: entry.minecraft,
+    name: entry.name,
+    searchText: [
+      entry.name,
+      entry.instance.name,
+      entry.minecraft,
+      entry.loader,
+      entry.version ?? "",
+      entry.projectId,
+      ...entry.tags,
+    ]
+      .join(" ")
+      .toLowerCase(),
+    summary,
+    tags: entry.tags,
+    updatedLabel: formatRelativeDate(entry.updatedAt),
+  };
+};
+
+const createCurseForgeCard = (
+  project: CurseForgeProjectSummary,
+): CurseForgeModpackCard => {
+  const minecraft = getProjectMinecraftVersion(project);
+  const loader = getProjectLoader(project);
+  const tags =
+    project.categories.length > 0
+      ? project.categories.slice(0, 3)
+      : ["CurseForge"];
+
+  return {
+    downloads: formatCurseForgeDownloads(project.downloadCount),
+    id: `curseforge:${project.id}`,
+    imageUrl: project.screenshotUrls[0] ?? project.logoUrl,
+    installed: false,
+    kind: "curseforge",
+    loader,
+    minecraft,
+    name: project.name,
+    project,
+    searchText: [
+      project.name,
+      project.summary,
+      minecraft,
+      loader,
+      project.slug,
+      ...project.categories,
+      ...project.authors,
+      ...project.gameVersions,
+    ]
+      .join(" ")
+      .toLowerCase(),
+    summary: project.summary || "CurseForge modpack.",
+    tags,
+    updatedLabel: formatCurseForgeDate(project.dateModified),
+  };
+};
+
 export function ModpacksPage() {
-  const [catalogPacks, setCatalogPacks] = useState<Array<Modpack>>(
-    () => MODPACKS,
-  );
-  const [category, setCategory] = useState<ModpackCategory>("all");
+  const instancesHook = useInstances();
+  const [curseForgeProjects, setCurseForgeProjects] = useState<
+    Array<CurseForgeProjectSummary>
+  >([]);
   const [curseForgeStatus, setCurseForgeStatus] =
     useState<CurseForgeStatus | null>(null);
-  const [favorites, setFavorites] = useState(() => new Set(["valhelsia-six"]));
-  const [installed, setInstalled] = useState(
-    () =>
-      new Set(MODPACKS.filter((pack) => pack.installed).map((pack) => pack.id)),
+  const [curseForgeError, setCurseForgeError] = useState<string | null>(null);
+  const [favorites, setFavorites] = useState<Set<string>>(() => new Set());
+  const [filter, setFilter] = useState<ModpackFilter>("all");
+  const [installingProjectIds, setInstallingProjectIds] = useState<Set<number>>(
+    () => new Set(),
   );
   const [query, setQuery] = useState("");
   const [refreshingCurseForge, setRefreshingCurseForge] = useState(false);
+  const deferredQuery = useDeferredValue(query);
+  const instances = instancesHook.data ?? [];
+  const installedModpacks = useMemo(
+    () => mapInstalledModpacks(instances),
+    [instances],
+  );
+  const installedProjectIds = useMemo(
+    () => new Set(installedModpacks.map((pack) => pack.projectId)),
+    [installedModpacks],
+  );
+  const curseForgeInstall = useCurseForgeInstall({
+    onInstanceCreated: instancesHook.upsertInstance,
+  });
 
-  useEffect(() => {
-    let mounted = true;
+  const loadCurseForgeCatalog = useCallback(
+    async ({ quiet = false }: { quiet?: boolean } = {}) => {
+      setRefreshingCurseForge(true);
+      setCurseForgeError(null);
 
-    async function loadStatus() {
       try {
         const status = await rpc.requestProxy.getCurseForgeStatus(null);
-        if (mounted) setCurseForgeStatus(status);
-      } catch {
-        if (mounted) setCurseForgeStatus(null);
+        setCurseForgeStatus(status);
+
+        if (!status.configured) {
+          setCurseForgeProjects([]);
+          if (!quiet) {
+            toast.error("Set NYXEN_CURSEFORGE_API_KEY to load live modpacks.");
+          }
+          return;
+        }
+
+        const result = await rpc.requestProxy.searchCurseForgeProjects({
+          pageSize: 24,
+          section: "modpacks",
+          sortField: "downloads",
+          sortOrder: "desc",
+        });
+        setCurseForgeProjects(result.data);
+
+        if (!quiet) {
+          toast.success(`Loaded ${result.data.length} CurseForge modpacks.`);
+        }
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Failed to load CurseForge modpacks.";
+        setCurseForgeError(message);
+        if (!quiet) toast.error(message);
+      } finally {
+        setRefreshingCurseForge(false);
       }
-    }
+    },
+    [],
+  );
 
-    loadStatus();
+  useEffect(() => {
+    void loadCurseForgeCatalog({ quiet: true });
+  }, [loadCurseForgeCatalog]);
 
-    return () => {
-      mounted = false;
-    };
-  }, []);
+  const cards = useMemo<Array<ModpackCardItem>>(() => {
+    const installedCards = installedModpacks.map(createInstalledCard);
+    const availableCards = curseForgeProjects
+      .filter((project) => !installedProjectIds.has(String(project.id)))
+      .map(createCurseForgeCard);
 
-  const filteredPacks = useMemo(() => {
-    const needle = query.trim().toLowerCase();
+    return [...installedCards, ...availableCards];
+  }, [curseForgeProjects, installedModpacks, installedProjectIds]);
 
-    return catalogPacks.filter((pack) => {
-      const matchesCategory = category === "all" || pack.category === category;
-      const matchesQuery =
-        needle.length === 0 ||
-        [pack.name, pack.loader, pack.minecraft, pack.summary, ...pack.tags]
-          .join(" ")
-          .toLowerCase()
-          .includes(needle);
+  const filteredCards = useMemo(() => {
+    const needle = deferredQuery.trim().toLowerCase();
 
-      return matchesCategory && matchesQuery;
+    return cards.filter((card) => {
+      const matchesFilter =
+        filter === "all" ||
+        (filter === "installed" && card.kind === "installed") ||
+        (filter === "available" && card.kind === "curseforge");
+      const matchesQuery = !needle || card.searchText.includes(needle);
+
+      return matchesFilter && matchesQuery;
     });
-  }, [catalogPacks, category, query]);
+  }, [cards, deferredQuery, filter]);
 
   const toggleFavorite = (id: string) => {
     setFavorites((current) => {
@@ -156,81 +312,29 @@ export function ModpacksPage() {
     });
   };
 
-  const toggleInstall = (id: string, name: string) => {
-    setInstalled((current) => {
-      const next = new Set(current);
-      if (next.has(id)) {
-        toast.message(`${name} is already installed.`);
-        return current;
-      }
-      next.add(id);
-      toast.success(`${name} added to your library.`);
-      return next;
-    });
-  };
-
-  const importPack = () => {
-    const importedPack: Modpack = {
-      category: "featured",
-      downloads: "Local",
-      id: "imported-local-pack",
-      installed: true,
-      loader: "Fabric",
-      minecraft: "1.21.5",
-      name: "Imported Local Pack",
-      performance: "Balanced",
-      summary:
-        "A locally imported profile staged from a pack manifest on disk.",
-      tags: ["Local", "Manifest", "Custom"],
-      updated: "Imported now",
-    };
-
-    setCatalogPacks((current) => {
-      if (current.some((pack) => pack.id === importedPack.id)) {
-        toast.message("Imported Local Pack is already in the catalog.");
-        return current;
-      }
-      return [importedPack, ...current];
-    });
-    setInstalled((current) => new Set(current).add(importedPack.id));
-    toast.success("Imported Local Pack added to your library.");
-  };
-
-  const refreshCurseForgeCatalog = async () => {
-    setRefreshingCurseForge(true);
+  const installProject = async (project: CurseForgeProjectSummary) => {
+    setInstallingProjectIds((current) => new Set(current).add(project.id));
 
     try {
-      const status =
-        curseForgeStatus ?? (await rpc.requestProxy.getCurseForgeStatus(null));
-      setCurseForgeStatus(status);
-
-      if (!status.configured) {
-        toast.error(
-          "Set NYXEN_CURSEFORGE_API_KEY to refresh the CurseForge catalog.",
-        );
+      if (requiresManualCurseForgeDownload(project)) {
+        await curseForgeInstall.openManualDownload({
+          category: "modpacks",
+          instance: null,
+          item: project,
+        });
         return;
       }
 
-      const result = await rpc.requestProxy.searchCurseForgeProjects({
-        pageSize: 18,
-        section: "modpacks",
-        sortField: "downloads",
-        sortOrder: "desc",
+      await curseForgeInstall.installModpack({
+        category: "modpacks",
+        item: project,
       });
-      const curseForgePacks = result.data.map(mapCurseForgeModpack);
-      const curseForgeIds = new Set(curseForgePacks.map((pack) => pack.id));
-
-      setCatalogPacks((current) => [
-        ...curseForgePacks,
-        ...current.filter((pack) => !curseForgeIds.has(pack.id)),
-      ]);
-      toast.success(`Loaded ${curseForgePacks.length} CurseForge modpacks.`);
-    } catch (e) {
-      toast.error(
-        e instanceof Error ? e.message : "Failed to refresh CurseForge catalog",
-      );
     } finally {
-      setRefreshingCurseForge(false);
+      setInstallingProjectIds((current) => {
+        const next = new Set(current);
+        next.delete(project.id);
+        return next;
+      });
     }
   };
 
@@ -239,98 +343,101 @@ export function ModpacksPage() {
       <LibraryPageHeader
         eyebrow="Discover"
         title="Modpacks"
-        description="Browse curated packs, compare loader requirements, and stage installs without leaving the launcher."
+        description="Browse installed modpacks and live CurseForge modpack results."
         actions={
-          <>
-            <Button
-              variant="outline"
-              onClick={refreshCurseForgeCatalog}
-              disabled={refreshingCurseForge}
-            >
-              {refreshingCurseForge ? (
-                <Loader2Icon
-                  data-icon="inline-start"
-                  className="animate-spin"
-                />
-              ) : (
-                <RefreshCcwIcon data-icon="inline-start" />
-              )}
-              {refreshingCurseForge ? "Refreshing" : "Refresh"}
-            </Button>
-            <Button onClick={importPack}>
-              <PackagePlusIcon data-icon="inline-start" />
-              Import Pack
-            </Button>
-          </>
+          <Button
+            variant="outline"
+            onClick={() => void loadCurseForgeCatalog()}
+            disabled={refreshingCurseForge}
+          >
+            {refreshingCurseForge ? (
+              <Loader2Icon data-icon="inline-start" className="animate-spin" />
+            ) : (
+              <RefreshCcwIcon data-icon="inline-start" />
+            )}
+            {refreshingCurseForge ? "Refreshing" : "Refresh"}
+          </Button>
         }
       />
 
       <section className="grid grid-cols-3 gap-3 max-lg:grid-cols-1">
         <MetricCard
           icon={BoxesIcon}
-          label="Catalog"
-          value={`${catalogPacks.length} packs`}
-          caption="Local curated set ready for fast browsing."
+          label="Live Catalog"
+          value={`${curseForgeProjects.length} packs`}
+          caption={
+            curseForgeStatus?.configured
+              ? "Loaded from CurseForge search."
+              : "CurseForge API key is not configured."
+          }
         />
         <MetricCard
           icon={HardDriveDownloadIcon}
           label="Installed"
-          value={String(installed.size)}
-          caption="Packs already staged in your launcher library."
+          value={String(installedModpacks.length)}
+          caption="Modpacks linked to local launcher instances."
         />
         <MetricCard
           icon={curseForgeStatus?.configured ? Globe2Icon : FilterIcon}
           label="CurseForge"
           value={curseForgeStatus?.configured ? "Connected" : "Not configured"}
-          caption={
-            curseForgeStatus?.configured
-              ? "Refresh pulls live Minecraft modpacks."
-              : "Set NYXEN_CURSEFORGE_API_KEY for live catalog search."
-          }
+          caption={curseForgeError ?? "Live results are loaded through RPC."}
         />
       </section>
 
       <Tabs
-        value={category}
-        onValueChange={(value) => setCategory(value as ModpackCategory)}
+        value={filter}
+        onValueChange={(value) => setFilter(value as ModpackFilter)}
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <TabsList>
-            {(Object.keys(CATEGORY_LABELS) as Array<ModpackCategory>).map(
-              (key) => (
-                <TabsTrigger key={key} value={key}>
-                  {CATEGORY_LABELS[key]}
-                </TabsTrigger>
-              ),
-            )}
+            <TabsTrigger value="all">All</TabsTrigger>
+            <TabsTrigger value="installed">Installed</TabsTrigger>
+            <TabsTrigger value="available">Available</TabsTrigger>
           </TabsList>
           <SearchBox
             value={query}
             onChange={setQuery}
-            placeholder="Search packs, tags, versions..."
+            placeholder="Search packs, authors, versions..."
           />
         </div>
 
-        <TabsContent value={category}>
-          {filteredPacks.length === 0 ? (
+        <TabsContent value={filter}>
+          {instancesHook.loading || refreshingCurseForge ? (
+            <PageEmpty
+              icon={RefreshCcwIcon}
+              title="Loading modpacks"
+              description="Installed instances and live catalog entries are being loaded."
+            />
+          ) : filteredCards.length === 0 ? (
             <PageEmpty
               icon={BoxesIcon}
               title="No modpacks found"
-              description="Adjust the search or switch categories to find compatible packs."
+              description={
+                curseForgeStatus?.configured
+                  ? "Adjust the search or refresh the live catalog."
+                  : "Install a modpack instance or configure CurseForge search."
+              }
             />
           ) : (
             <div className="grid grid-cols-3 gap-3 max-xl:grid-cols-2 max-md:grid-cols-1">
-              {filteredPacks.map((pack, index) => {
-                const isInstalled = installed.has(pack.id);
-                const isFavorite = favorites.has(pack.id);
+              {filteredCards.map((card) => {
+                const isFavorite = favorites.has(card.id);
+                const installing =
+                  card.kind === "curseforge" &&
+                  installingProjectIds.has(card.project.id);
+                const needsManualDownload =
+                  card.kind === "curseforge" &&
+                  requiresManualCurseForgeDownload(card.project);
 
                 return (
-                  <Card key={pack.id} className="pt-0">
-                    <ModpackArt index={index} />
+                  <Card key={card.id} className="pt-0">
+                    <ModpackArtwork imageUrl={card.imageUrl} />
                     <CardHeader>
-                      <CardTitle>{pack.name}</CardTitle>
+                      <CardTitle>{card.name}</CardTitle>
                       <CardDescription>
-                        {pack.minecraft} · {pack.loader} · {pack.updated}
+                        Minecraft {card.minecraft} · {card.loader} ·{" "}
+                        {card.updatedLabel}
                       </CardDescription>
                       <CardAction>
                         <Button
@@ -339,7 +446,7 @@ export function ModpacksPage() {
                           aria-label={
                             isFavorite ? "Remove favorite" : "Add favorite"
                           }
-                          onClick={() => toggleFavorite(pack.id)}
+                          onClick={() => toggleFavorite(card.id)}
                         >
                           <StarIcon
                             className={cn(isFavorite && "fill-current")}
@@ -349,10 +456,10 @@ export function ModpacksPage() {
                     </CardHeader>
                     <CardContent className="flex flex-col gap-3">
                       <p className="text-sm leading-6 text-muted-foreground">
-                        {pack.summary}
+                        {card.summary}
                       </p>
                       <div className="flex flex-wrap gap-1.5">
-                        {pack.tags.map((tag) => (
+                        {card.tags.map((tag) => (
                           <Badge key={tag} variant="outline">
                             {tag}
                           </Badge>
@@ -362,20 +469,52 @@ export function ModpacksPage() {
                     <CardFooter className="justify-between gap-3">
                       <div className="min-w-0">
                         <div className="text-xs font-semibold">
-                          {pack.downloads} downloads
+                          {card.kind === "installed"
+                            ? card.entry.instance.name
+                            : `${card.downloads} downloads`}
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          {pack.performance}
+                          {card.kind === "installed"
+                            ? `Installed ${formatRelativeDate(card.entry.installedAt)}`
+                            : card.project.authors.join(", ") || "CurseForge"}
                         </div>
                       </div>
-                      <Button
-                        size="sm"
-                        variant={isInstalled ? "secondary" : "default"}
-                        onClick={() => toggleInstall(pack.id, pack.name)}
-                      >
-                        <DownloadIcon data-icon="inline-start" />
-                        {isInstalled ? "Installed" : "Install"}
-                      </Button>
+                      {card.kind === "installed" ? (
+                        <Link
+                          to="/instances/$instanceId"
+                          params={{ instanceId: card.entry.instanceId }}
+                          className={buttonVariants({ size: "sm" })}
+                        >
+                          Open
+                        </Link>
+                      ) : (
+                        <Button
+                          size="sm"
+                          onClick={() => void installProject(card.project)}
+                          disabled={
+                            installing ||
+                            !card.project.latestFile ||
+                            card.project.isAvailable === false
+                          }
+                          variant={needsManualDownload ? "outline" : "default"}
+                        >
+                          {installing ? (
+                            <Loader2Icon
+                              data-icon="inline-start"
+                              className="animate-spin"
+                            />
+                          ) : needsManualDownload ? (
+                            <ExternalLinkIcon data-icon="inline-start" />
+                          ) : (
+                            <DownloadIcon data-icon="inline-start" />
+                          )}
+                          {installing
+                            ? "Installing"
+                            : needsManualDownload
+                              ? "Download"
+                              : "Install"}
+                        </Button>
+                      )}
                     </CardFooter>
                   </Card>
                 );
@@ -386,79 +525,4 @@ export function ModpacksPage() {
       </Tabs>
     </div>
   );
-}
-
-function formatDownloads(downloadCount: number) {
-  return new Intl.NumberFormat(undefined, {
-    maximumFractionDigits: 1,
-    notation: "compact",
-  }).format(downloadCount);
-}
-
-function formatUpdated(value: string | null) {
-  if (!value) return "Updated recently";
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "Updated recently";
-  }
-
-  return `Updated ${new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-  }).format(date)}`;
-}
-
-function inferModpackCategory(
-  project: CurseForgeProjectSummary,
-): Exclude<ModpackCategory, "all"> {
-  const text = [project.name, project.summary, ...project.categories]
-    .join(" ")
-    .toLowerCase();
-
-  if (
-    text.includes("performance") ||
-    text.includes("optimized") ||
-    text.includes("fps")
-  ) {
-    return "performance";
-  }
-
-  if (
-    text.includes("adventure") ||
-    text.includes("quest") ||
-    text.includes("rpg")
-  ) {
-    return "adventure";
-  }
-
-  return "featured";
-}
-
-function mapCurseForgeModpack(project: CurseForgeProjectSummary): Modpack {
-  const loader = project.modLoaders[0]
-    ? (LOADER_LABELS[project.modLoaders[0]] ?? "Unknown")
-    : "Unknown";
-  const minecraft =
-    project.gameVersions.find((version) =>
-      MINECRAFT_VERSION_PATTERN.test(version),
-    ) ?? "Unknown";
-  const tags = [
-    ...project.categories.slice(0, 3),
-    ...(project.categories.length === 0 ? ["CurseForge"] : []),
-  ];
-
-  return {
-    category: inferModpackCategory(project),
-    downloads: formatDownloads(project.downloadCount),
-    id: `curseforge-${project.id}`,
-    installed: false,
-    loader,
-    minecraft,
-    name: project.name,
-    performance: project.allowDistribution === false ? "Restricted" : "Varies",
-    summary: project.summary || "CurseForge modpack catalog entry.",
-    tags,
-    updated: formatUpdated(project.dateModified),
-  };
 }

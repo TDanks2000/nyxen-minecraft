@@ -1,6 +1,81 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect } from "react";
+import { create } from "zustand";
 import type { LauncherInstance } from "@/shared/types";
 import { rpc } from "@/views/main/lib/rpc";
+
+type InstancesStore = {
+  data: Array<LauncherInstance> | null;
+  error: string | null;
+  loading: boolean;
+  loadPromise: Promise<Array<LauncherInstance>> | null;
+  refresh: () => Promise<Array<LauncherInstance>>;
+  removeInstance: (instanceId: string) => void;
+  upsertInstance: (instance: LauncherInstance) => void;
+};
+
+const sortInstances = (
+  instances: Array<LauncherInstance>,
+): Array<LauncherInstance> =>
+  [...instances].sort((a, b) => a.name.localeCompare(b.name));
+
+export const useInstancesStore = create<InstancesStore>((set, get) => ({
+  data: null,
+  error: null,
+  loading: false,
+  loadPromise: null,
+  refresh: async () => {
+    const existingLoad = get().loadPromise;
+
+    if (existingLoad) {
+      return existingLoad;
+    }
+
+    set({ loading: true });
+
+    const loadPromise = rpc.requestProxy
+      .listLauncherInstances(null)
+      .then((result) => {
+        const data = sortInstances(result);
+        set({ data, error: null, loading: false });
+        return data;
+      })
+      .catch((e: unknown) => {
+        const message =
+          e instanceof Error ? e.message : "Failed to load instances";
+        set({ error: message, loading: false });
+        throw e;
+      })
+      .finally(() => {
+        if (get().loadPromise === loadPromise) {
+          set({ loadPromise: null });
+        }
+      });
+
+    set({ loadPromise });
+    return loadPromise;
+  },
+  removeInstance: (instanceId) => {
+    set((state) => ({
+      data: state.data
+        ? state.data.filter((instance) => instance.id !== instanceId)
+        : state.data,
+    }));
+  },
+  upsertInstance: (instance) => {
+    set((state) => {
+      const next = state.data ? [...state.data] : [];
+      const existingIndex = next.findIndex((item) => item.id === instance.id);
+
+      if (existingIndex >= 0) {
+        next[existingIndex] = instance;
+      } else {
+        next.push(instance);
+      }
+
+      return { data: sortInstances(next), error: null };
+    });
+  },
+}));
 
 export function useInstances(): {
   data: Array<LauncherInstance> | null;
@@ -10,60 +85,25 @@ export function useInstances(): {
   refresh: () => void;
   upsertInstance: (instance: LauncherInstance) => void;
 } {
-  const [data, setData] = useState<Array<LauncherInstance> | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [tick, setTick] = useState(0);
+  const data = useInstancesStore((state) => state.data);
+  const error = useInstancesStore((state) => state.error);
+  const storeLoading = useInstancesStore((state) => state.loading);
+  const loadPromise = useInstancesStore((state) => state.loadPromise);
+  const refreshInstances = useInstancesStore((state) => state.refresh);
+  const removeInstance = useInstancesStore((state) => state.removeInstance);
+  const upsertInstance = useInstancesStore((state) => state.upsertInstance);
 
-  const refresh = useCallback(() => setTick((t) => t + 1), []);
-  const upsertInstance = useCallback((instance: LauncherInstance) => {
-    setData((current) => {
-      const next = current ? [...current] : [];
-      const existingIndex = next.findIndex((item) => item.id === instance.id);
-
-      if (existingIndex >= 0) {
-        next[existingIndex] = instance;
-      } else {
-        next.push(instance);
-      }
-
-      return next.sort((a, b) => a.name.localeCompare(b.name));
-    });
-  }, []);
-  const removeInstance = useCallback((instanceId: string) => {
-    setData((current) =>
-      current
-        ? current.filter((instance) => instance.id !== instanceId)
-        : current,
-    );
-  }, []);
+  const refresh = useCallback(() => {
+    void refreshInstances().catch(() => undefined);
+  }, [refreshInstances]);
 
   useEffect(() => {
-    void tick;
-    let mounted = true;
-
-    async function load() {
-      setLoading(true);
-      try {
-        const result = await rpc.requestProxy.listLauncherInstances(null);
-        if (mounted) {
-          setData(result);
-          setError(null);
-        }
-      } catch (e) {
-        if (mounted) {
-          setError(e instanceof Error ? e.message : "Failed to load instances");
-        }
-      } finally {
-        if (mounted) setLoading(false);
-      }
+    if (data === null && !storeLoading && !loadPromise && !error) {
+      void refreshInstances().catch(() => undefined);
     }
+  }, [data, error, loadPromise, refreshInstances, storeLoading]);
 
-    load();
-    return () => {
-      mounted = false;
-    };
-  }, [tick]);
+  const loading = storeLoading || (data === null && !error);
 
   return { data, loading, error, refresh, removeInstance, upsertInstance };
 }

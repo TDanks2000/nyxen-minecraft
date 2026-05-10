@@ -1,6 +1,54 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect } from "react";
+import { create } from "zustand";
 import type { LauncherStatus } from "@/shared/types";
 import { rpc } from "@/views/main/lib/rpc";
+
+type LauncherStatusStore = {
+  data: LauncherStatus | null;
+  error: string | null;
+  loading: boolean;
+  loadPromise: Promise<LauncherStatus> | null;
+  refresh: () => Promise<LauncherStatus>;
+};
+
+export const useLauncherStatusStore = create<LauncherStatusStore>(
+  (set, get) => ({
+    data: null,
+    error: null,
+    loading: false,
+    loadPromise: null,
+    refresh: async () => {
+      const existingLoad = get().loadPromise;
+
+      if (existingLoad) {
+        return existingLoad;
+      }
+
+      set({ loading: true });
+
+      const loadPromise = rpc.requestProxy
+        .getLauncherStatus(null)
+        .then((result) => {
+          set({ data: result, error: null, loading: false });
+          return result;
+        })
+        .catch((e: unknown) => {
+          const message =
+            e instanceof Error ? e.message : "Failed to load status";
+          set({ error: message, loading: false });
+          throw e;
+        })
+        .finally(() => {
+          if (get().loadPromise === loadPromise) {
+            set({ loadPromise: null });
+          }
+        });
+
+      set({ loadPromise });
+      return loadPromise;
+    },
+  }),
+);
 
 export function useLauncherStatus(): {
   data: LauncherStatus | null;
@@ -8,39 +56,23 @@ export function useLauncherStatus(): {
   error: string | null;
   refresh: () => void;
 } {
-  const [data, setData] = useState<LauncherStatus | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [tick, setTick] = useState(0);
+  const data = useLauncherStatusStore((state) => state.data);
+  const error = useLauncherStatusStore((state) => state.error);
+  const storeLoading = useLauncherStatusStore((state) => state.loading);
+  const loadPromise = useLauncherStatusStore((state) => state.loadPromise);
+  const refreshStatus = useLauncherStatusStore((state) => state.refresh);
 
-  const refresh = useCallback(() => setTick((t) => t + 1), []);
+  const refresh = useCallback(() => {
+    void refreshStatus().catch(() => undefined);
+  }, [refreshStatus]);
 
   useEffect(() => {
-    void tick;
-    let mounted = true;
-
-    async function load() {
-      setLoading(true);
-      try {
-        const result = await rpc.requestProxy.getLauncherStatus(null);
-        if (mounted) {
-          setData(result);
-          setError(null);
-        }
-      } catch (e) {
-        if (mounted) {
-          setError(e instanceof Error ? e.message : "Failed to load status");
-        }
-      } finally {
-        if (mounted) setLoading(false);
-      }
+    if (data === null && !storeLoading && !loadPromise && !error) {
+      void refreshStatus().catch(() => undefined);
     }
+  }, [data, error, loadPromise, refreshStatus, storeLoading]);
 
-    load();
-    return () => {
-      mounted = false;
-    };
-  }, [tick]);
+  const loading = storeLoading || (data === null && !error);
 
   return { data, loading, error, refresh };
 }

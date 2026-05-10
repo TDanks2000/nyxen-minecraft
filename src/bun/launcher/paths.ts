@@ -1,30 +1,62 @@
 import { chmodSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, posix, win32 } from "node:path";
 import { APP_CHANNEL, APP_IDENTIFIER } from "../../shared/constants";
 import type {
   LauncherDirectories,
   LauncherInstanceFolders,
 } from "../../shared/types";
 
-const defaultDataDirectory = (): string => {
-  switch (process.platform) {
+type DefaultDataRootOptions = {
+  env?: Partial<Record<string, string | undefined>>;
+  home?: string;
+  platform?: NodeJS.Platform;
+};
+
+const joinForPlatform = (
+  platform: NodeJS.Platform,
+  ...segments: Array<string>
+): string =>
+  platform === "win32" ? win32.join(...segments) : posix.join(...segments);
+
+export const getDefaultDataDirectory = ({
+  env = process.env,
+  home = homedir(),
+  platform = process.platform,
+}: DefaultDataRootOptions = {}): string => {
+  switch (platform) {
     case "darwin":
-      return join(homedir(), "Library", "Application Support");
+      return joinForPlatform(platform, home, "Library", "Application Support");
     case "win32":
       return (
-        process.env.LOCALAPPDATA?.trim() ||
-        join(process.env.USERPROFILE?.trim() || homedir(), "AppData", "Local")
+        env.LOCALAPPDATA?.trim() ||
+        joinForPlatform(
+          platform,
+          env.USERPROFILE?.trim() || home,
+          "AppData",
+          "Local",
+        )
       );
     default:
       return (
-        process.env.XDG_DATA_HOME?.trim() || join(homedir(), ".local", "share")
+        env.XDG_DATA_HOME?.trim() ||
+        joinForPlatform(platform, home, ".local", "share")
       );
   }
 };
 
-const defaultDataRoot = (): string =>
-  join(defaultDataDirectory(), APP_IDENTIFIER, APP_CHANNEL);
+export const getDefaultDataRoot = (
+  options: DefaultDataRootOptions = {},
+): string => {
+  const platform = options.platform ?? process.platform;
+
+  return joinForPlatform(
+    platform,
+    getDefaultDataDirectory({ ...options, platform }),
+    APP_IDENTIFIER,
+    APP_CHANNEL,
+  );
+};
 
 export const ensurePrivateDirectory = (directory: string): void => {
   mkdirSync(directory, { mode: 0o700, recursive: true });
@@ -72,7 +104,7 @@ export const isLauncherPathSegment = (value: string): boolean => {
 export const getDataRoot = (): string => {
   const configuredRoot = process.env.NYXEN_DATA_DIR?.trim();
 
-  return configuredRoot ? configuredRoot : defaultDataRoot();
+  return configuredRoot ? configuredRoot : getDefaultDataRoot();
 };
 
 export const getLauncherRoot = (): string => join(getDataRoot(), "launcher");

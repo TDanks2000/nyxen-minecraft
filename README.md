@@ -93,9 +93,9 @@ Minecraft/Xbox network calls do not block the UI.
 ## Privacy And Local Data
 
 Launcher state is stored locally under the app-scoped OS data directory by
-default, such as `~/.local/share/dev.electrobun.nyxenminecraft/dev` on Linux.
-Set `NYXEN_DATA_DIR` to isolate SQLite and launcher cache files during tests or
-manual debugging.
+default. See [Platform Support](#platform-support) for the Windows, macOS, and
+Linux locations. Set `NYXEN_DATA_DIR` to isolate SQLite and launcher cache files
+during tests or manual debugging.
 
 The local SQLite database stores launcher profiles, instances, cached version
 metadata, and tokens needed to refresh a verified Microsoft profile. This is
@@ -113,6 +113,27 @@ Nyxen API, analytics endpoint, or account sync service.
 - Optional CurseForge catalog search using a local API key
 - Local launcher directory and settings status
 - Typed Electrobun RPC between Bun and the React webview
+
+## Platform Support
+
+Nyxen Minecraft is configured as a local desktop app for Windows, macOS, and
+Linux. The cross-platform CI workflow runs typecheck, lint, tests, and a native
+desktop build on Windows, macOS, and Linux runners. The launcher runtime avoids
+platform shell dependencies for Minecraft native library extraction.
+
+`bun run build` invokes Electrobun with `--targets=all`; with the current
+Electrobun CLI, local builds still emit the host-platform bundle, so use native
+machines or the CI matrix for OS-specific artifacts.
+
+Default local data locations:
+
+- Windows: `%LOCALAPPDATA%\dev.tdanks2000.nyxenminecraft\dev`
+- macOS: `~/Library/Application Support/dev.tdanks2000.nyxenminecraft/dev`
+- Linux: `$XDG_DATA_HOME/dev.tdanks2000.nyxenminecraft/dev`, or
+  `~/.local/share/dev.tdanks2000.nyxenminecraft/dev` when `XDG_DATA_HOME` is
+  not set
+
+Set `NYXEN_DATA_DIR` to override the data root on any platform.
 
 ## Tech Stack
 

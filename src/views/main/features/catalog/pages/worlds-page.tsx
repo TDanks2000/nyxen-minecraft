@@ -1,12 +1,12 @@
 import {
-  ArchiveIcon,
-  CloudUploadIcon,
-  FolderPlusIcon,
+  CopyIcon,
+  FolderOpenIcon,
   GlobeIcon,
-  ShieldCheckIcon,
-  SparklesIcon,
+  RefreshCcwIcon,
+  ServerIcon,
+  TimerIcon,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/views/main/components/ui/badge";
 import { Button } from "@/views/main/components/ui/button";
@@ -26,9 +26,14 @@ import {
   TabsTrigger,
 } from "@/views/main/components/ui/tabs";
 import {
-  WORLDS,
-  type WorldEntry,
-} from "@/views/main/features/catalog/catalog-data";
+  formatAbsoluteDate,
+  formatEntrySize,
+  formatRelativeDate,
+  getContentList,
+  getLatestContentRefresh,
+  mapLocalWorlds,
+  toFileMediaUrl,
+} from "@/views/main/features/catalog/catalog-model";
 import {
   LibraryPageHeader,
   MetricCard,
@@ -36,73 +41,129 @@ import {
   PageEmpty,
   SearchBox,
 } from "@/views/main/features/catalog/page-primitives";
+import { useInstanceContentStore } from "@/views/main/features/instances/hooks/use-instance-content-store";
+import { useInstances } from "@/views/main/hooks/use-instances";
+import { rpc } from "@/views/main/lib/rpc";
 
-type WorldFilter = "Adventure" | "all" | "Creative" | "Survival";
+type WorldFilter = "all" | "archives" | "directories" | "recent";
+
+const WORLD_FILTER_LABELS: Record<WorldFilter, string> = {
+  all: "All",
+  archives: "Archives",
+  directories: "Folders",
+  recent: "Recent",
+};
+
+const recentCutoffMs = 7 * 24 * 60 * 60 * 1000;
 
 export function WorldsPage() {
+  const instancesHook = useInstances();
+  const byInstanceId = useInstanceContentStore((state) => state.byInstanceId);
+  const errors = useInstanceContentStore((state) => state.errors);
+  const loadingIds = useInstanceContentStore((state) => state.loadingIds);
+  const refreshManyInstanceContents = useInstanceContentStore(
+    (state) => state.refreshManyInstanceContents,
+  );
   const [filter, setFilter] = useState<WorldFilter>("all");
   const [query, setQuery] = useState("");
-  const [worlds, setWorlds] = useState<Array<WorldEntry>>(() => WORLDS);
-  const [backupCounts, setBackupCounts] = useState(
-    () => new Map(WORLDS.map((world) => [world.id, world.backups])),
+  const deferredQuery = useDeferredValue(query);
+
+  const instances = instancesHook.data ?? [];
+  const instanceIds = useMemo(
+    () => instances.map((instance) => instance.id),
+    [instances],
   );
 
+  useEffect(() => {
+    if (instancesHook.data === null || instanceIds.length === 0) return;
+
+    void refreshManyInstanceContents(instanceIds);
+  }, [instanceIds, instancesHook.data, refreshManyInstanceContents]);
+
+  const contents = useMemo(
+    () => getContentList(instances, byInstanceId),
+    [byInstanceId, instances],
+  );
+  const worlds = useMemo(
+    () => mapLocalWorlds(instances, byInstanceId),
+    [byInstanceId, instances],
+  );
+  const latestRefresh = useMemo(
+    () => getLatestContentRefresh(contents),
+    [contents],
+  );
+  const contentLoading =
+    instances.some((instance) => loadingIds[instance.id]) ||
+    (instances.length > 0 &&
+      instances.some(
+        (instance) => !byInstanceId[instance.id] && !errors[instance.id],
+      ));
+  const errorCount = instances.filter((instance) => errors[instance.id]).length;
+
   const filteredWorlds = useMemo(() => {
-    const needle = query.trim().toLowerCase();
+    const needle = deferredQuery.trim().toLowerCase();
+    const now = Date.now();
 
     return worlds.filter((world) => {
-      const matchesFilter = filter === "all" || world.gameMode === filter;
+      const modifiedTime = new Date(world.modifiedAt).getTime();
+      const matchesFilter =
+        filter === "all" ||
+        (filter === "recent" &&
+          !Number.isNaN(modifiedTime) &&
+          now - modifiedTime <= recentCutoffMs) ||
+        (filter === "directories" && world.type === "directory") ||
+        (filter === "archives" && world.type === "archive");
       const matchesQuery =
         needle.length === 0 ||
-        [world.name, world.gameMode, world.difficulty, world.seed, world.status]
+        [
+          world.name,
+          world.instance.name,
+          world.instance.versionId,
+          world.instance.loader,
+          world.file.fileName,
+          world.path,
+        ]
           .join(" ")
           .toLowerCase()
           .includes(needle);
 
       return matchesFilter && matchesQuery;
     });
-  }, [filter, query, worlds]);
+  }, [deferredQuery, filter, worlds]);
 
-  const totalBackups = [...backupCounts.values()].reduce(
-    (total, count) => total + count,
-    0,
-  );
+  const refreshWorlds = async () => {
+    if (instanceIds.length === 0) {
+      toast.message("Create an instance before scanning saves.");
+      return;
+    }
 
-  const createBackup = (id: string, name: string) => {
-    setBackupCounts((current) => {
-      const next = new Map(current);
-      next.set(id, (next.get(id) ?? 0) + 1);
-      return next;
-    });
-    toast.success(`${name} backup created.`);
+    await refreshManyInstanceContents(instanceIds);
+    toast.success("Save folders scanned.");
   };
 
-  const importWorld = () => {
-    const importedWorld: WorldEntry = {
-      backups: 1,
-      difficulty: "Normal",
-      gameMode: "Survival",
-      id: "imported-expedition",
-      lastPlayed: "Imported now",
-      name: "Imported Expedition",
-      seed: "local-import",
-      size: "128 MB",
-      status: "Backed up",
-    };
+  const copyPath = async (path: string, name: string) => {
+    try {
+      await navigator.clipboard.writeText(path);
+      toast.success(`${name} path copied.`);
+    } catch {
+      toast.error("Clipboard is unavailable in this view.");
+    }
+  };
 
-    setWorlds((current) => {
-      if (current.some((world) => world.id === importedWorld.id)) {
-        toast.message("Imported Expedition already exists.");
-        return current;
+  const revealPath = async (path: string, name: string) => {
+    try {
+      const result = await rpc.requestProxy.openExternal({
+        url: toFileMediaUrl(path),
+      });
+
+      if (!result.opened) {
+        throw new Error("The path could not be opened.");
       }
-      return [importedWorld, ...current];
-    });
-    setBackupCounts((current) => {
-      const next = new Map(current);
-      next.set(importedWorld.id, importedWorld.backups);
-      return next;
-    });
-    toast.success("Imported Expedition added to worlds.");
+
+      toast.success(`${name} opened.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Path unavailable.");
+    }
   };
 
   return (
@@ -110,21 +171,19 @@ export function WorldsPage() {
       <LibraryPageHeader
         eyebrow="Saves"
         title="Worlds"
-        description="Review local worlds, create fast backups, and keep save health visible before you launch."
+        description="Review worlds found in managed instance save folders."
         actions={
-          <>
-            <Button
-              variant="outline"
-              onClick={() => toast.success("World folder scan completed.")}
-            >
-              <ArchiveIcon data-icon="inline-start" />
-              Scan Saves
-            </Button>
-            <Button onClick={importWorld}>
-              <FolderPlusIcon data-icon="inline-start" />
-              Import World
-            </Button>
-          </>
+          <Button
+            variant="outline"
+            onClick={() => void refreshWorlds()}
+            disabled={contentLoading}
+          >
+            <RefreshCcwIcon
+              data-icon="inline-start"
+              className={contentLoading ? "animate-spin" : undefined}
+            />
+            {contentLoading ? "Scanning" : "Scan Saves"}
+          </Button>
         }
       />
 
@@ -133,19 +192,23 @@ export function WorldsPage() {
           icon={GlobeIcon}
           label="Worlds"
           value={String(worlds.length)}
-          caption="Detected across managed instances."
+          caption="Detected from managed instance save folders."
         />
         <MetricCard
-          icon={ShieldCheckIcon}
-          label="Backups"
-          value={String(totalBackups)}
-          caption="Restore points tracked by the launcher."
+          icon={ServerIcon}
+          label="Instances"
+          value={String(instances.length)}
+          caption="Instances included in the latest save scan."
         />
         <MetricCard
-          icon={CloudUploadIcon}
-          label="Sync"
-          value="Ready"
-          caption="No remote writes are performed until sync is enabled."
+          icon={TimerIcon}
+          label="Last Scan"
+          value={latestRefresh ? formatRelativeDate(latestRefresh) : "Pending"}
+          caption={
+            errorCount > 0
+              ? `${errorCount} instance${errorCount === 1 ? "" : "s"} could not be scanned.`
+              : "Folder metadata comes from local disk."
+          }
         />
       </section>
 
@@ -155,80 +218,98 @@ export function WorldsPage() {
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <TabsList>
-            {(
-              ["all", "Survival", "Creative", "Adventure"] as Array<WorldFilter>
-            ).map((value) => (
-              <TabsTrigger key={value} value={value}>
-                {value === "all" ? "All" : value}
-              </TabsTrigger>
-            ))}
+            {(Object.keys(WORLD_FILTER_LABELS) as Array<WorldFilter>).map(
+              (value) => (
+                <TabsTrigger key={value} value={value}>
+                  {WORLD_FILTER_LABELS[value]}
+                </TabsTrigger>
+              ),
+            )}
           </TabsList>
           <SearchBox
             value={query}
             onChange={setQuery}
-            placeholder="Search worlds, seeds, modes..."
+            placeholder="Search worlds, instances, paths..."
           />
         </div>
 
         <TabsContent value={filter}>
-          {filteredWorlds.length === 0 ? (
+          {instancesHook.loading || contentLoading ? (
+            <PageEmpty
+              icon={RefreshCcwIcon}
+              title="Scanning save folders"
+              description="Worlds will appear as soon as local folder metadata is available."
+            />
+          ) : filteredWorlds.length === 0 ? (
             <PageEmpty
               icon={GlobeIcon}
               title="No worlds found"
-              description="Change the mode filter or search text to find another save."
+              description="Create or import a world in an instance save folder, then scan again."
             />
           ) : (
             <div className="grid grid-cols-2 gap-3 max-lg:grid-cols-1">
-              {filteredWorlds.map((world) => {
-                const backups = backupCounts.get(world.id) ?? world.backups;
-                return (
-                  <Card key={world.id}>
-                    <CardHeader>
-                      <CardTitle>{world.name}</CardTitle>
-                      <CardDescription>
-                        {world.gameMode} · {world.difficulty} ·{" "}
-                        {world.lastPlayed}
-                      </CardDescription>
-                      <CardAction>
-                        <Badge
-                          variant={
-                            world.status === "Needs backup"
-                              ? "destructive"
-                              : world.status === "Syncing"
-                                ? "outline"
-                                : "secondary"
-                          }
-                        >
-                          {world.status}
-                        </Badge>
-                      </CardAction>
-                    </CardHeader>
-                    <CardContent className="grid grid-cols-2 gap-2 max-sm:grid-cols-1">
-                      <MiniStat label="Size" value={world.size} />
-                      <MiniStat label="Backups" value={String(backups)} />
-                      <MiniStat label="Seed" value={world.seed} />
-                      <MiniStat
-                        label="Mode"
-                        value={world.gameMode}
+              {filteredWorlds.map((world) => (
+                <Card key={world.id}>
+                  <CardHeader>
+                    <CardTitle>{world.name}</CardTitle>
+                    <CardDescription>
+                      {world.instance.name} ·{" "}
+                      {formatRelativeDate(world.modifiedAt)}
+                    </CardDescription>
+                    <CardAction>
+                      <Badge
+                        variant={
+                          world.type === "archive" ? "outline" : "secondary"
+                        }
+                      >
+                        {world.type === "archive" ? "Archive" : "Folder"}
+                      </Badge>
+                    </CardAction>
+                  </CardHeader>
+                  <CardContent className="grid grid-cols-2 gap-2 max-sm:grid-cols-1">
+                    <MiniStat
+                      label="Instance"
+                      value={world.instance.name}
+                      variant="outline"
+                    />
+                    <MiniStat
+                      label="Size"
+                      value={formatEntrySize(world.file)}
+                    />
+                    <MiniStat
+                      label="Modified"
+                      value={formatAbsoluteDate(world.modifiedAt)}
+                    />
+                    <MiniStat
+                      label="Version"
+                      value={world.instance.versionId}
+                      variant="outline"
+                    />
+                  </CardContent>
+                  <CardFooter className="justify-between gap-3">
+                    <p className="min-w-0 truncate text-xs text-muted-foreground">
+                      {world.path}
+                    </p>
+                    <div className="flex shrink-0 gap-1">
+                      <Button
+                        size="icon-sm"
                         variant="outline"
-                      />
-                    </CardContent>
-                    <CardFooter className="justify-between gap-3">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <SparklesIcon className="size-4 text-primary" />
-                        Save metadata verified locally
-                      </div>
+                        aria-label={`Copy path for ${world.name}`}
+                        onClick={() => void copyPath(world.path, world.name)}
+                      >
+                        <CopyIcon />
+                      </Button>
                       <Button
                         size="sm"
-                        onClick={() => createBackup(world.id, world.name)}
+                        onClick={() => void revealPath(world.path, world.name)}
                       >
-                        <ArchiveIcon data-icon="inline-start" />
-                        Backup
+                        <FolderOpenIcon data-icon="inline-start" />
+                        Reveal
                       </Button>
-                    </CardFooter>
-                  </Card>
-                );
-              })}
+                    </div>
+                  </CardFooter>
+                </Card>
+              ))}
             </div>
           )}
         </TabsContent>

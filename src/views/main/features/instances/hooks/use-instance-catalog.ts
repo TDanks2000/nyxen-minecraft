@@ -1,44 +1,44 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import type { InstanceContent, LauncherInstance } from "@/shared/types";
+import { useInstanceContentStore } from "@/views/main/features/instances/hooks/use-instance-content-store";
 import { getModManagementState } from "@/views/main/features/instances/instance-catalog-model";
 import { rpc } from "@/views/main/lib/rpc";
 
 export function useInstanceCatalog(instance: LauncherInstance | null) {
-  const [content, setContent] = useState<InstanceContent | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
   const [mutating, setMutating] = useState(false);
+  const content = useInstanceContentStore((state) =>
+    instance ? (state.byInstanceId[instance.id] ?? null) : null,
+  );
+  const error = useInstanceContentStore((state) =>
+    instance ? (state.errors[instance.id] ?? null) : null,
+  );
+  const loading = useInstanceContentStore((state) =>
+    instance ? (state.loadingIds[instance.id] ?? false) : false,
+  );
+  const refreshInstanceContent = useInstanceContentStore(
+    (state) => state.refreshInstanceContent,
+  );
+  const replaceInstanceContent = useInstanceContentStore(
+    (state) => state.replaceContent,
+  );
 
   const refreshContent = useCallback(
     async ({ silent = false }: { silent?: boolean } = {}) => {
       if (!instance) {
-        setContent(null);
-        setError(null);
-        setLoading(false);
         return null;
       }
 
-      if (!silent) setLoading(true);
-
       try {
-        const next = await rpc.requestProxy.getInstanceContent({
-          instanceId: instance.id,
-        });
-        setContent(next);
-        setError(null);
-        return next;
+        return await refreshInstanceContent(instance.id);
       } catch (e) {
         const message =
           e instanceof Error ? e.message : "Failed to load instance content";
-        setError(message);
         if (!silent) toast.error(message);
         return null;
-      } finally {
-        if (!silent) setLoading(false);
       }
     },
-    [instance],
+    [instance, refreshInstanceContent],
   );
 
   useEffect(() => {
@@ -48,10 +48,9 @@ export function useInstanceCatalog(instance: LauncherInstance | null) {
   const replaceContent = useCallback(
     (next: InstanceContent) => {
       if (!instance || next.instanceId !== instance.id) return;
-      setContent(next);
-      setError(null);
+      replaceInstanceContent(next);
     },
-    [instance],
+    [instance, replaceInstanceContent],
   );
 
   const scopedContent = useMemo(
@@ -99,7 +98,7 @@ export function useInstanceCatalog(instance: LauncherInstance | null) {
           fileName,
           instanceId: instance.id,
         });
-        setContent(next);
+        replaceInstanceContent(next);
         toast.success(`${name} ${enabled ? "enabled" : "disabled"}.`);
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Failed to update mod");
@@ -107,7 +106,7 @@ export function useInstanceCatalog(instance: LauncherInstance | null) {
         setMutating(false);
       }
     },
-    [instance, modManagement.reason],
+    [instance, modManagement.reason, replaceInstanceContent],
   );
 
   const setAllModsEnabled = useCallback(
@@ -144,7 +143,7 @@ export function useInstanceCatalog(instance: LauncherInstance | null) {
             instanceId: instance.id,
           });
         }
-        setContent(nextContent);
+        replaceInstanceContent(nextContent);
         toast.success(
           `${targets.length} mod${targets.length === 1 ? "" : "s"} ${enabled ? "enabled" : "disabled"}.`,
         );
@@ -155,7 +154,13 @@ export function useInstanceCatalog(instance: LauncherInstance | null) {
         setMutating(false);
       }
     },
-    [instance, modManagement.reason, refreshContent, scopedContent],
+    [
+      instance,
+      modManagement.reason,
+      refreshContent,
+      replaceInstanceContent,
+      scopedContent,
+    ],
   );
 
   return {
