@@ -1,4 +1,5 @@
 import {
+  AlertTriangleIcon,
   CpuIcon,
   FolderDownIcon,
   FolderIcon,
@@ -7,10 +8,24 @@ import {
   MonitorIcon,
   PaletteIcon,
   SlidersHorizontalIcon,
+  Trash2Icon,
   Volume2Icon,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
+import { toast } from "sonner";
 import { useTheme } from "@/views/main/components/theme-provider";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogMedia,
+  AlertDialogTitle,
+} from "@/views/main/components/ui/alert-dialog";
+import { Button } from "@/views/main/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -20,9 +35,14 @@ import {
   SelectValue,
 } from "@/views/main/components/ui/select";
 import { Skeleton } from "@/views/main/components/ui/skeleton";
+import { Spinner } from "@/views/main/components/ui/spinner";
 import { Switch } from "@/views/main/components/ui/switch";
+import { useInstances } from "@/views/main/hooks/use-instances";
 import { useLauncherStatus } from "@/views/main/hooks/use-launcher-status";
 import { useSettings } from "@/views/main/hooks/use-settings";
+import { rpc } from "@/views/main/lib/rpc";
+
+type StorageAction = "cache" | "data";
 
 function SettingGroup({
   icon: Icon,
@@ -101,7 +121,13 @@ function PathRow({
 export function SettingsPage() {
   const settingsHook = useSettings();
   const statusHook = useLauncherStatus();
+  const instancesHook = useInstances();
   const { setTheme } = useTheme();
+  const [confirmStorageAction, setConfirmStorageAction] =
+    useState<StorageAction | null>(null);
+  const [clearingStorage, setClearingStorage] = useState<StorageAction | null>(
+    null,
+  );
 
   const settings = settingsHook.data?.values;
   const dirs = statusHook.data?.directories;
@@ -119,163 +145,296 @@ export function SettingsPage() {
     await settingsHook.updateSetting("app.theme", value);
   }
 
+  async function handleClearStorage(action: StorageAction) {
+    setClearingStorage(action);
+
+    try {
+      const result =
+        action === "cache"
+          ? await rpc.requestProxy.clearLauncherCache(null)
+          : await rpc.requestProxy.clearLauncherData(null);
+
+      toast.success(
+        action === "cache"
+          ? `Cache cleared (${result.removedPaths.length} location${
+              result.removedPaths.length === 1 ? "" : "s"
+            })`
+          : "Launcher data cleared",
+      );
+      statusHook.refresh();
+
+      if (action === "data") {
+        instancesHook.refresh();
+      }
+
+      setConfirmStorageAction(null);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to clear storage",
+      );
+    } finally {
+      setClearingStorage(null);
+    }
+  }
+
+  const confirmStorageTitle =
+    confirmStorageAction === "data" ? "Clear launcher data?" : "Clear cache?";
+  const confirmStorageDescription =
+    confirmStorageAction === "data"
+      ? "This deletes every launcher instance, profile, saved world, mod, log, and downloaded file. Settings are kept."
+      : "This deletes downloaded Minecraft artifacts, Java runtimes, temporary files, and per-instance cache. Instances and profiles are kept.";
+  const confirmingDataClear = confirmStorageAction === "data";
+  const storageActionPending =
+    confirmStorageAction !== null && clearingStorage === confirmStorageAction;
+
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-6 p-5">
-      <section>
-        <span className="text-muted-foreground text-xs font-black uppercase tracking-widest">
-          Preferences
-        </span>
-        <h1 className="mt-2 font-heading font-black text-4xl leading-none">
-          Settings
-        </h1>
-      </section>
+    <>
+      <div className="mx-auto flex max-w-7xl flex-col gap-6 p-5">
+        <section>
+          <span className="text-muted-foreground text-xs font-black uppercase tracking-widest">
+            Preferences
+          </span>
+          <h1 className="mt-2 font-heading font-black text-4xl leading-none">
+            Settings
+          </h1>
+        </section>
 
-      <div className="grid grid-cols-2 gap-5 max-lg:grid-cols-1">
-        {/* Left column: launcher settings */}
-        <div className="flex flex-col gap-5">
-          <SettingGroup icon={PaletteIcon} title="Appearance">
-            {settingsHook.loading ? (
-              <div className="px-4 py-3">
-                <Skeleton className="h-8 w-full rounded-md" />
-              </div>
-            ) : (
-              <SettingRow
-                label="Theme"
-                description="Set the application color scheme"
-              >
-                <Select
-                  value={theme}
-                  onValueChange={(v) => v && handleTheme(v)}
+        <div className="grid grid-cols-2 gap-5 max-lg:grid-cols-1">
+          {/* Left column: launcher settings */}
+          <div className="flex flex-col gap-5">
+            <SettingGroup icon={PaletteIcon} title="Appearance">
+              {settingsHook.loading ? (
+                <div className="px-4 py-3">
+                  <Skeleton className="h-8 w-full rounded-md" />
+                </div>
+              ) : (
+                <SettingRow
+                  label="Theme"
+                  description="Set the application color scheme"
                 >
-                  <SelectTrigger className="h-8 w-32">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      <SelectItem value="system">System</SelectItem>
-                      <SelectItem value="light">Light</SelectItem>
-                      <SelectItem value="dark">Dark</SelectItem>
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              </SettingRow>
-            )}
-          </SettingGroup>
-
-          <SettingGroup icon={CpuIcon} title="Java">
-            {settingsHook.loading ? (
-              <div className="px-4 py-3">
-                <Skeleton className="h-8 w-full rounded-md" />
-              </div>
-            ) : (
-              <SettingRow
-                label="Java management"
-                description="Use system or per-instance Java, or let Nyxen download the Mojang runtime required by each Minecraft version"
-              >
-                <Select
-                  value={javaManagement}
-                  onValueChange={(v) =>
-                    v &&
-                    settingsHook.updateSetting("launcher.javaManagement", v)
-                  }
-                >
-                  <SelectTrigger className="h-8 w-40">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      <SelectItem value="auto">System Java</SelectItem>
-                      <SelectItem value="app-controlled">
-                        App controlled
-                      </SelectItem>
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              </SettingRow>
-            )}
-            {!settingsHook.loading &&
-              javaManagement === "app-controlled" &&
-              dirs && (
-                <PathRow
-                  icon={FolderDownIcon}
-                  label="Install"
-                  path={dirs.runtimes}
-                />
+                  <Select
+                    value={theme}
+                    onValueChange={(v) => v && handleTheme(v)}
+                  >
+                    <SelectTrigger className="h-8 w-32">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectItem value="system">System</SelectItem>
+                        <SelectItem value="light">Light</SelectItem>
+                        <SelectItem value="dark">Dark</SelectItem>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </SettingRow>
               )}
-          </SettingGroup>
+            </SettingGroup>
 
-          <SettingGroup icon={SlidersHorizontalIcon} title="Behavior">
-            {settingsHook.loading ? (
-              ["keep-open", "show-snapshots"].map((key) => (
-                <div key={key} className="px-4 py-3">
-                  <Skeleton className="h-5 w-48 rounded-md" />
+            <SettingGroup icon={CpuIcon} title="Java">
+              {settingsHook.loading ? (
+                <div className="px-4 py-3">
+                  <Skeleton className="h-8 w-full rounded-md" />
                 </div>
-              ))
-            ) : (
-              <>
+              ) : (
                 <SettingRow
-                  label="Keep launcher open"
-                  description="Don't close the launcher when a game starts"
+                  label="Java management"
+                  description="Use system or per-instance Java, or let Nyxen download the Mojang runtime required by each Minecraft version"
                 >
-                  <Switch
-                    checked={keepOpen}
-                    onCheckedChange={(checked) =>
-                      settingsHook.updateSetting(
-                        "launcher.keepOpenAfterLaunch",
-                        checked,
-                      )
+                  <Select
+                    value={javaManagement}
+                    onValueChange={(v) =>
+                      v &&
+                      settingsHook.updateSetting("launcher.javaManagement", v)
                     }
-                  />
+                  >
+                    <SelectTrigger className="h-8 w-40">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectItem value="auto">System Java</SelectItem>
+                        <SelectItem value="app-controlled">
+                          App controlled
+                        </SelectItem>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
                 </SettingRow>
-                <SettingRow
-                  label="Show snapshot builds"
-                  description="Include pre-release and snapshot versions"
-                >
-                  <Switch
-                    checked={showSnapshots}
-                    onCheckedChange={(checked) =>
-                      settingsHook.updateSetting(
-                        "launcher.showSnapshots",
-                        checked,
-                      )
-                    }
+              )}
+              {!settingsHook.loading &&
+                javaManagement === "app-controlled" &&
+                dirs && (
+                  <PathRow
+                    icon={FolderDownIcon}
+                    label="Install"
+                    path={dirs.runtimes}
                   />
-                </SettingRow>
-              </>
-            )}
-          </SettingGroup>
-        </div>
+                )}
+            </SettingGroup>
 
-        {/* Right column: storage paths */}
-        <div className="flex flex-col gap-5">
-          <SettingGroup icon={FolderIcon} title="Storage">
-            {statusHook.loading ? (
-              ["root", "instances", "assets", "versions", "logs"].map((key) => (
-                <div key={key} className="px-4 py-3">
-                  <Skeleton className="h-4 w-full rounded-md" />
-                </div>
-              ))
-            ) : dirs ? (
-              <>
-                <PathRow icon={HardDriveIcon} label="Root" path={dirs.root} />
-                <PathRow
-                  icon={HardDriveIcon}
-                  label="Instances"
-                  path={dirs.instances}
-                />
-                <PathRow icon={Volume2Icon} label="Assets" path={dirs.assets} />
-                <PathRow icon={CpuIcon} label="Runtimes" path={dirs.runtimes} />
-                <PathRow
-                  icon={MonitorIcon}
-                  label="Versions"
-                  path={dirs.versions}
-                />
-                <PathRow icon={GaugeIcon} label="Logs" path={dirs.logs} />
-              </>
-            ) : null}
-          </SettingGroup>
+            <SettingGroup icon={SlidersHorizontalIcon} title="Behavior">
+              {settingsHook.loading ? (
+                ["keep-open", "show-snapshots"].map((key) => (
+                  <div key={key} className="px-4 py-3">
+                    <Skeleton className="h-5 w-48 rounded-md" />
+                  </div>
+                ))
+              ) : (
+                <>
+                  <SettingRow
+                    label="Keep launcher open"
+                    description="Don't close the launcher when a game starts"
+                  >
+                    <Switch
+                      checked={keepOpen}
+                      onCheckedChange={(checked) =>
+                        settingsHook.updateSetting(
+                          "launcher.keepOpenAfterLaunch",
+                          checked,
+                        )
+                      }
+                    />
+                  </SettingRow>
+                  <SettingRow
+                    label="Show snapshot builds"
+                    description="Include pre-release and snapshot versions"
+                  >
+                    <Switch
+                      checked={showSnapshots}
+                      onCheckedChange={(checked) =>
+                        settingsHook.updateSetting(
+                          "launcher.showSnapshots",
+                          checked,
+                        )
+                      }
+                    />
+                  </SettingRow>
+                </>
+              )}
+            </SettingGroup>
+          </div>
+
+          {/* Right column: storage paths */}
+          <div className="flex flex-col gap-5">
+            <SettingGroup icon={FolderIcon} title="Storage">
+              {statusHook.loading ? (
+                ["root", "instances", "assets", "versions", "logs"].map(
+                  (key) => (
+                    <div key={key} className="px-4 py-3">
+                      <Skeleton className="h-4 w-full rounded-md" />
+                    </div>
+                  ),
+                )
+              ) : dirs ? (
+                <>
+                  <PathRow icon={HardDriveIcon} label="Root" path={dirs.root} />
+                  <PathRow
+                    icon={HardDriveIcon}
+                    label="Instances"
+                    path={dirs.instances}
+                  />
+                  <PathRow
+                    icon={Volume2Icon}
+                    label="Assets"
+                    path={dirs.assets}
+                  />
+                  <PathRow
+                    icon={CpuIcon}
+                    label="Runtimes"
+                    path={dirs.runtimes}
+                  />
+                  <PathRow
+                    icon={MonitorIcon}
+                    label="Versions"
+                    path={dirs.versions}
+                  />
+                  <PathRow icon={GaugeIcon} label="Logs" path={dirs.logs} />
+                </>
+              ) : null}
+            </SettingGroup>
+
+            <SettingGroup icon={AlertTriangleIcon} title="Maintenance">
+              <SettingRow
+                label="Clear cache"
+                description="Remove downloaded artifacts, runtimes, temp files, and instance cache without deleting instances"
+              >
+                <Button
+                  disabled={clearingStorage !== null}
+                  onClick={() => setConfirmStorageAction("cache")}
+                  size="sm"
+                  variant="outline"
+                >
+                  <Trash2Icon data-icon="inline-start" />
+                  Clear cache
+                </Button>
+              </SettingRow>
+              <SettingRow
+                label="Clear data"
+                description="Remove instances, profiles, saved worlds, mods, logs, and downloaded launcher files"
+              >
+                <Button
+                  disabled={clearingStorage !== null}
+                  onClick={() => setConfirmStorageAction("data")}
+                  size="sm"
+                  variant="destructive"
+                >
+                  <Trash2Icon data-icon="inline-start" />
+                  Clear data
+                </Button>
+              </SettingRow>
+            </SettingGroup>
+          </div>
         </div>
       </div>
-    </div>
+
+      <AlertDialog
+        onOpenChange={(open) => {
+          if (!open && !storageActionPending) {
+            setConfirmStorageAction(null);
+          }
+        }}
+        open={confirmStorageAction !== null}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogMedia
+              className={
+                confirmingDataClear ? "bg-destructive/10 text-destructive" : ""
+              }
+            >
+              <AlertTriangleIcon />
+            </AlertDialogMedia>
+            <AlertDialogTitle>{confirmStorageTitle}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmStorageDescription}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={storageActionPending}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={storageActionPending || confirmStorageAction === null}
+              onClick={(event) => {
+                event.preventDefault();
+
+                if (confirmStorageAction) {
+                  void handleClearStorage(confirmStorageAction);
+                }
+              }}
+              variant={confirmingDataClear ? "destructive" : "default"}
+            >
+              {storageActionPending ? (
+                <Spinner data-icon="inline-start" />
+              ) : (
+                <Trash2Icon data-icon="inline-start" />
+              )}
+              {storageActionPending ? "Clearing..." : "Clear"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }

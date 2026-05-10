@@ -186,6 +186,10 @@ export { createLaunchPlan } from "../../launcher/launch-plan";
 export { listLoaderVersions } from "../../launcher/loader-versions";
 export { getLauncherStatus } from "../../launcher/status";
 export {
+  clearLauncherCache,
+  clearLauncherData,
+} from "../../launcher/storage";
+export {
   getMinecraftVersionDetails,
   listMinecraftVersions,
 } from "../../launcher/versions";

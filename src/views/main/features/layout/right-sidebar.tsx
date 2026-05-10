@@ -2,14 +2,9 @@ import {
   ActivityIcon,
   AlertCircleIcon,
   CheckCircle2Icon,
-  DatabaseIcon,
   DownloadCloudIcon,
   FilesIcon,
-  FolderTreeIcon,
   Loader2Icon,
-  PackageIcon,
-  RefreshCcwIcon,
-  UserRoundIcon,
   XIcon,
 } from "lucide-react";
 import { useEffect, useMemo } from "react";
@@ -19,8 +14,6 @@ import { Progress } from "@/views/main/components/ui/progress";
 import { formatRelativeDate } from "@/views/main/features/catalog/catalog-model";
 import { useDownloadQueueStore } from "@/views/main/features/downloads/download-queue-store";
 import { useInstances } from "@/views/main/hooks/use-instances";
-import { useLauncherStatus } from "@/views/main/hooks/use-launcher-status";
-import { useProfiles } from "@/views/main/hooks/use-profiles";
 import { cn } from "@/views/main/lib/utils";
 
 const formatSidebarTime = (value: string): string =>
@@ -257,10 +250,12 @@ const getDownloadTone = (job: DownloadQueueJob): ActivityItem["tone"] => {
   return "muted";
 };
 
-export function RightSidebar() {
+type RightSidebarProps = {
+  open: boolean;
+};
+
+export function RightSidebar({ open }: RightSidebarProps) {
   const instancesHook = useInstances();
-  const profilesHook = useProfiles();
-  const statusHook = useLauncherStatus();
   const jobs = useDownloadQueueStore((state) => state.jobs);
   const clearDownloadJob = useDownloadQueueStore(
     (state) => state.clearDownloadJob,
@@ -272,7 +267,6 @@ export function RightSidebar() {
     (state) => state.refreshDownloadJobs,
   );
   const instances = instancesHook.data ?? [];
-  const profiles = profilesHook.data ?? [];
   const activeJobCount = useMemo(
     () =>
       jobs.filter((job) => job.status === "queued" || job.status === "running")
@@ -325,26 +319,6 @@ export function RightSidebar() {
       .slice(0, 5);
   }, [instances, jobs]);
 
-  const overviewRows = [
-    {
-      icon: PackageIcon,
-      label: "Instances",
-      value: String(statusHook.data?.counts.instances ?? instances.length),
-    },
-    {
-      icon: UserRoundIcon,
-      label: "Profiles",
-      value: String(statusHook.data?.counts.profiles ?? profiles.length),
-    },
-    {
-      icon: DatabaseIcon,
-      label: "Versions",
-      value: String(statusHook.data?.counts.versions ?? 0),
-    },
-  ];
-  const storageRoot = statusHook.data?.directories.root ?? "Not loaded";
-  const manifestRefreshedAt = statusHook.data?.manifest.refreshedAt ?? null;
-
   useEffect(() => {
     void refreshDownloadJobs().catch(() => undefined);
 
@@ -357,7 +331,16 @@ export function RightSidebar() {
   }, [hasActiveJobs, refreshDownloadJobs]);
 
   return (
-    <aside className="hidden w-72 shrink-0 flex-col overflow-y-auto border-l border-sidebar-border bg-sidebar 2xl:flex">
+    <aside
+      aria-hidden={!open}
+      data-state={open ? "open" : "closed"}
+      className={cn(
+        "fixed top-12 right-0 bottom-0 z-40 flex w-72 shrink-0 flex-col overflow-x-hidden overflow-y-auto border-l border-sidebar-border bg-sidebar transition-[width,transform,opacity,box-shadow] duration-200 ease-out motion-reduce:transition-none 2xl:static 2xl:z-auto",
+        open
+          ? "translate-x-0 opacity-100 shadow-xl 2xl:shadow-none"
+          : "pointer-events-none translate-x-full opacity-0 2xl:w-0 2xl:translate-x-0 2xl:border-l-0",
+      )}
+    >
       {/* Download Queue */}
       <section className="p-4 border-b border-sidebar-border">
         <div className="flex items-center justify-between border-b border-sidebar-border/30 pb-2 mb-3">
@@ -408,7 +391,7 @@ export function RightSidebar() {
       </section>
 
       {/* Recent Activity */}
-      <section className="p-4 border-b border-sidebar-border">
+      <section className="p-4">
         <div className="text-sm font-semibold text-foreground border-b border-sidebar-border/30 pb-2 mb-3">
           Recent Activity
         </div>
@@ -453,73 +436,6 @@ export function RightSidebar() {
             </p>
           </div>
         )}
-      </section>
-
-      {/* Launcher Overview */}
-      <section className="p-4 border-b border-sidebar-border">
-        <div className="text-sm font-semibold text-foreground border-b border-sidebar-border/30 pb-2 mb-3">
-          Launcher Overview
-        </div>
-        <div className="grid gap-2">
-          {overviewRows.map((row) => {
-            const Icon = row.icon;
-
-            return (
-              <div
-                key={row.label}
-                className="flex items-center gap-2 rounded-md border border-sidebar-border bg-background/35 px-2.5 py-2"
-              >
-                <Icon className="size-3.5 text-primary" />
-                <span className="min-w-0 flex-1 truncate text-muted-foreground text-xs">
-                  {row.label}
-                </span>
-                <span className="font-semibold text-foreground text-xs tabular-nums">
-                  {row.value}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-        <Button
-          className="mt-3 w-full"
-          onClick={statusHook.refresh}
-          size="xs"
-          type="button"
-          variant="ghost"
-        >
-          <RefreshCcwIcon data-icon="inline-start" />
-          Refresh Status
-        </Button>
-      </section>
-
-      {/* Launcher Storage */}
-      <section className="p-4">
-        <div className="mb-3 flex items-center justify-between border-sidebar-border/30 border-b pb-2">
-          <span className="font-semibold text-foreground text-sm">
-            Launcher Storage
-          </span>
-          <FolderTreeIcon className="size-4 text-primary" />
-        </div>
-        <div className="grid gap-2">
-          <div className="rounded-md border border-sidebar-border bg-background/35 px-2.5 py-2">
-            <div className="text-[0.6rem] font-semibold text-muted-foreground uppercase tracking-wide">
-              Root
-            </div>
-            <div className="mt-1 truncate font-mono text-[0.62rem] text-foreground">
-              {storageRoot}
-            </div>
-          </div>
-          <div className="rounded-md border border-sidebar-border bg-background/35 px-2.5 py-2">
-            <div className="text-[0.6rem] font-semibold text-muted-foreground uppercase tracking-wide">
-              Version Manifest
-            </div>
-            <div className="mt-1 text-[0.62rem] text-foreground">
-              {manifestRefreshedAt
-                ? `Refreshed ${formatRelativeDate(manifestRefreshedAt)}`
-                : "Not refreshed yet"}
-            </div>
-          </div>
-        </div>
       </section>
     </aside>
   );

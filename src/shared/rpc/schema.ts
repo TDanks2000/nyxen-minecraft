@@ -2,6 +2,7 @@ import type { RPCSchema } from "electrobun";
 import type {
   AppEnvironment,
   ClearDownloadJobInput,
+  ClearLauncherStorageResult,
   CompleteMicrosoftProfileLoginInput,
   CreateLauncherInstanceInput,
   CreateLauncherProfileInput,
@@ -178,6 +179,14 @@ export type MainViewRPC = {
       clearFinishedDownloadJobs: {
         params: null;
         response: Array<DownloadQueueJob>;
+      };
+      clearLauncherCache: {
+        params: null;
+        response: ClearLauncherStorageResult;
+      };
+      clearLauncherData: {
+        params: null;
+        response: ClearLauncherStorageResult;
       };
       downloadArtifacts: {
         params: DownloadArtifactsInput;

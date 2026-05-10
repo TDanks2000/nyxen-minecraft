@@ -3,8 +3,6 @@ import {
   CheckCircle2Icon,
   CloudIcon,
   CpuIcon,
-  GaugeIcon,
-  MemoryStickIcon,
   StarIcon,
 } from "lucide-react";
 import type { ElementType } from "react";
@@ -12,7 +10,7 @@ import type { LauncherStatus } from "@/shared/types";
 import { Skeleton } from "@/views/main/components/ui/skeleton";
 
 type StatusStripProps = {
-  counts: LauncherStatus["counts"] | undefined;
+  status: LauncherStatus | null;
   loading: boolean;
 };
 
@@ -23,30 +21,52 @@ type StatusItem = {
   value: string;
 };
 
-export function StatusStrip({ counts, loading }: StatusStripProps) {
+const getCapability = (
+  status: LauncherStatus | null,
+  id: string,
+): LauncherStatus["capabilities"][number] | null =>
+  status?.capabilities.find((capability) => capability.id === id) ?? null;
+
+export function StatusStrip({ status, loading }: StatusStripProps) {
+  const microsoftAuth = getCapability(status, "microsoft-auth");
+  const curseForgeApi = getCapability(status, "curseforge-api");
   const stats: Array<StatusItem> = [
     {
       id: "instances",
       icon: BoxesIcon,
       label: "Instances",
-      value: counts ? String(counts.instances) : "-",
+      value: status ? String(status.counts.instances) : "Pending",
     },
     {
       id: "profiles",
       icon: StarIcon,
       label: "Profiles",
-      value: counts ? String(counts.profiles) : "-",
+      value: status ? String(status.counts.profiles) : "Pending",
     },
     {
       id: "versions",
       icon: CheckCircle2Icon,
       label: "Versions cached",
-      value: counts ? String(counts.versions) : "-",
+      value: status ? String(status.counts.versions) : "Pending",
     },
-    { id: "java", icon: CpuIcon, label: "Java", value: "-" },
-    { id: "memory", icon: MemoryStickIcon, label: "Memory", value: "-" },
-    { id: "perf", icon: GaugeIcon, label: "Performance", value: "-" },
-    { id: "sync", icon: CloudIcon, label: "Sync", value: "-" },
+    {
+      id: "release",
+      icon: CheckCircle2Icon,
+      label: "Latest release",
+      value: status?.manifest.latestRelease ?? "Not cached",
+    },
+    {
+      id: "microsoft-auth",
+      icon: CpuIcon,
+      label: "Microsoft auth",
+      value: microsoftAuth?.ready ? "Ready" : "Needs setup",
+    },
+    {
+      id: "curseforge-api",
+      icon: CloudIcon,
+      label: "CurseForge",
+      value: curseForgeApi?.ready ? "Connected" : "Not configured",
+    },
   ];
 
   return (

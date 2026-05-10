@@ -4,6 +4,8 @@ import {
   ChevronDownIcon,
   CopyIcon,
   MinusIcon,
+  PanelRightCloseIcon,
+  PanelRightOpenIcon,
   PlusIcon,
   RefreshCwIcon,
   SearchIcon,
@@ -39,6 +41,11 @@ import { rpc } from "@/views/main/lib/rpc";
 import { cn } from "@/views/main/lib/utils";
 
 const NO_DRAG_CLASS = "electrobun-webkit-app-region-no-drag";
+
+type TitlebarProps = {
+  isRightSidebarOpen: boolean;
+  onToggleRightSidebar: () => void;
+};
 
 function AppIcon() {
   return (
@@ -133,7 +140,10 @@ function ProfileFace({
   );
 }
 
-export function Titlebar() {
+export function Titlebar({
+  isRightSidebarOpen,
+  onToggleRightSidebar,
+}: TitlebarProps) {
   const [isMaximized, setIsMaximized] = useState(false);
   const [addProfileOpen, setAddProfileOpen] = useState(false);
   const [curseForgeOpen, setCurseForgeOpen] = useState(false);
@@ -239,6 +249,10 @@ export function Titlebar() {
     void navigate({ to: "/settings" });
   }, [navigate]);
 
+  const rightSidebarToggleLabel = isRightSidebarOpen
+    ? "Hide right sidebar"
+    : "Show right sidebar";
+
   return (
     <>
       <div className="electrobun-webkit-app-region-drag relative z-9999 flex h-12 shrink-0 select-none items-center border-sidebar-border border-b bg-sidebar px-4">
@@ -281,6 +295,24 @@ export function Titlebar() {
             aria-label="Notifications"
           >
             <BellIcon className="size-4" />
+          </button>
+
+          <button
+            type="button"
+            className={cn(
+              "flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground",
+              isRightSidebarOpen && "bg-white/5 text-foreground",
+            )}
+            aria-label={rightSidebarToggleLabel}
+            aria-pressed={isRightSidebarOpen}
+            onClick={onToggleRightSidebar}
+            title={rightSidebarToggleLabel}
+          >
+            {isRightSidebarOpen ? (
+              <PanelRightCloseIcon className="size-4" />
+            ) : (
+              <PanelRightOpenIcon className="size-4" />
+            )}
           </button>
 
           <button

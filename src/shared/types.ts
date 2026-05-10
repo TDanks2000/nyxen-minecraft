@@ -71,6 +71,15 @@ export type LauncherStatus = {
   };
 };
 
+export type LauncherStorageClearKind = "cache" | "data";
+
+export type ClearLauncherStorageResult = {
+  clearedAt: string;
+  kind: LauncherStorageClearKind;
+  removedPaths: Array<string>;
+  resetTables: Array<string>;
+};
+
 export type CurseForgeCategory =
   | "mods"
   | "modpacks"

@@ -47,14 +47,11 @@ export function DashboardPage() {
         onPlayInstance={playInstance}
       />
 
-      <StatusStrip
-        counts={statusHook.data?.counts}
-        loading={statusHook.loading}
-      />
+      <StatusStrip status={statusHook.data} loading={statusHook.loading} />
 
       <DashboardInstanceGrid
         featuredInstanceId={heroInstance?.id ?? null}
-        instanceCount={statusHook.data?.counts.instances}
+        instanceCount={statusHook.data?.counts.instances ?? instances.length}
         instances={instances}
         launchLoadingId={launchPlan.loadingInstanceId}
         loading={initialInstancesLoading}

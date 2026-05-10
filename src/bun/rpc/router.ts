@@ -4,6 +4,8 @@ import type { MainViewRPC } from "../../shared/rpc/types";
 import {
   clearDownloadJob,
   clearFinishedDownloadJobs,
+  clearLauncherCache,
+  clearLauncherData,
   closeWindow,
   completeMicrosoftProfileLogin,
   createLauncherInstance,
@@ -55,6 +57,8 @@ export const mainViewRPC = BrowserView.defineRPC<MainViewRPC>({
     requests: {
       clearDownloadJob,
       clearFinishedDownloadJobs,
+      clearLauncherCache,
+      clearLauncherData,
       closeWindow,
       completeMicrosoftProfileLogin,
       createLaunchPlan,
