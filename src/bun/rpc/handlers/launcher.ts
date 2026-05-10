@@ -8,6 +8,7 @@ import type {
 } from "../../../shared/types";
 import { downloadArtifacts as downloadArtifactsFn } from "../../launcher/download";
 import { launchMinecraft } from "../../launcher/executor";
+import { markLauncherInstanceLaunched } from "../../launcher/instances";
 import { createLaunchPlan } from "../../launcher/launch-plan";
 import { getLauncherProfileAuthSecrets } from "../../launcher/profiles";
 import { refreshMinecraftVersionManifest as refreshManifest } from "../../launcher/versions";
@@ -73,13 +74,20 @@ export const launchInstance = async (
     accessToken = secrets?.minecraftAccessToken ?? undefined;
   }
 
-  return launchMinecraft(plan, { accessToken });
+  const result = launchMinecraft(plan, { accessToken });
+  markLauncherInstanceLaunched(plan.instance.id);
+
+  return result;
 };
 
 export {
   getCurseForgeStatus,
   searchCurseForgeProjects,
 } from "../../launcher/curseforge";
+export {
+  getInstanceContent,
+  setInstanceModEnabled,
+} from "../../launcher/instance-content";
 export {
   createLauncherInstance,
   listLauncherInstances,

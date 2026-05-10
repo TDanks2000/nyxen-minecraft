@@ -1,63 +1,55 @@
-import type { ElementType } from "react";
 import {
-  CpuIcon,
-  DatabaseIcon,
+  CopyIcon,
   FolderIcon,
   MemoryStickIcon,
   PuzzleIcon,
+  ScrollTextIcon,
   ShieldCheckIcon,
+  TerminalSquareIcon,
 } from "lucide-react";
+import type { ElementType, ReactNode } from "react";
+import { toast } from "sonner";
 import type { LauncherInstance } from "@/shared/types";
+import { Button } from "@/views/main/components/ui/button";
 
 type InstanceSummaryProps = {
   enabledModsCount: number;
   instance: LauncherInstance;
+  resourcePackCount: number;
+  shaderPackCount: number;
+  totalModsCount: number;
 };
 
 function formatMemory(mb: number): string {
   return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb} MB`;
 }
 
-function StatTile({
+function StatCell({
+  action,
   icon: Icon,
   label,
   value,
+  detail,
 }: {
+  action?: ReactNode;
   icon: ElementType;
   label: string;
   value: string;
+  detail: string;
 }) {
   return (
-    <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
-      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <Icon className="size-3.5 shrink-0 text-primary" />
-        {label}
+    <div className="flex min-w-0 items-center gap-3 bg-card/70 px-4 py-3">
+      <Icon className="size-5 shrink-0 text-primary" />
+      <div className="min-w-0 flex-1">
+        <div className="text-xs text-muted-foreground">{label}</div>
+        <div className="mt-1 truncate font-heading text-lg font-black leading-none">
+          {value}
+        </div>
+        <div className="mt-1 truncate text-xs text-muted-foreground">
+          {detail}
+        </div>
       </div>
-      <div className="mt-2 truncate font-heading text-xl font-black leading-none">
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function PathEntry({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: ElementType;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="min-w-0">
-      <div className="flex items-center gap-1.5 text-[0.62rem] font-semibold uppercase tracking-widest text-muted-foreground">
-        <Icon className="size-3 shrink-0 text-primary" />
-        {label}
-      </div>
-      <div className="mt-1.5 truncate font-mono text-xs text-foreground/70">
-        {value}
-      </div>
+      {action}
     </div>
   );
 }
@@ -65,52 +57,66 @@ function PathEntry({
 export function InstanceSummary({
   enabledModsCount,
   instance,
+  resourcePackCount,
+  shaderPackCount,
+  totalModsCount,
 }: InstanceSummaryProps) {
+  const copyGameDirectory = () => {
+    void navigator.clipboard.writeText(instance.gameDirectory);
+    toast.success("Game directory copied.");
+  };
+
   return (
-    <section className="flex flex-col gap-3">
-      {/* Stat strip */}
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <StatTile
+    <section className="overflow-hidden rounded-lg border border-border bg-card/70 shadow-[0_20px_70px_-58px_black]">
+      <div className="grid grid-cols-1 gap-px bg-border/70 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
+        <StatCell
+          detail={`${instance.memoryMinMb} MB - ${instance.memoryMaxMb} MB`}
           icon={MemoryStickIcon}
           label="Memory"
-          value={`${formatMemory(instance.memoryMinMb)} – ${formatMemory(instance.memoryMaxMb)}`}
+          value={formatMemory(instance.memoryMaxMb)}
         />
-        <StatTile
-          icon={CpuIcon}
-          label="Java"
-          value={instance.javaExecutable ? "Custom" : "Managed"}
+        <StatCell
+          detail={instance.javaExecutable ?? "Managed by Nyxen"}
+          icon={TerminalSquareIcon}
+          label="Java Runtime"
+          value={instance.javaExecutable ? "Custom Java" : "Managed Java"}
         />
-        <StatTile
+        <StatCell
+          detail={`${totalModsCount} total`}
           icon={PuzzleIcon}
           label="Mods"
-          value={`${enabledModsCount} enabled`}
+          value={`${enabledModsCount} Enabled`}
         />
-        <StatTile
+        <StatCell
+          detail={`${shaderPackCount} shader pack${shaderPackCount === 1 ? "" : "s"}`}
+          icon={ScrollTextIcon}
+          label="Packs"
+          value={`${resourcePackCount} Resources`}
+        />
+        <StatCell
+          detail={
+            instance.profileId ? "Account selected" : "No account required"
+          }
           icon={ShieldCheckIcon}
           label="Profile"
-          value={instance.profileId ? "Linked" : "Offline"}
+          value={instance.profileId ? "Linked" : "Offline Mode"}
         />
-      </div>
-
-      {/* Paths */}
-      <div className="rounded-lg border border-border/60 bg-muted/10 px-4 py-3">
-        <div className="grid gap-4 sm:grid-cols-3">
-          <PathEntry
-            icon={DatabaseIcon}
-            label="Instance root"
-            value={instance.instanceDirectory}
-          />
-          <PathEntry
-            icon={FolderIcon}
-            label="Game directory"
-            value={instance.gameDirectory}
-          />
-          <PathEntry
-            icon={FolderIcon}
-            label="Metadata"
-            value={instance.metadataPath}
-          />
-        </div>
+        <StatCell
+          action={
+            <Button
+              aria-label="Copy game directory path"
+              onClick={copyGameDirectory}
+              size="icon-xs"
+              variant="ghost"
+            >
+              <CopyIcon />
+            </Button>
+          }
+          detail="Click to copy path"
+          icon={FolderIcon}
+          label="Game Directory"
+          value={`.../${instance.folders.root}`}
+        />
       </div>
     </section>
   );

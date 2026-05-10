@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { InstanceCatalogTabs } from "@/views/main/features/instances/components/instance-catalog-tabs";
 import { InstanceDetailsHeader } from "@/views/main/features/instances/components/instance-details-header";
 import {
@@ -11,6 +12,7 @@ import { useLaunchPlan } from "@/views/main/features/instances/hooks/use-launch-
 import { useInstances } from "@/views/main/hooks/use-instances";
 
 export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
+  const [activeTab, setActiveTab] = useState("mods");
   const instancesHook = useInstances();
   const launchPlan = useLaunchPlan();
   const instance =
@@ -24,40 +26,62 @@ export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
   const playInstance = () => {
     void launchPlan.createLaunchPlan(instance.id);
   };
+  const openSettings = () => setActiveTab("settings");
 
   return (
-    <div className="flex flex-col">
+    <div className="min-h-full bg-background">
       <InstanceDetailsHeader
+        enabledModsCount={catalog.enabledMods.length}
         instance={instance}
+        onOpenSettings={openSettings}
         onPlay={playInstance}
         planLoading={planLoading}
+        resourcePackCount={catalog.resourcePacks.length}
+        shaderPackCount={catalog.shaderPacks.length}
+        warningCount={catalog.disabledMods.length}
       />
 
-      <div className="mx-auto flex w-full max-w-7xl min-w-0 flex-col gap-5 px-4 pt-5 pb-8 sm:px-5">
+      <div className="mx-auto flex w-full max-w-[90rem] min-w-0 flex-col gap-4 px-4 pt-4 pb-8 sm:px-5">
         <InstanceSummary
           enabledModsCount={catalog.enabledMods.length}
           instance={instance}
+          resourcePackCount={catalog.resourcePacks.length}
+          shaderPackCount={catalog.shaderPacks.length}
+          totalModsCount={catalog.mods.length}
         />
 
         <InstanceCatalogTabs
-          enabled={catalog.enabled}
-          favorites={catalog.favorites}
+          activeTab={activeTab}
+          content={catalog.content}
+          contentError={catalog.error}
+          contentLoading={catalog.loading}
+          disabledModsCount={catalog.disabledMods.length}
+          enabledModsCount={catalog.enabledMods.length}
           instance={instance}
+          mutating={catalog.mutating}
           mods={catalog.mods}
-          onAddMod={catalog.addMod}
-          onAddServer={catalog.addServer}
-          onApplyUpdate={catalog.applyUpdate}
-          onRefreshPings={catalog.refreshPings}
-          onToggleFavorite={catalog.toggleFavorite}
+          onCreateLaunchPlan={playInstance}
+          onRefreshContent={() => {
+            void catalog.refreshContent();
+          }}
+          onSetActiveTab={setActiveTab}
+          onSetAllModsEnabled={(enabled) => {
+            void catalog.setAllModsEnabled(enabled);
+          }}
           onToggleMod={catalog.toggleMod}
-          servers={catalog.servers}
-          updates={catalog.updates}
+          resourcePacks={catalog.resourcePacks}
+          screenshots={catalog.screenshots}
+          serverList={catalog.serverList}
+          shaderPacks={catalog.shaderPacks}
+          logs={catalog.logs}
+          worlds={catalog.worlds}
         />
       </div>
 
       <LaunchPlanSheet
         open={launchPlan.sheetOpen}
         onOpenChange={launchPlan.setSheetOpen}
+        onLaunched={instancesHook.refresh}
         plan={launchPlan.activePlan}
       />
     </div>

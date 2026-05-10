@@ -316,6 +316,60 @@ export type LauncherInstance = {
   versionId: string;
 };
 
+export type InstanceFileKind =
+  | "log"
+  | "mod"
+  | "resourcePack"
+  | "screenshot"
+  | "serverList"
+  | "shaderPack"
+  | "world";
+
+export type InstanceFileEntry = {
+  displayName: string;
+  enabled: boolean | null;
+  extension: string | null;
+  fileName: string;
+  id: string;
+  isDirectory: boolean;
+  kind: InstanceFileKind;
+  modifiedAt: string;
+  path: string;
+  sizeBytes: number;
+};
+
+export type InstanceContent = {
+  counts: {
+    disabledMods: number;
+    enabledMods: number;
+    logs: number;
+    mods: number;
+    resourcePacks: number;
+    screenshots: number;
+    shaderPacks: number;
+    worlds: number;
+  };
+  instanceId: string;
+  logs: Array<InstanceFileEntry>;
+  mods: Array<InstanceFileEntry>;
+  refreshedAt: string;
+  resourcePacks: Array<InstanceFileEntry>;
+  screenshots: Array<InstanceFileEntry>;
+  serverList: InstanceFileEntry | null;
+  shaderPacks: Array<InstanceFileEntry>;
+  worlds: Array<InstanceFileEntry>;
+};
+
+export type GetInstanceContentInput = {
+  instanceId: string;
+};
+
+export type SetInstanceModEnabledInput = {
+  enabled: boolean;
+  fileName: string;
+  instanceId: string;
+};
+
 export type CreateLauncherInstanceInput = {
   gameArgs?: Array<string>;
   iconUrl?: string;

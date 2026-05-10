@@ -32,7 +32,7 @@ function SparkLine({ data }: { data: Array<{ i: number; v: number }> }) {
 
 export function RightSidebar() {
   return (
-    <aside className="w-72 shrink-0 bg-sidebar border-l border-sidebar-border overflow-y-auto flex flex-col">
+    <aside className="hidden w-72 shrink-0 flex-col overflow-y-auto border-l border-sidebar-border bg-sidebar 2xl:flex">
       {/* Download Queue */}
       <section className="p-4 border-b border-sidebar-border">
         <div className="flex items-center justify-between border-b border-sidebar-border/30 pb-2 mb-3">

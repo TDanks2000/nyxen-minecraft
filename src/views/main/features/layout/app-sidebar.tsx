@@ -84,7 +84,7 @@ export function AppSidebar() {
   const activeInstance = quickPlayInstances[0] ?? null;
 
   return (
-    <aside className="flex flex-col w-52 shrink-0 bg-sidebar border-r border-sidebar-border overflow-y-auto">
+    <aside className="hidden w-52 shrink-0 flex-col overflow-y-auto border-r border-sidebar-border bg-sidebar md:flex">
       {/* Primary navigation */}
       <nav className="flex flex-col gap-0.5 p-2 pt-2">
         {NAV_ITEMS.map((item) => {

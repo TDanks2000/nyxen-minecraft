@@ -1070,6 +1070,136 @@ describe("launcher backend", () => {
     }
   });
 
+  test("marks launcher instances as launched", async () => {
+    const {
+      createLauncherInstance,
+      getLauncherInstance,
+      markLauncherInstanceLaunched,
+    } = await import("../src/bun/launcher/instances");
+    const { refreshMinecraftVersionManifest } = await import(
+      "../src/bun/launcher/versions"
+    );
+    const launchedAt = "2024-01-05T12:34:56.000Z";
+
+    await refreshMinecraftVersionManifest({ fetcher: fakeFetch });
+
+    const instance = createLauncherInstance({
+      name: "Launch Timestamp",
+      versionId: "1.20.4",
+    });
+
+    markLauncherInstanceLaunched(instance.id, launchedAt);
+
+    expect(getLauncherInstance(instance.id)).toMatchObject({
+      lastLaunchedAt: launchedAt,
+      updatedAt: launchedAt,
+    });
+  });
+
+  test("inventories instance content and toggles local mod files", async () => {
+    const { getInstanceContent, setInstanceModEnabled } = await import(
+      "../src/bun/launcher/instance-content"
+    );
+    const { createLauncherInstance } = await import(
+      "../src/bun/launcher/instances"
+    );
+    const { refreshMinecraftVersionManifest } = await import(
+      "../src/bun/launcher/versions"
+    );
+
+    await refreshMinecraftVersionManifest({ fetcher: fakeFetch });
+
+    const instance = createLauncherInstance({
+      name: "Content Inventory",
+      versionId: "1.20.4",
+    });
+
+    writeFileSync(join(instance.folders.mods, "enabled-mod.jar"), "enabled");
+    writeFileSync(
+      join(instance.folders.mods, "disabled-mod.jar.disabled"),
+      "disabled",
+    );
+    writeFileSync(join(instance.folders.mods, "notes.txt"), "ignored");
+    writeFileSync(
+      join(instance.folders.resourcePacks, "resource-pack.zip"),
+      "",
+    );
+    writeFileSync(join(instance.folders.shaderPacks, "shader-pack.zip"), "");
+    mkdirSync(join(instance.folders.saves, "Survival World"));
+    writeFileSync(join(instance.folders.screenshots, "screen.png"), "");
+    writeFileSync(join(instance.folders.logs, "latest.log"), "");
+    writeFileSync(join(instance.gameDirectory, "servers.dat"), "servers");
+
+    const content = getInstanceContent({ instanceId: instance.id });
+
+    expect(content.instanceId).toBe(instance.id);
+    expect(content.counts).toMatchObject({
+      disabledMods: 1,
+      enabledMods: 1,
+      logs: 1,
+      mods: 2,
+      resourcePacks: 1,
+      screenshots: 1,
+      shaderPacks: 1,
+      worlds: 1,
+    });
+    expect(content.mods.map((mod) => [mod.fileName, mod.enabled])).toEqual([
+      ["disabled-mod.jar.disabled", false],
+      ["enabled-mod.jar", true],
+    ]);
+    expect(content.resourcePacks[0]?.fileName).toBe("resource-pack.zip");
+    expect(content.shaderPacks[0]?.fileName).toBe("shader-pack.zip");
+    expect(content.screenshots[0]?.fileName).toBe("screen.png");
+    expect(content.logs[0]?.fileName).toBe("latest.log");
+    expect(content.worlds[0]?.fileName).toBe("Survival World");
+    expect(content.serverList?.fileName).toBe("servers.dat");
+
+    const afterDisable = setInstanceModEnabled({
+      enabled: false,
+      fileName: "enabled-mod.jar",
+      instanceId: instance.id,
+    });
+
+    expect(existsSync(join(instance.folders.mods, "enabled-mod.jar"))).toBe(
+      false,
+    );
+    expect(
+      existsSync(join(instance.folders.mods, "enabled-mod.jar.disabled")),
+    ).toBe(true);
+    expect(afterDisable.counts).toMatchObject({
+      disabledMods: 2,
+      enabledMods: 0,
+    });
+
+    const afterEnable = setInstanceModEnabled({
+      enabled: true,
+      fileName: "enabled-mod.jar.disabled",
+      instanceId: instance.id,
+    });
+
+    expect(existsSync(join(instance.folders.mods, "enabled-mod.jar"))).toBe(
+      true,
+    );
+    expect(afterEnable.counts).toMatchObject({
+      disabledMods: 1,
+      enabledMods: 1,
+    });
+    expect(() =>
+      setInstanceModEnabled({
+        enabled: false,
+        fileName: "../enabled-mod.jar",
+        instanceId: instance.id,
+      }),
+    ).toThrow("File name is invalid.");
+    expect(() =>
+      setInstanceModEnabled({
+        enabled: false,
+        fileName: "..\\enabled-mod.jar",
+        instanceId: instance.id,
+      }),
+    ).toThrow("File name is invalid.");
+  });
+
   test("searches CurseForge modpacks through the backend API client", async () => {
     const { searchCurseForgeProjects } = await import(
       "../src/bun/launcher/curseforge"

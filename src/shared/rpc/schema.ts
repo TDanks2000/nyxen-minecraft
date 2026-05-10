@@ -10,7 +10,9 @@ import type {
   DatabaseStatus,
   DownloadArtifactsInput,
   DownloadArtifactsResult,
+  GetInstanceContentInput,
   GetMinecraftVersionDetailsInput,
+  InstanceContent,
   LauncherInstance,
   LauncherProfile,
   LauncherStatus,
@@ -27,6 +29,7 @@ import type {
   MinecraftVersionManifest,
   MinecraftVersionSummary,
   SearchCurseForgeProjectsInput,
+  SetInstanceModEnabledInput,
   SettingsStatus,
   SettingValue,
 } from "../types";
@@ -106,6 +109,14 @@ export type MainViewRPC = {
       listLauncherInstances: {
         params: null;
         response: Array<LauncherInstance>;
+      };
+      getInstanceContent: {
+        params: GetInstanceContentInput;
+        response: InstanceContent;
+      };
+      setInstanceModEnabled: {
+        params: SetInstanceModEnabledInput;
+        response: InstanceContent;
       };
       createLaunchPlan: {
         params: CreateLaunchPlanInput;

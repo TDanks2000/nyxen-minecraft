@@ -26,6 +26,7 @@ import {
 import { rpc } from "@/views/main/lib/rpc";
 
 type Props = {
+  onLaunched?: () => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   plan: LaunchPlan | null;
@@ -38,7 +39,12 @@ type LaunchState =
   | "launching"
   | "launched";
 
-export function LaunchPlanSheet({ open, onOpenChange, plan }: Props) {
+export function LaunchPlanSheet({
+  onLaunched,
+  open,
+  onOpenChange,
+  plan,
+}: Props) {
   const [launchState, setLaunchState] = useState<LaunchState>("idle");
   const [failedArtifacts, setFailedArtifacts] = useState<
     Array<{ error: string; id: string }>
@@ -92,6 +98,7 @@ export function LaunchPlanSheet({ open, onOpenChange, plan }: Props) {
       const result = await rpc.requestProxy.launchInstance({ plan });
       setLaunchState("launched");
       toast.success(`Minecraft started (PID ${result.pid})`);
+      onLaunched?.();
       handleOpenChange(false);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Launch failed");

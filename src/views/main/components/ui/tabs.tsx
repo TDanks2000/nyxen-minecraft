@@ -11,7 +11,9 @@ function Tabs({
   return (
     <TabsPrimitive.Root
       data-slot="tabs"
+      data-horizontal={orientation === "horizontal" ? "" : undefined}
       data-orientation={orientation}
+      data-vertical={orientation === "vertical" ? "" : undefined}
       className={cn(
         "group/tabs flex gap-2 data-horizontal:flex-col",
         className

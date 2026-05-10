@@ -273,6 +273,23 @@ export const getLauncherInstance = (
   return row ? toInstance(row) : null;
 };
 
+export const markLauncherInstanceLaunched = (
+  instanceId: string,
+  launchedAt = new Date().toISOString(),
+): void => {
+  const normalizedId = instanceId.trim();
+
+  if (!normalizedId) return;
+
+  db.update(schema.launcherInstances)
+    .set({
+      lastLaunchedAt: launchedAt,
+      updatedAt: launchedAt,
+    })
+    .where(eq(schema.launcherInstances.id, normalizedId))
+    .run();
+};
+
 export const createLauncherInstance = (
   input: CreateLauncherInstanceInput,
 ): LauncherInstance => {

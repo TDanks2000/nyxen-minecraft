@@ -1,146 +1,134 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import type { LauncherInstance } from "@/shared/types";
-import {
-  MODS,
-  type ModEntry,
-  SERVERS,
-  type ServerEntry,
-} from "@/views/main/features/catalog/catalog-data";
+import type { InstanceContent, LauncherInstance } from "@/shared/types";
+import { rpc } from "@/views/main/lib/rpc";
 
 export function useInstanceCatalog(instance: LauncherInstance | null) {
-  const [enabled, setEnabled] = useState(
-    () => new Set(MODS.filter((mod) => mod.enabled).map((mod) => mod.id)),
+  const [content, setContent] = useState<InstanceContent | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [mutating, setMutating] = useState(false);
+
+  const refreshContent = useCallback(
+    async ({ silent = false }: { silent?: boolean } = {}) => {
+      if (!instance) {
+        setContent(null);
+        setError(null);
+        setLoading(false);
+        return null;
+      }
+
+      if (!silent) setLoading(true);
+
+      try {
+        const next = await rpc.requestProxy.getInstanceContent({
+          instanceId: instance.id,
+        });
+        setContent(next);
+        setError(null);
+        return next;
+      } catch (e) {
+        const message =
+          e instanceof Error ? e.message : "Failed to load instance content";
+        setError(message);
+        if (!silent) toast.error(message);
+        return null;
+      } finally {
+        if (!silent) setLoading(false);
+      }
+    },
+    [instance],
   );
-  const [favorites, setFavorites] = useState(
-    () =>
-      new Set(
-        SERVERS.filter((server) => server.favorite).map((server) => server.id),
-      ),
-  );
-  const [mods, setMods] = useState<Array<ModEntry>>(() => MODS);
-  const [servers, setServers] = useState<Array<ServerEntry>>(() => SERVERS);
-  const [updates, setUpdates] = useState(
-    () =>
-      new Set(MODS.filter((mod) => mod.updateAvailable).map((mod) => mod.id)),
-  );
+
+  useEffect(() => {
+    void refreshContent({ silent: false });
+  }, [refreshContent]);
 
   const enabledMods = useMemo(
-    () => mods.filter((mod) => enabled.has(mod.id)),
-    [enabled, mods],
+    () => content?.mods.filter((mod) => mod.enabled === true) ?? [],
+    [content?.mods],
   );
 
-  const onlineServers = useMemo(
-    () => servers.filter((server) => server.status === "Online"),
-    [servers],
+  const disabledMods = useMemo(
+    () => content?.mods.filter((mod) => mod.enabled === false) ?? [],
+    [content?.mods],
   );
-
-  const addMod = useCallback(() => {
-    const mod: ModEntry = {
-      category: "Utility",
-      enabled: false,
-      id: "instance-local-minimap",
-      name: "Instance Minimap",
-      scope: "Client",
-      summary: "A client utility staged directly on this instance.",
-      updateAvailable: false,
-      version: "1.0.0-local",
-    };
-
-    setMods((current) => {
-      if (current.some((item) => item.id === mod.id)) {
-        toast.message("Instance Minimap is already attached.");
-        return current;
-      }
-
-      return [mod, ...current];
-    });
-    toast.success("Instance Minimap added disabled for review.");
-  }, []);
-
-  const addServer = useCallback(() => {
-    const server: ServerEntry = {
-      address: "instance.lan.local",
-      favorite: false,
-      id: "instance-lan",
-      latencyMs: 18,
-      name: "Instance LAN",
-      players: "1 / 16",
-      status: "Online",
-      tags: ["LAN", instance?.loader ?? "Instance"],
-      version: instance?.versionId ?? "Current",
-    };
-
-    setServers((current) => {
-      if (current.some((item) => item.id === server.id)) {
-        toast.message("Instance LAN is already attached.");
-        return current;
-      }
-
-      return [server, ...current];
-    });
-    toast.success("Instance LAN added to this instance.");
-  }, [instance?.loader, instance?.versionId]);
-
-  const applyUpdate = useCallback((id: string, name: string) => {
-    setUpdates((current) => {
-      const next = new Set(current);
-      next.delete(id);
-      return next;
-    });
-    toast.success(`${name} marked up to date.`);
-  }, []);
-
-  const refreshPings = useCallback(() => {
-    setServers((current) =>
-      current.map((server, index) => ({
-        ...server,
-        latencyMs:
-          server.status === "Online"
-            ? 18 + (((server.latencyMs ?? 0) + index * 11) % 64)
-            : null,
-      })),
-    );
-    toast.success("Instance server pings refreshed.");
-  }, []);
-
-  const toggleFavorite = useCallback((id: string) => {
-    setFavorites((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
 
   const toggleMod = useCallback(
-    (id: string, name: string, checked: boolean) => {
-      setEnabled((current) => {
-        const next = new Set(current);
-        if (checked) next.add(id);
-        else next.delete(id);
-        return next;
-      });
-      toast.success(
-        `${name} ${checked ? "enabled" : "disabled"} for this instance.`,
-      );
+    async (fileName: string, name: string, enabled: boolean) => {
+      if (!instance) return;
+
+      setMutating(true);
+      try {
+        const next = await rpc.requestProxy.setInstanceModEnabled({
+          enabled,
+          fileName,
+          instanceId: instance.id,
+        });
+        setContent(next);
+        toast.success(`${name} ${enabled ? "enabled" : "disabled"}.`);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Failed to update mod");
+      } finally {
+        setMutating(false);
+      }
     },
-    [],
+    [instance],
+  );
+
+  const setAllModsEnabled = useCallback(
+    async (enabled: boolean) => {
+      if (!instance || !content) return;
+
+      const targets = content.mods.filter((mod) => mod.enabled !== enabled);
+
+      if (targets.length === 0) {
+        toast.message(
+          enabled ? "All mods are already enabled." : "All mods are disabled.",
+        );
+        return;
+      }
+
+      setMutating(true);
+      try {
+        let nextContent = content;
+        for (const mod of targets) {
+          nextContent = await rpc.requestProxy.setInstanceModEnabled({
+            enabled,
+            fileName: mod.fileName,
+            instanceId: instance.id,
+          });
+        }
+        setContent(nextContent);
+        toast.success(
+          `${targets.length} mod${targets.length === 1 ? "" : "s"} ${enabled ? "enabled" : "disabled"}.`,
+        );
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Failed to update mods");
+        await refreshContent({ silent: true });
+      } finally {
+        setMutating(false);
+      }
+    },
+    [content, instance, refreshContent],
   );
 
   return {
-    addMod,
-    addServer,
-    applyUpdate,
-    enabled,
+    content,
+    disabledMods,
     enabledMods,
-    favorites,
-    mods,
-    onlineServers,
-    refreshPings,
-    servers,
-    toggleFavorite,
+    error,
+    loading,
+    mods: content?.mods ?? [],
+    mutating,
+    refreshContent,
+    resourcePacks: content?.resourcePacks ?? [],
+    screenshots: content?.screenshots ?? [],
+    serverList: content?.serverList ?? null,
+    setAllModsEnabled,
+    shaderPacks: content?.shaderPacks ?? [],
+    logs: content?.logs ?? [],
     toggleMod,
-    updates,
+    worlds: content?.worlds ?? [],
   };
 }

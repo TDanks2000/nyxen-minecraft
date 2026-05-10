@@ -240,7 +240,12 @@ export function InstancesPage() {
     const needle = query.trim().toLowerCase();
     if (!needle) return instances;
     return instances.filter((instance) =>
-      [instance.name, instance.versionId, instance.loader, instance.loaderVersion ?? ""]
+      [
+        instance.name,
+        instance.versionId,
+        instance.loader,
+        instance.loaderVersion ?? "",
+      ]
         .join(" ")
         .toLowerCase()
         .includes(needle),
@@ -266,7 +271,9 @@ export function InstancesPage() {
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="font-heading text-3xl font-black leading-none">Library</h1>
+          <h1 className="font-heading text-3xl font-black leading-none">
+            Library
+          </h1>
           {!loading && (
             <p className="mt-1 text-sm text-muted-foreground">
               {instances.length === 0
@@ -338,7 +345,9 @@ export function InstancesPage() {
                   <SearchIcon />
                 </EmptyMedia>
                 <EmptyTitle>No results for "{query}"</EmptyTitle>
-                <EmptyDescription>Try a different name, version, or loader.</EmptyDescription>
+                <EmptyDescription>
+                  Try a different name, version, or loader.
+                </EmptyDescription>
               </EmptyHeader>
             </Empty>
           ) : (

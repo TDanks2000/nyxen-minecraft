@@ -217,10 +217,7 @@ const migrateLegacyRuntimeMetadataCache = (runtimesDirectory: string): void => {
   const entries = readdirSync(runtimesDirectory, { withFileTypes: true });
 
   for (const entry of entries) {
-    if (
-      !entry.isFile() ||
-      !legacyRuntimeMetadataFilePattern.test(entry.name)
-    ) {
+    if (!entry.isFile() || !legacyRuntimeMetadataFilePattern.test(entry.name)) {
       continue;
     }
 
