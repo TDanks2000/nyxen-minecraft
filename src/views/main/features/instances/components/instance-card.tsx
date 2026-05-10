@@ -24,14 +24,8 @@ import {
   DropdownMenuTrigger,
 } from "@/views/main/components/ui/dropdown-menu";
 import { cn } from "@/views/main/lib/utils";
-import {
-  InstanceArtwork,
-  InstanceIcon,
-} from "./instance-artwork";
-import {
-  formatInstanceLastPlayed,
-  LOADER_LABELS,
-} from "./instance-format";
+import { InstanceArtwork, InstanceIcon } from "./instance-artwork";
+import { formatInstanceLastPlayed, LOADER_LABELS } from "./instance-format";
 
 type InstanceActionProps = {
   instance: LauncherInstance;
@@ -153,12 +147,12 @@ export function InstanceCard({
       </Link>
 
       <CardHeader className={cn("min-w-0", compact && "gap-1")}>
-        <CardTitle className={cn("truncate", compact && "text-xs leading-none")}>
+        <CardTitle
+          className={cn("truncate", compact && "text-xs leading-none")}
+        >
           {instance.name}
         </CardTitle>
-        <CardDescription
-          className={cn("truncate", compact && "text-[0.6rem]")}
-        >
+        <CardDescription className={cn("truncate", compact && "text-[0.6rem]")}>
           Minecraft {instance.versionId} · {LOADER_LABELS[instance.loader]}
         </CardDescription>
       </CardHeader>

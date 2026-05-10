@@ -3,11 +3,11 @@ import {
   AlertTriangleIcon,
   BoxesIcon,
   InfoIcon,
+  Loader2Icon,
   PackageIcon,
   PlayIcon,
   PlusIcon,
   SearchIcon,
-  Loader2Icon,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { DownloadQueueJob, LauncherInstance } from "@/shared/types";
