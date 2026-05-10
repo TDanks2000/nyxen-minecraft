@@ -125,7 +125,7 @@ export function InstanceCard({
   return (
     <Card
       className={cn(
-        "group pt-0 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_24px_72px_-48px_black]",
+        "group pt-0 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_24px_72px_-48px_black] data-[size=sm]:pt-0",
         featured && "border-primary/60 ring-1 ring-primary/30",
         className,
       )}
