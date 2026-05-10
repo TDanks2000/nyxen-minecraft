@@ -1,5 +1,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
+import { createWriteStream, mkdirSync } from "node:fs";
 import { release } from "node:os";
+import { join } from "node:path";
 import type {
   LaunchInstanceResult,
   LaunchPlan,
@@ -281,6 +283,30 @@ const assertLaunchPlanStorage = (plan: LaunchPlan): void => {
   }
 };
 
+const createLauncherProcessLog = (plan: LaunchPlan) => {
+  mkdirSync(plan.directories.instanceLogs, { recursive: true });
+
+  const timestamp = new Date().toISOString().replaceAll(":", "-");
+  const path = join(
+    plan.directories.instanceLogs,
+    `nyxen-launch-${timestamp}.log`,
+  );
+  const stream = createWriteStream(path, { flags: "wx", mode: 0o600 });
+
+  stream.write(
+    [
+      `Nyxen launch log for ${plan.instance.name}`,
+      `Instance: ${plan.instance.id}`,
+      `Version: ${plan.minecraft.versionId}`,
+      `Java: ${plan.java.executable}`,
+      `Working directory: ${plan.directories.game}`,
+      "",
+    ].join("\n"),
+  );
+
+  return { path, stream };
+};
+
 export const launchMinecraft = (
   plan: LaunchPlan,
   options: LaunchOptions = {},
@@ -299,6 +325,7 @@ export const launchMinecraft = (
   }
 
   const { executable, args } = buildCommand(plan, options);
+  const processLog = createLauncherProcessLog(plan);
 
   let child: ChildProcess;
 
@@ -308,9 +335,10 @@ export const launchMinecraft = (
     child = spawn(executable, args, {
       cwd: plan.directories.game,
       detached: true,
-      stdio: "ignore",
+      stdio: ["ignore", "pipe", "pipe"],
     });
   } catch (error) {
+    processLog.stream.end();
     throw new Error(
       error instanceof Error
         ? `Failed to start Java: ${error.message}`
@@ -318,13 +346,18 @@ export const launchMinecraft = (
     );
   }
 
+  child.stdout?.pipe(processLog.stream, { end: false });
+  child.stderr?.pipe(processLog.stream, { end: false });
+
   child.once("error", () => {
+    processLog.stream.end("\nJava process failed to start.\n");
     if (runningLaunches.get(plan.instance.id)?.child === child) {
       runningLaunches.delete(plan.instance.id);
     }
   });
 
   if (!child.pid) {
+    processLog.stream.end();
     throw new Error(
       "Failed to start Java. Make sure Java is installed and available on PATH.",
     );
@@ -340,7 +373,12 @@ export const launchMinecraft = (
   };
 
   runningLaunches.set(plan.instance.id, launch);
-  child.once("exit", () => {
+  child.once("exit", (code, signal) => {
+    processLog.stream.end(
+      `\nJava process exited with code ${code ?? "null"} and signal ${
+        signal ?? "null"
+      }.\n`,
+    );
     if (runningLaunches.get(plan.instance.id)?.child === child) {
       runningLaunches.delete(plan.instance.id);
     }
