@@ -3016,9 +3016,8 @@ describe("launcher backend", () => {
     const { createLaunchPlan } = await import(
       "../src/bun/launcher/launch-plan"
     );
-    const { refreshMinecraftVersionManifest } = await import(
-      "../src/bun/launcher/versions"
-    );
+    const { getMinecraftVersionDetails, refreshMinecraftVersionManifest } =
+      await import("../src/bun/launcher/versions");
     const osName =
       process.platform === "darwin"
         ? "osx"
@@ -3062,25 +3061,34 @@ describe("launcher backend", () => {
 
     await refreshMinecraftVersionManifest({ fetcher: fakeFetch });
 
-    const instance = createLauncherInstance({
-      name: "Native Artifact Metadata",
-      versionId: "1.20.4",
-    });
-    const plan = await createLaunchPlan(
-      { instanceId: instance.id, refreshVersionDetails: true },
-      { fetcher },
-    );
-    const nativeArtifact = plan.missingArtifacts.find((artifact) =>
-      artifact.path.endsWith(nativePathSuffix),
-    );
+    try {
+      const instance = createLauncherInstance({
+        name: "Native Artifact Metadata",
+        versionId: "1.20.4",
+      });
+      const plan = await createLaunchPlan(
+        { instanceId: instance.id, refreshVersionDetails: true },
+        { fetcher },
+      );
+      const nativeArtifact = plan.missingArtifacts.find((artifact) =>
+        artifact.path.endsWith(nativePathSuffix),
+      );
 
-    expect(
-      plan.nativeArtifactPaths.some((path) => path.endsWith(nativePathSuffix)),
-    ).toBe(true);
-    expect(nativeArtifact).toMatchObject({
-      id: `org.lwjgl:lwjgl:3.3.3:${nativeClassifier}`,
-      kind: "nativeLibrary",
-    });
+      expect(
+        plan.nativeArtifactPaths.some((path) =>
+          path.endsWith(nativePathSuffix),
+        ),
+      ).toBe(true);
+      expect(nativeArtifact).toMatchObject({
+        id: `org.lwjgl:lwjgl:3.3.3:${nativeClassifier}`,
+        kind: "nativeLibrary",
+      });
+    } finally {
+      await getMinecraftVersionDetails(
+        { refresh: true, versionId: "1.20.4" },
+        { fetcher: fakeFetch },
+      );
+    }
   });
 
   test("runs mod loader installers for generated artifacts without URLs", async () => {
@@ -3827,6 +3835,123 @@ describe("launcher backend", () => {
     expect(() => openExternal({ url: "file:///etc/passwd" })).toThrow(
       "External file URL must stay inside launcher storage.",
     );
+  });
+
+  test("substitutes mod loader launch variables before spawning Java", async () => {
+    if (process.platform === "win32") {
+      return;
+    }
+
+    const { launchMinecraft, listRunningLaunches } = await import(
+      "../src/bun/launcher/executor"
+    );
+    const { getLauncherDirectories } = await import(
+      "../src/bun/launcher/paths"
+    );
+    const directories = getLauncherDirectories();
+    const fakeJavaDir = join(dataRoot, "fake-java");
+    const fakeJavaPath = join(fakeJavaDir, "java");
+    const argsPath = join(fakeJavaDir, "args.txt");
+    const launchPathSeparator = ":";
+    const classpath = [
+      join(
+        directories.libraries,
+        "cpw",
+        "mods",
+        "bootstraplauncher",
+        "2.0.2",
+        "bootstraplauncher-2.0.2.jar",
+      ),
+      join(directories.versions, "1.20.4", "1.20.4.jar"),
+    ];
+    const modulePath = [
+      join(
+        directories.libraries,
+        "cpw",
+        "mods",
+        "bootstraplauncher",
+        "2.0.2",
+        "bootstraplauncher-2.0.2.jar",
+      ),
+      join(
+        directories.libraries,
+        "cpw",
+        "mods",
+        "securejarhandler",
+        "3.0.8",
+        "securejarhandler-3.0.8.jar",
+      ),
+    ].join(launchPathSeparator);
+
+    mkdirSync(fakeJavaDir, { recursive: true });
+    writeFileSync(
+      fakeJavaPath,
+      `#!/bin/sh\nprintf '%s\\n' "$@" > '${argsPath}'\n`,
+    );
+    chmodSync(fakeJavaPath, 0o755);
+
+    const plan = createTestLaunchPlan(directories, {
+      arguments: {
+        game: [
+          "--clientId",
+          clientIdPlaceholder,
+          "--xuid",
+          authXuidPlaceholder,
+        ],
+        jvm: [
+          `-DlibraryDirectory=${libraryDirectoryPlaceholder}`,
+          "-p",
+          `${libraryDirectoryPlaceholder}/cpw/mods/bootstraplauncher/2.0.2/bootstraplauncher-2.0.2.jar${classpathSeparatorPlaceholder}${libraryDirectoryPlaceholder}/cpw/mods/securejarhandler/3.0.8/securejarhandler-3.0.8.jar`,
+          "-cp",
+          classpathPlaceholder,
+        ],
+      },
+      classpath,
+      java: {
+        component: "java-runtime-gamma",
+        executable: fakeJavaPath,
+        management: "auto",
+        majorVersion: 17,
+        memoryMaxMb: 4096,
+        memoryMinMb: 512,
+        runtimeDirectory: null,
+        runtimePlatform: null,
+        runtimeVersion: null,
+      },
+      minecraft: {
+        assetIndexId: null,
+        baseVersionId: "1.20.4",
+        mainClass: "cpw.mods.bootstraplauncher.BootstrapLauncher",
+        versionId: "neoforge-21.1.224",
+      },
+    });
+
+    mkdirSync(plan.directories.game, { recursive: true });
+    launchMinecraft(plan);
+
+    for (let attempt = 0; attempt < 50 && !existsSync(argsPath); attempt++) {
+      await wait(10);
+    }
+
+    for (
+      let attempt = 0;
+      attempt < 50 &&
+      listRunningLaunches().some(
+        (launch) => launch.instanceId === plan.instance.id,
+      );
+      attempt++
+    ) {
+      await wait(10);
+    }
+
+    const args = readFileSync(argsPath, "utf8").trim().split("\n");
+    const modulePathArg = args[args.indexOf("-p") + 1];
+    const classpathArg = args[args.indexOf("-cp") + 1];
+
+    expect(args).toContain(`-DlibraryDirectory=${directories.libraries}`);
+    expect(modulePathArg).toBe(modulePath);
+    expect(modulePathArg).not.toContain("${");
+    expect(classpathArg).toBe(classpath.join(launchPathSeparator));
   });
 
   test("handles missing Java executables without tracking a launch", async () => {

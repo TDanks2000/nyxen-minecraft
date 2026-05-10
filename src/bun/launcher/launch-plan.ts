@@ -189,7 +189,10 @@ const isNativeLibraryArtifact = (
     return false;
   }
 
-  return /(^|[-:])natives[-:]/.test(library.name) || /(^|-)natives-/.test(artifactPath);
+  return (
+    /(^|[-:])natives[-:]/.test(library.name) ||
+    /(^|-)natives-/.test(artifactPath)
+  );
 };
 
 const addMissingArtifact = (
