@@ -19,11 +19,13 @@ import type {
   EnqueueDownloadJobInput,
   GetInstanceContentInput,
   GetInstanceLogFileInput,
+  GetInstanceModpackUpdateInput,
   GetMinecraftVersionDetailsInput,
   InstallDownloadedCurseForgeFileInput,
   InstallDownloadedCurseForgeFileResult,
   InstanceContent,
   InstanceLogFilePreview,
+  InstanceModpackUpdate,
   LauncherInstance,
   LauncherProfile,
   LauncherStatus,
@@ -46,6 +48,8 @@ import type {
   SettingValue,
   StopLaunchInstanceInput,
   StopLaunchInstanceResult,
+  UpdateInstanceModpackInput,
+  UpdateInstanceModpackResult,
   UpdateLauncherInstanceInput,
 } from "../types";
 
@@ -144,6 +148,14 @@ export type MainViewRPC = {
       setInstanceModEnabled: {
         params: SetInstanceModEnabledInput;
         response: InstanceContent;
+      };
+      getInstanceModpackUpdate: {
+        params: GetInstanceModpackUpdateInput;
+        response: InstanceModpackUpdate;
+      };
+      updateInstanceModpack: {
+        params: UpdateInstanceModpackInput;
+        response: UpdateInstanceModpackResult;
       };
       createLaunchPlan: {
         params: CreateLaunchPlanInput;

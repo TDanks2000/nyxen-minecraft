@@ -115,6 +115,7 @@ export function InstanceArtwork({
   const art = ART_BY_LOADER[instance.loader];
   const isHero = variant === "hero";
   const isIcon = variant === "icon";
+  const artworkUrl = instance.bannerUrl ?? instance.iconUrl;
 
   return (
     <div
@@ -129,10 +130,10 @@ export function InstanceArtwork({
       )}
       aria-hidden="true"
     >
-      {instance.iconUrl ? (
+      {artworkUrl ? (
         <>
           <img
-            src={instance.iconUrl}
+            src={artworkUrl}
             alt=""
             className="absolute inset-0 size-full object-cover opacity-55"
           />

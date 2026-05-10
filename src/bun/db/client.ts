@@ -67,6 +67,7 @@ sqlite.exec(`
 
   create table if not exists launcher_instances (
     id text primary key,
+    banner_url text,
     created_at text not null,
     game_args text not null,
     game_directory text not null,
@@ -78,6 +79,7 @@ sqlite.exec(`
     loader_version text,
     memory_max_mb integer not null,
     memory_min_mb integer not null,
+    modpack_metadata text,
     name text not null,
     profile_id text references launcher_profiles(id),
     updated_at text not null,
@@ -126,6 +128,26 @@ ensureLauncherProfileColumn(
   "ownership_checked_at text",
 );
 ensureLauncherProfileColumn("skin_url", "skin_url text");
+
+const launcherInstanceColumns = new Set(
+  sqlite
+    .query<{ name: string }, []>("pragma table_info(launcher_instances)")
+    .all()
+    .map((column) => column.name),
+);
+
+const ensureLauncherInstanceColumn = (
+  columnName: string,
+  definition: string,
+): void => {
+  if (!launcherInstanceColumns.has(columnName)) {
+    sqlite.exec(`alter table launcher_instances add column ${definition}`);
+    launcherInstanceColumns.add(columnName);
+  }
+};
+
+ensureLauncherInstanceColumn("banner_url", "banner_url text");
+ensureLauncherInstanceColumn("modpack_metadata", "modpack_metadata text");
 
 export const db = drizzle(sqlite, { schema });
 

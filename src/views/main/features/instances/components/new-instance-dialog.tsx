@@ -66,6 +66,7 @@ const formatRam = (mb: number): string => {
 
 export function NewInstanceDialog({ open, onOpenChange, onCreated }: Props) {
   const [name, setName] = useState("");
+  const [iconUrl, setIconUrl] = useState("");
   const [versionId, setVersionId] = useState("");
   const [loader, setLoader] = useState<ModLoader>("vanilla");
   const [loaderVersion, setLoaderVersion] = useState("");
@@ -236,6 +237,7 @@ export function NewInstanceDialog({ open, onOpenChange, onCreated }: Props) {
     setSubmitting(true);
     try {
       const instance = await rpc.requestProxy.createLauncherInstance({
+        iconUrl: iconUrl.trim() || undefined,
         name: name.trim(),
         versionId,
         loader,
@@ -254,6 +256,7 @@ export function NewInstanceDialog({ open, onOpenChange, onCreated }: Props) {
 
   function resetForm() {
     setName("");
+    setIconUrl("");
     setVersionId("");
     setLoader("vanilla");
     setLoaderVersion("");
@@ -334,6 +337,19 @@ export function NewInstanceDialog({ open, onOpenChange, onCreated }: Props) {
                 <FieldDescription>
                   This name appears in the dashboard, instance list, and launch
                   menu.
+                </FieldDescription>
+              </Field>
+
+              <Field>
+                <FieldLabel htmlFor="ni-icon">Instance Icon</FieldLabel>
+                <Input
+                  id="ni-icon"
+                  placeholder="https://example.com/icon.png or /path/icon.png"
+                  value={iconUrl}
+                  onChange={(e) => setIconUrl(e.target.value)}
+                />
+                <FieldDescription>
+                  Optional HTTPS or local image path used in the library.
                 </FieldDescription>
               </Field>
             </FieldGroup>

@@ -12,6 +12,8 @@ export type SelectedInstance = {
   minecraftVersion: string;
   loader?: ModLoader;
   iconUrl?: string | null;
+  modpackLocked?: boolean;
+  modpackName?: string | null;
 };
 
 export type InstalledCurseForgeItem = {
@@ -32,6 +34,7 @@ export type CurseForgeBrowserActionState =
   | "install"
   | "installed"
   | "installing"
+  | "managed"
   | "update-available"
   | "incompatible"
   | "failed"

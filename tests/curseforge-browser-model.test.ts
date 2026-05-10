@@ -48,6 +48,7 @@ const createProject = (
   logoUrl: null,
   modLoaders: ["fabric"],
   name: "Project",
+  screenshotUrls: [],
   section: "mods",
   slug: "project",
   summary: "A test project.",
@@ -90,6 +91,25 @@ describe("curseforge browser model", () => {
         selectedInstance: null,
       }),
     ).toBe("select-instance");
+  });
+
+  test("marks mod installs as managed for linked modpack instances", () => {
+    const project = createProject();
+
+    expect(
+      getCurseForgeActionState({
+        category: "mods",
+        failed: false,
+        installedItem: null,
+        item: project,
+        pending: false,
+        selectedInstance: {
+          ...selectedInstance,
+          modpackLocked: true,
+          modpackName: "Fabulously Optimized",
+        },
+      }),
+    ).toBe("managed");
   });
 
   test("treats modpacks as library-level installs instead of instance content", () => {

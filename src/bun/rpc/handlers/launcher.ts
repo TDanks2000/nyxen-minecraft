@@ -158,8 +158,10 @@ export {
 export {
   getInstanceContent,
   getInstanceLogFile,
+  getInstanceModpackUpdate,
   installDownloadedCurseForgeFile,
   setInstanceModEnabled,
+  updateInstanceModpack,
 } from "../../launcher/instance-content";
 export {
   createLauncherInstance,

@@ -108,6 +108,8 @@ export const toSelectedInstance = (
   iconUrl: instance.iconUrl,
   loader: instance.loader,
   minecraftVersion: instance.versionId,
+  modpackLocked: instance.modpack?.locked ?? false,
+  modpackName: instance.modpack?.name ?? null,
   name: instance.name,
 });
 
@@ -231,6 +233,10 @@ export const getCurseForgeActionState = ({
   }
   if (failed) return "failed";
   if (pending) return "installing";
+
+  if (category === "mods" && selectedInstance?.modpackLocked) {
+    return "managed";
+  }
 
   if (!isCurseForgeItemCompatible(item, category, selectedInstance)) {
     return "incompatible";

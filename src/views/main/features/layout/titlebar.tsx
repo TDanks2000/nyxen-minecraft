@@ -147,6 +147,7 @@ export function Titlebar() {
   const profiles = useProfiles();
   const curseForgeInstall = useCurseForgeInstall({
     onContentUpdated: setCurseForgeContent,
+    onInstanceCreated: instances.upsertInstance,
   });
   const curseForgeInstances = useMemo(
     () => (instances.data ?? []).map(toSelectedInstance),

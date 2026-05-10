@@ -66,6 +66,10 @@ export function useInstanceCatalog(instance: LauncherInstance | null) {
   const toggleMod = useCallback(
     async (fileName: string, name: string, enabled: boolean) => {
       if (!instance) return;
+      if (instance.modpack?.locked) {
+        toast.error("Mods are managed by this instance's linked modpack.");
+        return;
+      }
 
       setMutating(true);
       try {
@@ -88,6 +92,10 @@ export function useInstanceCatalog(instance: LauncherInstance | null) {
   const setAllModsEnabled = useCallback(
     async (enabled: boolean) => {
       if (!instance || !content) return;
+      if (instance.modpack?.locked) {
+        toast.error("Mods are managed by this instance's linked modpack.");
+        return;
+      }
 
       const targets = content.mods.filter((mod) => mod.enabled !== enabled);
 

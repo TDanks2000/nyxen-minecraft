@@ -7,13 +7,15 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, isAbsolute } from "node:path";
+import { pathToFileURL } from "node:url";
 import { asc, eq } from "drizzle-orm";
 import type {
   CreateLauncherInstanceInput,
   DeleteLauncherInstanceInput,
   DeleteLauncherInstanceResult,
   LauncherInstance,
+  LauncherInstanceModpack,
   ModLoader,
   UpdateLauncherInstanceInput,
 } from "../../shared/types";
@@ -113,25 +115,36 @@ const normalizeStringArray = (
     .filter((value) => value.length > 0);
 };
 
-const normalizeIconUrl = (iconUrl: string | undefined): string | null => {
-  const normalized = iconUrl?.trim();
+const normalizeMediaUrl = (
+  value: string | undefined,
+  label: string,
+): string | null => {
+  const normalized = value?.trim();
 
   if (!normalized) {
     return null;
   }
 
   if (normalized.length > 2048 || normalized.includes("\0")) {
-    throw new Error("Instance icon URL is invalid.");
+    throw new Error(`${label} is invalid.`);
   }
 
-  const url = new URL(normalized);
+  const url = isAbsolute(normalized)
+    ? pathToFileURL(normalized)
+    : new URL(normalized);
 
-  if (url.protocol !== "https:") {
-    throw new Error("Instance icon URL must use HTTPS.");
+  if (url.protocol !== "https:" && url.protocol !== "file:") {
+    throw new Error(`${label} must use HTTPS or file URLs.`);
   }
 
   return url.toString();
 };
+
+const normalizeIconUrl = (iconUrl: string | undefined): string | null =>
+  normalizeMediaUrl(iconUrl, "Instance icon URL");
+
+const normalizeBannerUrl = (bannerUrl: string | undefined): string | null =>
+  normalizeMediaUrl(bannerUrl, "Instance banner URL");
 
 const normalizeOptionalText = (
   value: string | undefined,
@@ -163,6 +176,77 @@ const parseStringArray = (value: string): Array<string> => {
 
   return [];
 };
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+const optionalString = (value: unknown): string | undefined =>
+  typeof value === "string" && value.trim() ? value.trim() : undefined;
+
+const parseModpackMetadata = (
+  value: string | null,
+): LauncherInstanceModpack | null => {
+  if (!value) return null;
+
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return null;
+  }
+
+  if (!isRecord(parsed) || parsed.source !== "curseforge") return null;
+
+  const artifactPath = optionalString(parsed.artifactPath);
+  const fileId = optionalString(parsed.fileId);
+  const fileName = optionalString(parsed.fileName);
+  const installedAt = optionalString(parsed.installedAt);
+  const manifestPath = optionalString(parsed.manifestPath);
+  const name = optionalString(parsed.name);
+  const projectId = optionalString(parsed.projectId);
+  const updatedAt = optionalString(parsed.updatedAt);
+
+  if (
+    !artifactPath ||
+    !fileId ||
+    !fileName ||
+    !installedAt ||
+    !manifestPath ||
+    !name ||
+    !projectId ||
+    !updatedAt
+  ) {
+    return null;
+  }
+
+  return {
+    artifactPath,
+    bannerUrl: optionalString(parsed.bannerUrl) ?? null,
+    fileId,
+    fileName,
+    iconUrl: optionalString(parsed.iconUrl) ?? null,
+    installedAt,
+    installedFiles:
+      typeof parsed.installedFiles === "number" ? parsed.installedFiles : 0,
+    locked: true,
+    manifestPath,
+    name,
+    overridesPath: optionalString(parsed.overridesPath) ?? null,
+    projectId,
+    skippedFiles:
+      typeof parsed.skippedFiles === "number" ? parsed.skippedFiles : 0,
+    slug: optionalString(parsed.slug),
+    source: "curseforge",
+    updatedAt,
+    version: optionalString(parsed.version),
+    websiteUrl: optionalString(parsed.websiteUrl) ?? null,
+  };
+};
+
+const serializeModpackMetadata = (
+  modpack: LauncherInstanceModpack | null,
+): string | null => (modpack ? JSON.stringify(modpack) : null);
 
 const countLocalModFiles = (instanceId: string): number => {
   const modsFolder = ensureInstanceFolders(instanceId).mods;
@@ -203,12 +287,15 @@ const writeInstanceMetadata = (instance: LauncherInstance): void => {
       name: "nyxen",
       schemaVersion: 1,
     },
+    bannerUrl: instance.bannerUrl,
     folders: instance.folders,
     gameDirectory: instance.gameDirectory,
+    iconUrl: instance.iconUrl,
     instanceDirectory: instance.instanceDirectory,
     instanceId: instance.id,
     loader: instance.loader,
     loaderVersion: instance.loaderVersion,
+    modpack: instance.modpack,
     name: instance.name,
     updatedAt: instance.updatedAt,
     versionId: instance.versionId,
@@ -233,6 +320,7 @@ const writeInstanceMetadata = (instance: LauncherInstance): void => {
 const toInstance = (row: InstanceRow): LauncherInstance => {
   const folders = ensureInstanceFolders(row.id);
   const instance = {
+    bannerUrl: row.bannerUrl,
     createdAt: row.createdAt,
     folders,
     gameArgs: parseStringArray(row.gameArgs),
@@ -248,6 +336,7 @@ const toInstance = (row: InstanceRow): LauncherInstance => {
     metadataPath: getInstanceMetadataPath(row.id),
     memoryMaxMb: row.memoryMaxMb,
     memoryMinMb: row.memoryMinMb,
+    modpack: parseModpackMetadata(row.modpackMetadata),
     name: row.name,
     profileId: row.profileId,
     updatedAt: row.updatedAt,
@@ -347,6 +436,7 @@ export const createLauncherInstance = (
   const instanceId = `instance_${randomUUID()}`;
   const folders = ensureInstanceFolders(instanceId);
   const instance = {
+    bannerUrl: normalizeBannerUrl(input.bannerUrl),
     createdAt: now,
     gameArgs: JSON.stringify(normalizeStringArray(input.gameArgs, "Game args")),
     gameDirectory: folders.game,
@@ -359,6 +449,7 @@ export const createLauncherInstance = (
     loaderVersion: normalizeOptionalText(input.loaderVersion, "Loader version"),
     memoryMaxMb,
     memoryMinMb,
+    modpackMetadata: null,
     name: normalizeName(input.name),
     profileId: normalizeProfileId(input.profileId),
     updatedAt: now,
@@ -388,6 +479,10 @@ export const updateLauncherInstance = (
   );
   const now = new Date().toISOString();
   const values = {
+    bannerUrl:
+      input.bannerUrl === undefined
+        ? existing.bannerUrl
+        : normalizeBannerUrl(input.bannerUrl ?? undefined),
     gameArgs:
       input.gameArgs === undefined
         ? existing.gameArgs
@@ -440,6 +535,44 @@ export const updateLauncherInstance = (
     );
   }
 
+  const updated = {
+    ...existing,
+    ...values,
+  };
+
+  db.update(schema.launcherInstances)
+    .set(values)
+    .where(eq(schema.launcherInstances.id, existing.id))
+    .run();
+
+  return toInstance(updated);
+};
+
+export const setLauncherInstanceModpack = ({
+  bannerUrl,
+  iconUrl,
+  instanceId,
+  modpack,
+}: {
+  bannerUrl?: string | null;
+  iconUrl?: string | null;
+  instanceId: string;
+  modpack: LauncherInstanceModpack | null;
+}): LauncherInstance => {
+  const existing = getLauncherInstanceRowOrThrow(instanceId);
+  const now = new Date().toISOString();
+  const values = {
+    bannerUrl:
+      bannerUrl === undefined
+        ? existing.bannerUrl
+        : normalizeBannerUrl(bannerUrl ?? undefined),
+    iconUrl:
+      iconUrl === undefined
+        ? existing.iconUrl
+        : normalizeIconUrl(iconUrl ?? undefined),
+    modpackMetadata: serializeModpackMetadata(modpack),
+    updatedAt: now,
+  };
   const updated = {
     ...existing,
     ...values,

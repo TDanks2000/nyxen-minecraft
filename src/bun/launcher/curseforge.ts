@@ -31,7 +31,7 @@ type Fetcher = (
   init?: RequestInit,
 ) => Promise<Response>;
 
-type CurseForgeOptions = {
+export type CurseForgeOptions = {
   apiKey?: string;
   baseUrl?: string;
   fetcher?: Fetcher;
@@ -98,6 +98,7 @@ const linkSchema = z
 
 const assetSchema = z
   .object({
+    thumbnailUrl: z.string().nullable().optional(),
     url: z.string().nullable().optional(),
   })
   .passthrough();
@@ -152,6 +153,7 @@ const modSchema = z
     links: linkSchema.optional(),
     logo: assetSchema.nullable().optional(),
     name: z.string(),
+    screenshots: z.array(assetSchema).optional(),
     slug: z.string().optional(),
     summary: z.string().optional(),
   })
@@ -167,6 +169,14 @@ const searchResponseSchema = z.object({
       totalCount: z.number().int().optional(),
     })
     .optional(),
+});
+
+const projectResponseSchema = z.object({
+  data: modSchema,
+});
+
+const projectFileResponseSchema = z.object({
+  data: fileSchema,
 });
 
 export const getCurseForgeApiKeyInfo = (): ApiKeyInfo => {
@@ -508,6 +518,11 @@ const mapProject = (
     logoUrl: mod.logo?.url ?? null,
     modLoaders: mapLoaders(gameVersions, latestFileIndexes),
     name: mod.name,
+    screenshotUrls: unique(
+      (mod.screenshots ?? [])
+        .flatMap((asset) => [asset.url, asset.thumbnailUrl])
+        .filter((value): value is string => !!value),
+    ),
     section: sectionFromClassId(mod.classId),
     slug: mod.slug ?? String(mod.id),
     summary: mod.summary ?? "",
@@ -539,4 +554,75 @@ export const searchCurseForgeProjects = async (
       section: normalizedInput.section,
     },
   };
+};
+
+const normalizeCurseForgeId = (
+  value: number | string,
+  label: string,
+): number => {
+  const id = typeof value === "number" ? value : Number(value);
+
+  if (!Number.isInteger(id) || id <= 0) {
+    throw new Error(`${label} is invalid.`);
+  }
+
+  return id;
+};
+
+const buildProjectUrl = (
+  projectId: number | string,
+  options: CurseForgeOptions,
+): URL => {
+  const baseUrl = new URL(options.baseUrl ?? CURSEFORGE_API_BASE_URL);
+
+  if (baseUrl.protocol !== "https:") {
+    throw new Error("CurseForge API base URL must use HTTPS.");
+  }
+
+  return new URL(
+    `/v1/mods/${normalizeCurseForgeId(projectId, "CurseForge project id")}`,
+    baseUrl,
+  );
+};
+
+const buildProjectFileUrl = (
+  projectId: number | string,
+  fileId: number | string,
+  options: CurseForgeOptions,
+): URL => {
+  const projectUrl = buildProjectUrl(projectId, options);
+
+  return new URL(
+    `${projectUrl.pathname}/files/${normalizeCurseForgeId(
+      fileId,
+      "CurseForge file id",
+    )}`,
+    projectUrl,
+  );
+};
+
+export const getCurseForgeProject = async (
+  projectId: number | string,
+  options: CurseForgeOptions = {},
+): Promise<CurseForgeProjectSummary> => {
+  const response = projectResponseSchema.parse(
+    await fetchCurseForgeJson(buildProjectUrl(projectId, options), options),
+  );
+
+  return mapProject(response.data);
+};
+
+export const getCurseForgeProjectFile = async (
+  projectId: number | string,
+  fileId: number | string,
+  options: CurseForgeOptions = {},
+): Promise<CurseForgeProjectFileSummary> => {
+  const response = projectFileResponseSchema.parse(
+    await fetchCurseForgeJson(
+      buildProjectFileUrl(projectId, fileId, options),
+      options,
+    ),
+  );
+
+  return mapFile(response.data, []);
 };

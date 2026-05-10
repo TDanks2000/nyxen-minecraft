@@ -14,7 +14,16 @@ import {
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, extname, join } from "node:path";
+import {
+  basename,
+  dirname,
+  extname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+} from "node:path";
+import { pathToFileURL } from "node:url";
 import { gunzipSync } from "node:zlib";
 import type {
   CurseForgeCategory,
@@ -22,6 +31,7 @@ import type {
   DownloadCurseForgeFileResult,
   GetInstanceContentInput,
   GetInstanceLogFileInput,
+  GetInstanceModpackUpdateInput,
   InstallDownloadedCurseForgeFileInput,
   InstallDownloadedCurseForgeFileResult,
   InstalledCurseForgeFile,
@@ -33,11 +43,23 @@ import type {
   InstanceLogLine,
   InstanceLogLineLevel,
   InstanceLogLineType,
+  InstanceModpackUpdate,
   LauncherInstance,
+  LauncherInstanceModpack,
   SetInstanceModEnabledInput,
+  UpdateInstanceModpackInput,
+  UpdateInstanceModpackResult,
 } from "../../shared/types";
-import { getLauncherInstance } from "./instances";
+import type { CurseForgeOptions } from "./curseforge";
+import { getCurseForgeProject, getCurseForgeProjectFile } from "./curseforge";
+import {
+  createLauncherInstance,
+  getLauncherInstance,
+  setLauncherInstanceModpack,
+  updateLauncherInstance,
+} from "./instances";
 import { ensurePrivateDirectory, getLauncherDirectories } from "./paths";
+import { listZipEntries, readZipJson } from "./zip";
 
 const fileExtensions = {
   logs: new Set([".gz", ".log", ".txt"]),
@@ -49,7 +71,9 @@ const fileExtensions = {
 
 const disabledSuffix = ".disabled";
 const curseForgeMetadataFileName = "curseforge-content.json";
+const curseForgeModpackManifestFileName = "curseforge-modpack-manifest.json";
 const maxCurseForgeDownloadBytes = 512 * 1024 * 1024;
+const maxCurseForgeMediaBytes = 12 * 1024 * 1024;
 const maxLogFolders = 80;
 const maxLogFiles = 400;
 const maxLogFolderDepth = 2;
@@ -59,20 +83,30 @@ const maxLogPreviewBytes = 1024 * 1024;
 const maxLogPreviewLines = 2000;
 const maxCompressedLogBytes = 2 * 1024 * 1024;
 
-type DownloadFetcher = (
-  input: string | URL | Request,
-  init?: RequestInit,
-) => Promise<Response>;
-
-type DownloadCurseForgeFileOptions = {
-  fetcher?: DownloadFetcher;
+type DownloadCurseForgeFileOptions = CurseForgeOptions & {
   maxBytes?: number;
-  requestTimeoutMs?: number;
 };
 
 type InstallCurseForgeFileDataOptions = {
   data: Uint8Array;
   fileName: string;
+  replacingInstance?: LauncherInstance;
+};
+
+type CurseForgeModpackManifestFile = {
+  fileID: number;
+  projectID: number;
+  required: boolean;
+};
+
+type ParsedCurseForgeModpackManifest = {
+  files: Array<CurseForgeModpackManifestFile>;
+  minecraftVersion: string;
+  modLoader: LauncherInstance["loader"];
+  modLoaderVersion: string | null;
+  name: string | null;
+  overrides: string | null;
+  version: string | null;
 };
 
 const curseForgeCategories: Array<CurseForgeCategory> = [
@@ -132,6 +166,113 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const optionalString = (value: unknown): string | undefined =>
   typeof value === "string" && value.trim() ? value.trim() : undefined;
+
+const optionalNumber = (value: unknown): number | undefined =>
+  typeof value === "number" && Number.isInteger(value) ? value : undefined;
+
+const parseModpackLoader = (
+  manifest: Record<string, unknown>,
+): Pick<ParsedCurseForgeModpackManifest, "modLoader" | "modLoaderVersion"> => {
+  const minecraft = isRecord(manifest.minecraft) ? manifest.minecraft : {};
+  const loaders = Array.isArray(minecraft.modLoaders)
+    ? minecraft.modLoaders.filter(isRecord)
+    : [];
+  const selectedLoader =
+    loaders.find((loader) => loader.primary === true) ?? loaders[0];
+  const rawId = optionalString(selectedLoader?.id);
+
+  if (!rawId) {
+    return { modLoader: "vanilla", modLoaderVersion: null };
+  }
+
+  const normalized = rawId.toLowerCase();
+  const knownLoaders: Array<Exclude<LauncherInstance["loader"], "vanilla">> = [
+    "neoforge",
+    "fabric",
+    "forge",
+    "quilt",
+  ];
+  const loader = knownLoaders.find(
+    (candidate) =>
+      normalized === candidate || normalized.startsWith(`${candidate}-`),
+  );
+
+  if (!loader) {
+    return { modLoader: "vanilla", modLoaderVersion: null };
+  }
+
+  const version = rawId.slice(loader.length).replace(/^-+/, "").trim();
+
+  return {
+    modLoader: loader,
+    modLoaderVersion: version || null,
+  };
+};
+
+const parseCurseForgeModpackManifest = (
+  archiveData: Uint8Array,
+): ParsedCurseForgeModpackManifest => {
+  const parsed = readZipJson(archiveData, "manifest.json");
+
+  if (!isRecord(parsed)) {
+    throw new Error("CurseForge modpack is missing manifest.json.");
+  }
+
+  const minecraft = isRecord(parsed.minecraft) ? parsed.minecraft : {};
+  const minecraftVersion = optionalString(minecraft.version);
+
+  if (!minecraftVersion) {
+    throw new Error(
+      "CurseForge modpack manifest is missing Minecraft version.",
+    );
+  }
+
+  const files = Array.isArray(parsed.files)
+    ? parsed.files.flatMap((entry) => {
+        if (!isRecord(entry)) return [];
+
+        const projectID = optionalNumber(entry.projectID);
+        const fileID = optionalNumber(entry.fileID);
+
+        if (!projectID || !fileID) return [];
+
+        return [
+          {
+            fileID,
+            projectID,
+            required: entry.required !== false,
+          },
+        ];
+      })
+    : [];
+  const { modLoader, modLoaderVersion } = parseModpackLoader(parsed);
+  const overrides = optionalString(parsed.overrides);
+
+  return {
+    files,
+    minecraftVersion,
+    modLoader,
+    modLoaderVersion,
+    name: optionalString(parsed.name) ?? null,
+    overrides: overrides && isSafeZipPath(overrides) ? overrides : null,
+    version: optionalString(parsed.version) ?? null,
+  };
+};
+
+const isSafeZipPath = (value: string): boolean =>
+  value
+    .split("/")
+    .filter(Boolean)
+    .every((segment) => isSafeFileName(segment));
+
+const isPathInside = (parent: string, child: string): boolean => {
+  const relativePath = relative(resolve(parent), resolve(child));
+
+  return (
+    relativePath === "" ||
+    (!relativePath.startsWith("..") && !isAbsolute(relativePath))
+  );
+};
 
 const toInstalledCurseForgeFile = (
   value: unknown,
@@ -1265,6 +1406,114 @@ const writeDownloadedFile = (path: string, data: Uint8Array): void => {
   }
 };
 
+const mediaExtensionByContentType: Record<string, string> = {
+  "image/gif": ".gif",
+  "image/jpeg": ".jpg",
+  "image/png": ".png",
+  "image/webp": ".webp",
+};
+
+const getMediaExtension = (url: URL, contentType: string | null): string => {
+  const extension = extname(url.pathname).toLowerCase();
+
+  if ([".gif", ".jpeg", ".jpg", ".png", ".webp"].includes(extension)) {
+    return extension === ".jpeg" ? ".jpg" : extension;
+  }
+
+  const normalizedContentType = contentType?.split(";")[0]?.trim() ?? "";
+
+  return mediaExtensionByContentType[normalizedContentType] ?? ".png";
+};
+
+const fetchMediaAsset = async (
+  sourceUrl: string,
+  options: DownloadCurseForgeFileOptions,
+): Promise<{ data: Uint8Array; extension: string }> => {
+  const url = new URL(sourceUrl);
+
+  if (url.protocol !== "https:") {
+    throw new Error("CurseForge artwork URL must use HTTPS.");
+  }
+
+  const controller = new AbortController();
+  const timeoutMs = Math.max(1, options.requestTimeoutMs ?? 30_000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const fetcher = options.fetcher ?? fetch;
+  let response: Response;
+
+  try {
+    response = await fetcher(url, { signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      `CurseForge artwork download failed: ${response.status} ${response.statusText}`,
+    );
+  }
+
+  const contentLength = Number(response.headers.get("content-length") ?? "");
+
+  if (
+    Number.isFinite(contentLength) &&
+    contentLength > maxCurseForgeMediaBytes
+  ) {
+    throw new Error("CurseForge artwork is too large to download.");
+  }
+
+  const data = new Uint8Array(await response.arrayBuffer());
+
+  if (data.byteLength > maxCurseForgeMediaBytes) {
+    throw new Error("CurseForge artwork is too large to download.");
+  }
+
+  return {
+    data,
+    extension: getMediaExtension(url, response.headers.get("content-type")),
+  };
+};
+
+const saveCurseForgeMediaAsset = async (
+  instance: LauncherInstance,
+  sourceUrl: string | null | undefined,
+  baseName: string,
+  options: DownloadCurseForgeFileOptions,
+): Promise<string | null> => {
+  if (!sourceUrl) return null;
+
+  try {
+    const asset = await fetchMediaAsset(sourceUrl, options);
+    const path = join(instance.folders.media, `${baseName}${asset.extension}`);
+    writeDownloadedFile(path, asset.data);
+
+    return pathToFileURL(path).toString();
+  } catch {
+    return null;
+  }
+};
+
+const saveCurseForgeMediaAssets = async (
+  instance: LauncherInstance,
+  input: DownloadCurseForgeFileInput,
+  options: DownloadCurseForgeFileOptions,
+): Promise<{ bannerUrl: string | null; iconUrl: string | null }> => {
+  const iconUrl = await saveCurseForgeMediaAsset(
+    instance,
+    input.projectLogoUrl,
+    "curseforge-icon",
+    options,
+  );
+  const bannerUrl = await saveCurseForgeMediaAsset(
+    instance,
+    input.projectScreenshotUrls?.[0],
+    "curseforge-banner",
+    options,
+  );
+
+  return { bannerUrl, iconUrl };
+};
+
 const getDefaultDownloadsDirectory = (): string => join(homedir(), "Downloads");
 
 const normalizeDownloadsDirectory = (directory: string | undefined): string => {
@@ -1302,13 +1551,263 @@ const removeReplacedCurseForgeFile = (
   }
 };
 
-const installCurseForgeFileData = (
+const getModpackArchivePath = (
+  instance: LauncherInstance,
+  fileName: string,
+): string => join(instance.folders.cache, "curseforge", fileName);
+
+const getModpackManifestPath = (instance: LauncherInstance): string =>
+  join(instance.folders.metadata, curseForgeModpackManifestFileName);
+
+const writeModpackManifestCopy = (
+  instance: LauncherInstance,
+  archiveData: Uint8Array,
+): string => {
+  const manifest = readZipJson(archiveData, "manifest.json");
+  const path = getModpackManifestPath(instance);
+
+  writeDownloadedFile(
+    path,
+    new TextEncoder().encode(`${JSON.stringify(manifest, null, 2)}\n`),
+  );
+
+  return path;
+};
+
+const extractModpackOverrides = (
+  instance: LauncherInstance,
+  archiveData: Uint8Array,
+  overridesFolder: string | null,
+): string | null => {
+  if (!overridesFolder) return null;
+
+  const prefix = `${overridesFolder.replace(/\/+$/g, "")}/`;
+  const entries = listZipEntries(archiveData);
+
+  for (const entry of entries) {
+    if (!entry.name.startsWith(prefix)) continue;
+
+    const relativePath = entry.name.slice(prefix.length);
+    if (!relativePath || !isSafeZipPath(relativePath)) continue;
+
+    const targetPath = join(instance.gameDirectory, ...relativePath.split("/"));
+    if (!isPathInside(instance.gameDirectory, targetPath)) continue;
+
+    writeDownloadedFile(targetPath, entry.data);
+  }
+
+  return join(instance.gameDirectory, prefix.slice(0, -1));
+};
+
+const removeManagedModFiles = (instance: LauncherInstance): void => {
+  if (!existsSync(instance.folders.mods)) return;
+
+  for (const entry of readdirSync(instance.folders.mods, {
+    withFileTypes: true,
+  })) {
+    if (!entry.isFile() || !isSafeFileName(entry.name)) continue;
+    if (
+      !entry.name.toLowerCase().endsWith(".jar") &&
+      !entry.name.toLowerCase().endsWith(".jar.disabled")
+    ) {
+      continue;
+    }
+
+    unlinkSync(join(instance.folders.mods, entry.name));
+  }
+};
+
+const createDependencyInstallInput = ({
+  file,
+  instance,
+  projectId,
+}: {
+  file: Awaited<ReturnType<typeof getCurseForgeProjectFile>>;
+  instance: LauncherInstance;
+  projectId: number;
+}): DownloadCurseForgeFileInput => ({
+  category: "mods",
+  file,
+  instanceId: instance.id,
+  projectId,
+  projectName: file.displayName || file.fileName,
+});
+
+const installModpackDependencies = async (
+  instance: LauncherInstance,
+  manifest: ParsedCurseForgeModpackManifest,
+  options: DownloadCurseForgeFileOptions,
+): Promise<{ installedFiles: number; skippedFiles: number }> => {
+  let installedFiles = 0;
+  let skippedFiles = 0;
+
+  for (const dependency of manifest.files) {
+    if (!dependency.required) {
+      skippedFiles += 1;
+      continue;
+    }
+
+    try {
+      const file = await getCurseForgeProjectFile(
+        dependency.projectID,
+        dependency.fileID,
+        options,
+      );
+
+      if (!file.downloadUrl) {
+        skippedFiles += 1;
+        continue;
+      }
+
+      const installInput = createDependencyInstallInput({
+        file,
+        instance,
+        projectId: dependency.projectID,
+      });
+      const fileName = sanitizeCurseForgeFileName(installInput);
+      const data = await fetchCurseForgeDownload(installInput, options);
+
+      await installCurseForgeFileData(
+        installInput,
+        { allowManagedInstance: true, data, fileName },
+        options,
+      );
+      installedFiles += 1;
+    } catch {
+      skippedFiles += 1;
+    }
+  }
+
+  return { installedFiles, skippedFiles };
+};
+
+const installCurseForgeModpackData = async (
   input: DownloadCurseForgeFileInput,
-  { data, fileName }: InstallCurseForgeFileDataOptions,
-): DownloadCurseForgeFileResult => {
+  { data, fileName, replacingInstance }: InstallCurseForgeFileDataOptions,
+  options: DownloadCurseForgeFileOptions,
+): Promise<DownloadCurseForgeFileResult> => {
+  const manifest = parseCurseForgeModpackManifest(data);
+  const now = new Date().toISOString();
+  let instance = replacingInstance
+    ? updateLauncherInstance({
+        confirmRuntimeCompatibility: true,
+        instanceId: replacingInstance.id,
+        loader: manifest.modLoader,
+        loaderVersion: manifest.modLoaderVersion,
+        versionId: manifest.minecraftVersion,
+      })
+    : createLauncherInstance({
+        bannerUrl: input.projectScreenshotUrls?.[0] ?? undefined,
+        iconUrl: input.projectLogoUrl ?? undefined,
+        loader: manifest.modLoader,
+        loaderVersion: manifest.modLoaderVersion ?? undefined,
+        memoryMaxMb: 4096,
+        name: manifest.name ?? input.projectName,
+        versionId: manifest.minecraftVersion,
+      });
+
+  if (replacingInstance) {
+    removeManagedModFiles(instance);
+  }
+
+  const artifactPath = getModpackArchivePath(instance, fileName);
+  writeDownloadedFile(artifactPath, data);
+  const manifestPath = writeModpackManifestCopy(instance, data);
+  const overridesPath = extractModpackOverrides(
+    instance,
+    data,
+    manifest.overrides,
+  );
+  const dependencyResult = await installModpackDependencies(
+    instance,
+    manifest,
+    options,
+  );
+  const media = await saveCurseForgeMediaAssets(instance, input, options);
+  const iconUrl = media.iconUrl ?? input.projectLogoUrl ?? null;
+  const bannerUrl = media.bannerUrl ?? input.projectScreenshotUrls?.[0] ?? null;
+  const installedItem: InstalledCurseForgeFile = {
+    category: "modpacks",
+    fileId: String(input.file.id),
+    fileName,
+    installedAt: replacingInstance?.modpack?.installedAt ?? now,
+    name: input.projectName.trim() || manifest.name || fileName,
+    projectId: String(input.projectId),
+    slug: input.projectSlug?.trim() || undefined,
+    version: input.file.displayName || manifest.version || undefined,
+  };
+  const modpack: LauncherInstanceModpack = {
+    artifactPath,
+    bannerUrl,
+    fileId: installedItem.fileId,
+    fileName,
+    iconUrl,
+    installedAt: installedItem.installedAt,
+    installedFiles: dependencyResult.installedFiles,
+    locked: true,
+    manifestPath,
+    name: installedItem.name,
+    overridesPath,
+    projectId: installedItem.projectId,
+    skippedFiles: dependencyResult.skippedFiles,
+    slug: installedItem.slug,
+    source: "curseforge",
+    updatedAt: now,
+    version: installedItem.version,
+    websiteUrl: input.projectWebsiteUrl ?? null,
+  };
+
+  instance = setLauncherInstanceModpack({
+    bannerUrl,
+    iconUrl,
+    instanceId: instance.id,
+    modpack,
+  });
+
+  const metadata = readCurseForgeMetadata(instance);
+  metadata.modpacks = [installedItem];
+  writeCurseForgeMetadata(instance, metadata);
+
+  return {
+    category: "modpacks",
+    content: getInstanceContent({ instanceId: instance.id }),
+    fileName,
+    instance,
+    installedItem,
+    path: artifactPath,
+  };
+};
+
+const installCurseForgeFileData = async (
+  input: DownloadCurseForgeFileInput,
+  options: InstallCurseForgeFileDataOptions & {
+    allowManagedInstance?: boolean;
+  },
+  downloadOptions: DownloadCurseForgeFileOptions,
+): Promise<DownloadCurseForgeFileResult> => {
+  const { allowManagedInstance = false, data, fileName } = options;
   const category = input.category;
   const instance =
     category === "modpacks" ? null : getInstanceOrThrow(input.instanceId ?? "");
+
+  if (category === "modpacks") {
+    return installCurseForgeModpackData(input, options, downloadOptions);
+  }
+
+  if (!instance) {
+    throw new Error("Select an instance before downloading this content.");
+  }
+
+  if (
+    category === "mods" &&
+    instance?.modpack?.locked &&
+    !allowManagedInstance
+  ) {
+    throw new Error(
+      "Mods for this instance are managed by its linked modpack. Update the modpack instead.",
+    );
+  }
+
   const folder = getCurseForgeTargetFolder(category, instance);
   const path = join(folder, fileName);
   const installedItem: InstalledCurseForgeFile = {
@@ -1321,17 +1820,6 @@ const installCurseForgeFileData = (
     slug: input.projectSlug?.trim() || undefined,
     version: input.file.displayName || undefined,
   };
-
-  if (!instance) {
-    writeDownloadedFile(path, data);
-    return {
-      category,
-      content: null,
-      fileName,
-      installedItem,
-      path,
-    };
-  }
 
   const metadata = readCurseForgeMetadata(instance);
   const currentEntries = metadata[category] ?? [];
@@ -1352,6 +1840,7 @@ const installCurseForgeFileData = (
     category,
     content: getInstanceContent({ instanceId: instance.id }),
     fileName,
+    instance: null,
     installedItem,
     path,
   };
@@ -1472,13 +1961,13 @@ export const downloadCurseForgeFile = async (
   const fileName = sanitizeCurseForgeFileName(input);
   const data = await fetchCurseForgeDownload(input, options);
 
-  return installCurseForgeFileData(input, { data, fileName });
+  return installCurseForgeFileData(input, { data, fileName }, options);
 };
 
-export const installDownloadedCurseForgeFile = (
+export const installDownloadedCurseForgeFile = async (
   input: InstallDownloadedCurseForgeFileInput,
-  options: Pick<DownloadCurseForgeFileOptions, "maxBytes"> = {},
-): InstallDownloadedCurseForgeFileResult => {
+  options: DownloadCurseForgeFileOptions = {},
+): Promise<InstallDownloadedCurseForgeFileResult> => {
   const fileName = sanitizeCurseForgeFileName(input);
   const downloadsDirectory = normalizeDownloadsDirectory(
     input.downloadsDirectory,
@@ -1504,10 +1993,14 @@ export const installDownloadedCurseForgeFile = (
   }
 
   return {
-    ...installCurseForgeFileData(input, {
-      data: new Uint8Array(readFileSync(sourcePath)),
-      fileName,
-    }),
+    ...(await installCurseForgeFileData(
+      input,
+      {
+        data: new Uint8Array(readFileSync(sourcePath)),
+        fileName,
+      },
+      options,
+    )),
     sourcePath,
   };
 };
@@ -1518,6 +2011,13 @@ export const setInstanceModEnabled = ({
   instanceId,
 }: SetInstanceModEnabledInput): InstanceContent => {
   const instance = getInstanceOrThrow(instanceId);
+
+  if (instance.modpack?.locked) {
+    throw new Error(
+      "Mods for this instance are managed by its linked modpack. Update the modpack instead.",
+    );
+  }
+
   const sourceFileName = assertSafeFileName(fileName);
   const sourcePath = join(instance.folders.mods, sourceFileName);
 
@@ -1551,4 +2051,86 @@ export const setInstanceModEnabled = ({
   renameSync(sourcePath, targetPath);
 
   return getInstanceContent({ instanceId });
+};
+
+export const getInstanceModpackUpdate = async (
+  { instanceId }: GetInstanceModpackUpdateInput,
+  options: DownloadCurseForgeFileOptions = {},
+): Promise<InstanceModpackUpdate> => {
+  const instance = getInstanceOrThrow(instanceId);
+  const current = instance.modpack;
+  const checkedAt = new Date().toISOString();
+
+  if (!current) {
+    throw new Error("This instance is not linked to a CurseForge modpack.");
+  }
+
+  const latest = await getCurseForgeProject(current.projectId, options);
+  const latestFileId = latest.latestFile?.id
+    ? String(latest.latestFile.id)
+    : null;
+
+  return {
+    checkedAt,
+    current,
+    instanceId: instance.id,
+    latest,
+    reason: latestFileId ? null : "CurseForge did not return a latest file.",
+    updateAvailable: Boolean(latestFileId && latestFileId !== current.fileId),
+  };
+};
+
+export const updateInstanceModpack = async (
+  { instanceId }: UpdateInstanceModpackInput,
+  options: DownloadCurseForgeFileOptions = {},
+): Promise<UpdateInstanceModpackResult> => {
+  const instance = getInstanceOrThrow(instanceId);
+  const update = await getInstanceModpackUpdate({ instanceId }, options);
+  const latest = update.latest;
+  const latestFile = latest?.latestFile;
+
+  if (!latest || !latestFile || !update.updateAvailable) {
+    return {
+      content: getInstanceContent({ instanceId }),
+      instance,
+      update,
+    };
+  }
+
+  const input: DownloadCurseForgeFileInput = {
+    category: "modpacks",
+    file: latestFile,
+    instanceId,
+    projectId: latest.id,
+    projectLogoUrl: latest.logoUrl,
+    projectName: latest.name,
+    projectScreenshotUrls: latest.screenshotUrls,
+    projectSlug: latest.slug,
+    projectWebsiteUrl: latest.websiteUrl,
+  };
+  const fileName = sanitizeCurseForgeFileName(input);
+  const data = await fetchCurseForgeDownload(input, options);
+  const result = await installCurseForgeModpackData(
+    input,
+    { data, fileName, replacingInstance: instance },
+    options,
+  );
+  const updatedInstance = result.instance;
+
+  if (!updatedInstance?.modpack) {
+    throw new Error("Modpack update did not return an updated instance.");
+  }
+
+  return {
+    content: result.content ?? getInstanceContent({ instanceId }),
+    instance: updatedInstance,
+    update: {
+      checkedAt: new Date().toISOString(),
+      current: updatedInstance.modpack,
+      instanceId,
+      latest,
+      reason: null,
+      updateAvailable: false,
+    },
+  };
 };

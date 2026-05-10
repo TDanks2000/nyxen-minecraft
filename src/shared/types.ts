@@ -40,6 +40,7 @@ export type LauncherInstanceFolders = {
   app: string;
   cache: string;
   metadata: string;
+  media: string;
   game: string;
   mods: string;
   config: string;
@@ -138,6 +139,7 @@ export type CurseForgeProjectSummary = {
   logoUrl: string | null;
   modLoaders: Array<ModLoader>;
   name: string;
+  screenshotUrls: Array<string>;
   section: CurseForgeProjectSection | "unknown";
   slug: string;
   summary: string;
@@ -305,7 +307,29 @@ export type MicrosoftProfileLoginResult =
 
 export type ModLoader = "fabric" | "forge" | "neoforge" | "quilt" | "vanilla";
 
+export type LauncherInstanceModpack = {
+  artifactPath: string;
+  bannerUrl: string | null;
+  fileId: string;
+  fileName: string;
+  iconUrl: string | null;
+  installedAt: string;
+  installedFiles: number;
+  locked: true;
+  manifestPath: string;
+  name: string;
+  overridesPath: string | null;
+  projectId: string;
+  skippedFiles: number;
+  slug?: string;
+  source: "curseforge";
+  updatedAt: string;
+  version?: string;
+  websiteUrl: string | null;
+};
+
 export type LauncherInstance = {
+  bannerUrl: string | null;
   createdAt: string;
   folders: LauncherInstanceFolders;
   gameArgs: Array<string>;
@@ -321,6 +345,7 @@ export type LauncherInstance = {
   metadataPath: string;
   memoryMaxMb: number;
   memoryMinMb: number;
+  modpack: LauncherInstanceModpack | null;
   name: string;
   profileId: string | null;
   updatedAt: string;
@@ -468,15 +493,19 @@ export type DownloadCurseForgeFileInput = {
   category: CurseForgeCategory;
   file: CurseForgeProjectFileSummary;
   instanceId?: string;
+  projectLogoUrl?: string | null;
   projectId: number;
   projectName: string;
+  projectScreenshotUrls?: Array<string>;
   projectSlug?: string;
+  projectWebsiteUrl?: string | null;
 };
 
 export type DownloadCurseForgeFileResult = {
   category: CurseForgeCategory;
   content: InstanceContent | null;
   fileName: string;
+  instance: LauncherInstance | null;
   installedItem: InstalledCurseForgeFile | null;
   path: string;
 };
@@ -492,6 +521,7 @@ export type InstallDownloadedCurseForgeFileResult =
   };
 
 export type CreateLauncherInstanceInput = {
+  bannerUrl?: string;
   gameArgs?: Array<string>;
   iconUrl?: string;
   javaArgs?: Array<string>;
@@ -506,6 +536,7 @@ export type CreateLauncherInstanceInput = {
 };
 
 export type UpdateLauncherInstanceInput = {
+  bannerUrl?: string | null;
   confirmRuntimeCompatibility?: boolean;
   gameArgs?: Array<string>;
   iconUrl?: string | null;
@@ -530,6 +561,29 @@ export type DeleteLauncherInstanceResult = {
   deleted: boolean;
   deletedFiles: boolean;
   instanceId: string;
+};
+
+export type GetInstanceModpackUpdateInput = {
+  instanceId: string;
+};
+
+export type InstanceModpackUpdate = {
+  checkedAt: string;
+  current: LauncherInstanceModpack;
+  instanceId: string;
+  latest: CurseForgeProjectSummary | null;
+  reason: string | null;
+  updateAvailable: boolean;
+};
+
+export type UpdateInstanceModpackInput = {
+  instanceId: string;
+};
+
+export type UpdateInstanceModpackResult = {
+  content: InstanceContent;
+  instance: LauncherInstance;
+  update: InstanceModpackUpdate;
 };
 
 export type LaunchPlanMissingArtifact = {

@@ -25,6 +25,11 @@ import type {
   InstanceFileEntry,
   LauncherInstance,
 } from "@/shared/types";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@/views/main/components/ui/alert";
 import { Badge } from "@/views/main/components/ui/badge";
 import { Button } from "@/views/main/components/ui/button";
 import {
@@ -322,10 +327,12 @@ function ModIcon({ enabled }: { enabled: boolean }) {
 
 function ModCard({
   entry,
+  managedByModpack,
   mutating,
   onToggleMod,
 }: {
   entry: InstanceFileEntry;
+  managedByModpack: boolean;
   mutating: boolean;
   onToggleMod: (fileName: string, name: string, enabled: boolean) => void;
 }) {
@@ -357,6 +364,9 @@ function ModCard({
           <div className="mt-3 flex min-w-0 flex-wrap gap-1.5">
             <StatusBadge enabled={entry.enabled} />
             <Badge variant="secondary">Local Jar</Badge>
+            {managedByModpack ? (
+              <Badge variant="outline">Modpack managed</Badge>
+            ) : null}
             <Badge variant="ghost">{formatBytes(entry.sizeBytes)}</Badge>
           </div>
 
@@ -378,7 +388,7 @@ function ModCard({
               <Switch
                 aria-label={`${enabled ? "Disable" : "Enable"} ${entry.displayName}`}
                 checked={enabled}
-                disabled={mutating}
+                disabled={mutating || managedByModpack}
                 onCheckedChange={(checked) =>
                   onToggleMod(entry.fileName, entry.displayName, checked)
                 }
@@ -630,6 +640,7 @@ export function InstanceCatalogTabs({
   ).length;
   const allModsEnabled = mods.length > 0 && disabledModsCount === 0;
   const allModsDisabled = mods.length > 0 && enabledModsCount === 0;
+  const modpackLocked = instance.modpack?.locked ?? false;
 
   return (
     <Tabs
@@ -661,6 +672,17 @@ export function InstanceCatalogTabs({
       <TabsContent value="mods" className="w-full min-w-0">
         <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
           <div className="min-w-0 overflow-hidden rounded-lg border border-border bg-card/70 shadow-[0_22px_70px_-58px_black]">
+            {modpackLocked ? (
+              <Alert className="m-3 mb-0 border-primary/30 bg-primary/5">
+                <ShieldAlertIcon />
+                <AlertTitle>Modpack Managed</AlertTitle>
+                <AlertDescription>
+                  Mods are controlled by {instance.modpack?.name}. Use Update
+                  Modpack when CurseForge has a newer pack version.
+                </AlertDescription>
+              </Alert>
+            ) : null}
+
             <div className="grid gap-2 border-b border-border bg-background/35 p-3 sm:grid-cols-3">
               {[
                 ["Enabled", enabledModsCount],
@@ -735,7 +757,12 @@ export function InstanceCatalogTabs({
               <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2 lg:col-span-3 xl:grid-cols-4">
                 <Button
                   className="w-full"
-                  disabled={mutating || mods.length === 0 || allModsEnabled}
+                  disabled={
+                    modpackLocked ||
+                    mutating ||
+                    mods.length === 0 ||
+                    allModsEnabled
+                  }
                   onClick={() => onSetAllModsEnabled(true)}
                   size="sm"
                   variant="outline"
@@ -745,7 +772,12 @@ export function InstanceCatalogTabs({
                 </Button>
                 <Button
                   className="w-full"
-                  disabled={mutating || mods.length === 0 || allModsDisabled}
+                  disabled={
+                    modpackLocked ||
+                    mutating ||
+                    mods.length === 0 ||
+                    allModsDisabled
+                  }
                   onClick={() => onSetAllModsEnabled(false)}
                   size="sm"
                   variant="outline"
@@ -764,8 +796,14 @@ export function InstanceCatalogTabs({
                 </Button>
                 <Button
                   className="w-full"
+                  disabled={modpackLocked}
                   onClick={() => openExternalPath(instance.folders.mods)}
                   size="sm"
+                  title={
+                    modpackLocked
+                      ? "Mods are managed by the linked modpack."
+                      : undefined
+                  }
                 >
                   <FolderOpenIcon data-icon="inline-start" />
                   Open Mods Folder
@@ -796,7 +834,9 @@ export function InstanceCatalogTabs({
                   }
                   description={
                     mods.length === 0
-                      ? "Drop .jar files into the instance mods folder and refresh this page."
+                      ? modpackLocked
+                        ? "This linked modpack has not installed any mod files yet."
+                        : "Drop .jar files into the instance mods folder and refresh this page."
                       : "No local mods match the current search and status filter."
                   }
                   icon={PuzzleIcon}
@@ -811,6 +851,7 @@ export function InstanceCatalogTabs({
                   <ModCard
                     entry={entry}
                     key={entry.id}
+                    managedByModpack={modpackLocked}
                     mutating={mutating}
                     onToggleMod={onToggleMod}
                   />

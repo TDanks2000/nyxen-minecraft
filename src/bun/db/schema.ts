@@ -46,6 +46,7 @@ export const launcherProfiles = sqliteTable("launcher_profiles", {
 
 export const launcherInstances = sqliteTable("launcher_instances", {
   id: text("id").primaryKey(),
+  bannerUrl: text("banner_url"),
   createdAt: text("created_at").notNull(),
   gameArgs: text("game_args").notNull(),
   gameDirectory: text("game_directory").notNull(),
@@ -57,6 +58,7 @@ export const launcherInstances = sqliteTable("launcher_instances", {
   loaderVersion: text("loader_version"),
   memoryMaxMb: integer("memory_max_mb").notNull(),
   memoryMinMb: integer("memory_min_mb").notNull(),
+  modpackMetadata: text("modpack_metadata"),
   name: text("name").notNull(),
   profileId: text("profile_id").references(() => launcherProfiles.id),
   updatedAt: text("updated_at").notNull(),

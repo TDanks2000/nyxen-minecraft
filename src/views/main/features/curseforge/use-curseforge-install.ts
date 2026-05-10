@@ -4,6 +4,7 @@ import type {
   CurseForgeProjectSummary,
   DownloadCurseForgeFileInput,
   InstanceContent,
+  LauncherInstance,
 } from "@/shared/types";
 import { getCurseForgeExpectedFileName } from "@/views/main/features/curseforge/curseforge-browser-model";
 import type {
@@ -18,6 +19,7 @@ import { rpc } from "@/views/main/lib/rpc";
 
 type UseCurseForgeInstallOptions = {
   onContentUpdated?: (content: InstanceContent) => Promise<void> | void;
+  onInstanceCreated?: (instance: LauncherInstance) => Promise<void> | void;
 };
 
 const getErrorMessage = (error: unknown, fallback: string): string =>
@@ -28,7 +30,7 @@ const getTargetLabel = (
   instance: SelectedInstance | null,
 ): string =>
   category === "modpacks"
-    ? "to the modpack downloads folder"
+    ? "as a new instance"
     : instance
       ? `to ${instance.name}`
       : "";
@@ -65,14 +67,18 @@ const createInstallInput = ({
     category,
     file: item.latestFile,
     instanceId: instance?.id,
+    projectLogoUrl: item.logoUrl,
     projectId: item.id,
     projectName: item.name,
+    projectScreenshotUrls: item.screenshotUrls,
     projectSlug: item.slug,
+    projectWebsiteUrl: item.websiteUrl,
   };
 };
 
 export function useCurseForgeInstall({
   onContentUpdated,
+  onInstanceCreated,
 }: UseCurseForgeInstallOptions = {}) {
   const enqueueDownloadJob = useDownloadQueueStore(
     (state) => state.enqueueDownloadJob,
@@ -114,6 +120,9 @@ export function useCurseForgeInstall({
       }
 
       await applyContentUpdate(result.content);
+      if (result.instance && onInstanceCreated) {
+        await onInstanceCreated(result.instance);
+      }
       toast.success(
         `${item.name} installed ${getTargetLabel(category, instance)}.`,
       );
@@ -160,6 +169,9 @@ export function useCurseForgeInstall({
       );
 
       await applyContentUpdate(result.content);
+      if (result.instance && onInstanceCreated) {
+        await onInstanceCreated(result.instance);
+      }
       toast.success(
         `${item.name} installed ${getTargetLabel(category, instance)}.`,
       );

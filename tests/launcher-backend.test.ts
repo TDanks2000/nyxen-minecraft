@@ -583,6 +583,7 @@ const createTestLaunchPlan = (
     config: join(game, "config"),
     game,
     logs: join(game, "logs"),
+    media: join(app, "media"),
     metadata: join(app, "metadata"),
     mods: join(game, "mods"),
     resourcePacks: join(game, "resourcepacks"),
@@ -615,6 +616,7 @@ const createTestLaunchPlan = (
       shaderPacks: folders.shaderPacks,
     },
     instance: {
+      bannerUrl: null,
       createdAt: "2024-01-04T00:00:00.000Z",
       folders,
       gameArgs: [],
@@ -630,6 +632,7 @@ const createTestLaunchPlan = (
       metadataPath: join(folders.metadata, "instance.json"),
       memoryMaxMb: 4096,
       memoryMinMb: 512,
+      modpack: null,
       name: "Test Instance",
       profileId: null,
       updatedAt: "2024-01-04T00:00:00.000Z",
@@ -1518,6 +1521,278 @@ describe("launcher backend", () => {
     });
   });
 
+  test("installs and updates CurseForge modpacks as locked instances", async () => {
+    const {
+      downloadCurseForgeFile,
+      getInstanceModpackUpdate,
+      setInstanceModEnabled,
+      updateInstanceModpack,
+    } = await import("../src/bun/launcher/instance-content");
+    const { listLauncherInstances } = await import(
+      "../src/bun/launcher/instances"
+    );
+    const { refreshMinecraftVersionManifest } = await import(
+      "../src/bun/launcher/versions"
+    );
+
+    await refreshMinecraftVersionManifest({ fetcher: fakeFetch });
+
+    const createPackArchive = (fileId: number, optionValue: string) =>
+      createStoredZip({
+        "manifest.json": JSON.stringify({
+          files: [
+            {
+              fileID: fileId,
+              projectID: 222,
+              required: true,
+            },
+          ],
+          manifestType: "minecraftModpack",
+          manifestVersion: 1,
+          minecraft: {
+            modLoaders: [{ id: "fabric-0.15.7", primary: true }],
+            version: "1.20.4",
+          },
+          name: "Fabulously Optimized",
+          overrides: "overrides",
+          version: optionValue,
+        }),
+        "overrides/options.txt": optionValue,
+      });
+    const packV1Archive = createPackArchive(333, "pack-version-1");
+    const packV2Archive = createPackArchive(334, "pack-version-2");
+    const fetcher = async (
+      input: string | URL | Request,
+    ): Promise<Response> => {
+      const url = input instanceof Request ? input.url : input.toString();
+
+      if (url === "https://downloads.example.test/pack-1.zip") {
+        return new Response(Buffer.from(packV1Archive), {
+          headers: { "content-length": String(packV1Archive.byteLength) },
+        });
+      }
+
+      if (url === "https://downloads.example.test/pack-2.zip") {
+        return new Response(Buffer.from(packV2Archive), {
+          headers: { "content-length": String(packV2Archive.byteLength) },
+        });
+      }
+
+      if (url === "https://curseforge.test/v1/mods/111") {
+        return jsonResponse({
+          data: {
+            classId: 4471,
+            downloadCount: 10,
+            id: 111,
+            latestFiles: [
+              {
+                displayName: "Fabulously Optimized 2.0",
+                downloadUrl: "https://downloads.example.test/pack-2.zip",
+                fileDate: "2024-03-01T00:00:00Z",
+                fileName: "fabulously-2.zip",
+                gameVersions: ["1.20.4", "Fabric"],
+                id: 445,
+                releaseType: 1,
+              },
+            ],
+            latestFilesIndexes: [
+              {
+                fileId: 445,
+                gameVersion: "1.20.4",
+                modLoader: 4,
+              },
+            ],
+            links: {
+              websiteUrl:
+                "https://www.curseforge.com/minecraft/modpacks/fabulously-optimized",
+            },
+            logo: { url: "https://media.example.test/icon.png" },
+            name: "Fabulously Optimized",
+            screenshots: [{ url: "https://media.example.test/banner.png" }],
+            slug: "fabulously-optimized",
+            summary: "Performance pack",
+          },
+        });
+      }
+
+      if (url === "https://curseforge.test/v1/mods/222/files/333") {
+        return jsonResponse({
+          data: {
+            displayName: "Dependency 1.0",
+            downloadUrl: "https://downloads.example.test/dependency.jar",
+            fileDate: "2024-02-01T00:00:00Z",
+            fileName: "dependency.jar",
+            gameVersions: ["1.20.4", "Fabric"],
+            id: 333,
+            releaseType: 1,
+          },
+        });
+      }
+
+      if (url === "https://curseforge.test/v1/mods/222/files/334") {
+        return jsonResponse({
+          data: {
+            displayName: "Dependency 2.0",
+            downloadUrl: "https://downloads.example.test/dependency-2.jar",
+            fileDate: "2024-03-01T00:00:00Z",
+            fileName: "dependency-2.jar",
+            gameVersions: ["1.20.4", "Fabric"],
+            id: 334,
+            releaseType: 1,
+          },
+        });
+      }
+
+      if (url === "https://downloads.example.test/dependency.jar") {
+        return new Response("dependency-v1");
+      }
+
+      if (url === "https://downloads.example.test/dependency-2.jar") {
+        return new Response("dependency-v2");
+      }
+
+      if (
+        url === "https://media.example.test/icon.png" ||
+        url === "https://media.example.test/banner.png"
+      ) {
+        return new Response("image-data", {
+          headers: { "content-type": "image/png" },
+        });
+      }
+
+      if (url === "https://downloads.example.test/rogue.jar") {
+        return new Response("rogue");
+      }
+
+      return new Response("not found", { status: 404 });
+    };
+
+    const result = await downloadCurseForgeFile(
+      {
+        category: "modpacks",
+        file: {
+          displayName: "Fabulously Optimized 1.0",
+          downloadUrl: "https://downloads.example.test/pack-1.zip",
+          fileDate: "2024-02-01T00:00:00Z",
+          fileName: "fabulously.zip",
+          gameVersions: ["1.20.4", "Fabric"],
+          id: 444,
+          modLoaders: ["fabric"],
+          releaseType: "release",
+        },
+        projectId: 111,
+        projectLogoUrl: "https://media.example.test/icon.png",
+        projectName: "Fabulously Optimized",
+        projectScreenshotUrls: ["https://media.example.test/banner.png"],
+        projectSlug: "fabulously-optimized",
+        projectWebsiteUrl:
+          "https://www.curseforge.com/minecraft/modpacks/fabulously-optimized",
+      },
+      {
+        apiKey: "test-curseforge-key",
+        baseUrl: "https://curseforge.test",
+        fetcher,
+      },
+    );
+    const instance = result.instance;
+
+    expect(instance).not.toBeNull();
+    if (!instance)
+      throw new Error("Expected modpack install to create instance");
+
+    expect(
+      listLauncherInstances().some((item) => item.id === instance.id),
+    ).toBe(true);
+    expect(instance).toMatchObject({
+      loader: "fabric",
+      loaderVersion: "0.15.7",
+      name: "Fabulously Optimized",
+      versionId: "1.20.4",
+    });
+    expect(instance.iconUrl?.startsWith("file:")).toBe(true);
+    expect(instance.bannerUrl?.startsWith("file:")).toBe(true);
+    expect(instance.modpack).toMatchObject({
+      fileId: "444",
+      installedFiles: 1,
+      locked: true,
+      projectId: "111",
+      skippedFiles: 0,
+    });
+    expect(
+      existsSync(join(instance.folders.media, "curseforge-icon.png")),
+    ).toBe(true);
+    expect(
+      existsSync(join(instance.folders.media, "curseforge-banner.png")),
+    ).toBe(true);
+    expect(
+      readFileSync(join(instance.gameDirectory, "options.txt"), "utf8"),
+    ).toBe("pack-version-1");
+    expect(
+      readFileSync(join(instance.folders.mods, "dependency.jar"), "utf8"),
+    ).toBe("dependency-v1");
+    expect(() =>
+      setInstanceModEnabled({
+        enabled: false,
+        fileName: "dependency.jar",
+        instanceId: instance.id,
+      }),
+    ).toThrow("managed by its linked modpack");
+    await expect(
+      downloadCurseForgeFile(
+        {
+          category: "mods",
+          file: {
+            displayName: "Rogue Mod",
+            downloadUrl: "https://downloads.example.test/rogue.jar",
+            fileDate: "2024-02-01T00:00:00Z",
+            fileName: "rogue.jar",
+            gameVersions: ["1.20.4"],
+            id: 999,
+            modLoaders: ["fabric"],
+            releaseType: "release",
+          },
+          instanceId: instance.id,
+          projectId: 999,
+          projectName: "Rogue Mod",
+        },
+        { fetcher },
+      ),
+    ).rejects.toThrow("managed by its linked modpack");
+    expect(existsSync(join(instance.folders.mods, "rogue.jar"))).toBe(false);
+
+    const update = await getInstanceModpackUpdate(
+      { instanceId: instance.id },
+      {
+        apiKey: "test-curseforge-key",
+        baseUrl: "https://curseforge.test",
+        fetcher,
+      },
+    );
+    expect(update.updateAvailable).toBe(true);
+
+    const updated = await updateInstanceModpack(
+      { instanceId: instance.id },
+      {
+        apiKey: "test-curseforge-key",
+        baseUrl: "https://curseforge.test",
+        fetcher,
+      },
+    );
+
+    expect(updated.instance.id).toBe(instance.id);
+    expect(updated.instance.modpack?.fileId).toBe("445");
+    expect(updated.update.updateAvailable).toBe(false);
+    expect(
+      readFileSync(join(instance.gameDirectory, "options.txt"), "utf8"),
+    ).toBe("pack-version-2");
+    expect(existsSync(join(instance.folders.mods, "dependency.jar"))).toBe(
+      false,
+    );
+    expect(
+      readFileSync(join(instance.folders.mods, "dependency-2.jar"), "utf8"),
+    ).toBe("dependency-v2");
+  });
+
   test("queues CurseForge downloads in backend-owned download state", async () => {
     const { clearFinishedDownloadJobs, enqueueDownloadJob, listDownloadJobs } =
       await import("../src/bun/launcher/download-queue");
@@ -1780,7 +2055,7 @@ describe("launcher backend", () => {
     mkdirSync(downloadsDirectory, { recursive: true });
     writeFileSync(join(downloadsDirectory, "manual-mod.jar"), "manual-data");
 
-    const result = installDownloadedCurseForgeFile({
+    const result = await installDownloadedCurseForgeFile({
       category: "mods",
       downloadsDirectory,
       file: {

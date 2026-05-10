@@ -125,6 +125,7 @@ export const getInstanceFolders = (
     config: join(game, "config"),
     game,
     logs: join(game, "logs"),
+    media: join(app, "media"),
     metadata: join(app, "metadata"),
     mods: join(game, "mods"),
     resourcePacks: join(game, "resourcepacks"),

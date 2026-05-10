@@ -196,6 +196,8 @@ export function InstanceSettingsPanel({
   const includeSnapshots = !!settings.data?.values["launcher.showSnapshots"];
   const versions = useVersions({ includeSnapshots });
   const [name, setName] = useState(instance.name);
+  const [iconUrl, setIconUrl] = useState(instance.iconUrl ?? "");
+  const [bannerUrl, setBannerUrl] = useState(instance.bannerUrl ?? "");
   const [versionId, setVersionId] = useState(instance.versionId);
   const [loader, setLoader] = useState<ModLoader>(instance.loader);
   const [loaderVersion, setLoaderVersion] = useState(
@@ -340,6 +342,8 @@ export function InstanceSettingsPanel({
 
   useEffect(() => {
     setName(instance.name);
+    setIconUrl(instance.iconUrl ?? "");
+    setBannerUrl(instance.bannerUrl ?? "");
     setVersionId(instance.versionId);
     setLoader(instance.loader);
     setLoaderVersion(instance.loaderVersion ?? "");
@@ -369,6 +373,8 @@ export function InstanceSettingsPanel({
 
   const resetForm = () => {
     setName(instance.name);
+    setIconUrl(instance.iconUrl ?? "");
+    setBannerUrl(instance.bannerUrl ?? "");
     setVersionId(instance.versionId);
     setLoader(instance.loader);
     setLoaderVersion(instance.loaderVersion ?? "");
@@ -394,7 +400,9 @@ export function InstanceSettingsPanel({
     setSaving(true);
     try {
       const updated = await rpc.requestProxy.updateLauncherInstance({
+        bannerUrl: bannerUrl.trim() || null,
         gameArgs: parseArgLines(gameArgsText),
+        iconUrl: iconUrl.trim() || null,
         instanceId: instance.id,
         confirmRuntimeCompatibility: compatibilityConfirmed,
         javaArgs: parseArgLines(javaArgsText),
@@ -545,6 +553,37 @@ export function InstanceSettingsPanel({
                   </Select>
                   <FieldDescription>{profileCopy}</FieldDescription>
                 </Field>
+
+                <FieldGroup className="grid gap-4 lg:grid-cols-2">
+                  <Field>
+                    <FieldLabel htmlFor="instance-icon">
+                      Instance Icon
+                    </FieldLabel>
+                    <Input
+                      id="instance-icon"
+                      onChange={(event) => setIconUrl(event.target.value)}
+                      placeholder="https://example.com/icon.png or /path/icon.png"
+                      value={iconUrl}
+                    />
+                    <FieldDescription>
+                      Square artwork used in cards, lists, and the header.
+                    </FieldDescription>
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="instance-banner">
+                      Instance Banner
+                    </FieldLabel>
+                    <Input
+                      id="instance-banner"
+                      onChange={(event) => setBannerUrl(event.target.value)}
+                      placeholder="https://example.com/banner.jpg or /path/banner.jpg"
+                      value={bannerUrl}
+                    />
+                    <FieldDescription>
+                      Wide artwork used behind instance cards and details.
+                    </FieldDescription>
+                  </Field>
+                </FieldGroup>
 
                 <FieldGroup className="grid gap-4 lg:grid-cols-2">
                   <Field data-invalid={!!versions.error || versionsEmpty}>

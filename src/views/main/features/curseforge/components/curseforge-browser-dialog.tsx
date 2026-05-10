@@ -154,8 +154,13 @@ function InstanceBadge({ instance }: { instance: SelectedInstance | null }) {
       <div className="min-w-0">
         <div className="truncate font-semibold text-sm">{instance.name}</div>
         <div className="truncate text-muted-foreground text-xs">
-          Minecraft {instance.minecraftVersion}
-          {instance.loader ? ` · ${instance.loader}` : ""}
+          {instance.modpackLocked
+            ? instance.modpackName
+              ? `Managed by ${instance.modpackName}`
+              : "Managed modpack instance"
+            : `Minecraft ${instance.minecraftVersion}${
+                instance.loader ? ` · ${instance.loader}` : ""
+              }`}
         </div>
       </div>
     </div>
@@ -493,6 +498,10 @@ function getDisabledReason({
 
   if (actionState === "installed") {
     return "This project is already installed.";
+  }
+
+  if (actionState === "managed") {
+    return "Mods for this instance are managed by its linked modpack.";
   }
 
   if (

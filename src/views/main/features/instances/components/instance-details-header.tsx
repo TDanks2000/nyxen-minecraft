@@ -10,6 +10,7 @@ import {
   Loader2Icon,
   MoreHorizontalIcon,
   PlayIcon,
+  RefreshCcwIcon,
   Settings2Icon,
   SquareIcon,
 } from "lucide-react";
@@ -34,14 +35,18 @@ type InstanceDetailsHeaderProps = {
   instance: LauncherInstance;
   isRunning: boolean;
   launchActionState: LaunchActionState;
+  modpackUpdateAvailable: boolean;
+  modpackUpdateChecking: boolean;
   onBrowseCurseForge: () => void;
   onOpenSettings: () => void;
   onPlay: () => void;
   onStop: () => void;
+  onUpdateModpack: () => void;
   onViewLaunchPlan: () => void;
   planLoading: boolean;
   resourcePackCount: number;
   shaderPackCount: number;
+  updatingModpack: boolean;
   warningCount: number;
 };
 
@@ -98,20 +103,25 @@ export function InstanceDetailsHeader({
   instance,
   isRunning,
   launchActionState,
+  modpackUpdateAvailable,
+  modpackUpdateChecking,
   onBrowseCurseForge,
   onOpenSettings,
   onPlay,
   onStop,
+  onUpdateModpack,
   onViewLaunchPlan,
   planLoading,
   resourcePackCount,
   shaderPackCount,
+  updatingModpack,
   warningCount,
 }: InstanceDetailsHeaderProps) {
   const colors = LOADER_COLORS[instance.loader];
   const loaderLabel = LOADER_LABELS[instance.loader];
   const lastPlayed = formatRelative(instance.lastLaunchedAt);
   const busy = planLoading || launchActionState !== "idle";
+  const modpackBusy = modpackUpdateChecking || updatingModpack;
   const primaryDisabled = isRunning ? launchActionState === "stopping" : busy;
   const dropdownDisabled = busy;
   const primaryLabel = isRunning
@@ -264,6 +274,36 @@ export function InstanceDetailsHeader({
               <DownloadIcon data-icon="inline-start" />
               CurseForge
             </Button>
+            {instance.modpack?.locked ? (
+              <Button
+                className="w-full sm:w-auto"
+                disabled={!modpackUpdateAvailable || modpackBusy}
+                onClick={onUpdateModpack}
+                size="lg"
+                title={
+                  modpackUpdateAvailable
+                    ? undefined
+                    : "No CurseForge modpack update is available."
+                }
+                variant={modpackUpdateAvailable ? "default" : "outline"}
+              >
+                {modpackBusy ? (
+                  <Loader2Icon
+                    className="animate-spin"
+                    data-icon="inline-start"
+                  />
+                ) : (
+                  <RefreshCcwIcon data-icon="inline-start" />
+                )}
+                {updatingModpack
+                  ? "Updating..."
+                  : modpackUpdateChecking
+                    ? "Checking..."
+                    : modpackUpdateAvailable
+                      ? "Update Modpack"
+                      : "Modpack Current"}
+              </Button>
+            ) : null}
             <Button
               className="w-full sm:w-auto"
               onClick={openFolder}

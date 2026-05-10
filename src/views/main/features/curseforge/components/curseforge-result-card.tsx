@@ -59,6 +59,7 @@ const actionLabelByState: Record<CurseForgeBrowserActionState, string> = {
   install: "Install",
   installed: "Installed",
   installing: "Installing",
+  managed: "Managed",
   "select-instance": "Select instance",
   "update-available": "Update",
 };
@@ -101,6 +102,9 @@ function ActionIcon({
   }
   if (state === "failed" || state === "incompatible") {
     return <AlertTriangleIcon data-icon="inline-start" />;
+  }
+  if (state === "managed") {
+    return <PackageIcon data-icon="inline-start" />;
   }
   if (manualDownloadRequired) {
     return <ExternalLinkIcon data-icon="inline-start" />;

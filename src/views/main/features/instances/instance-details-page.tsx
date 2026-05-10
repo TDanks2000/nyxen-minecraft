@@ -1,7 +1,11 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import type { LaunchPlan, RunningLaunch } from "@/shared/types";
+import type {
+  InstanceModpackUpdate,
+  LaunchPlan,
+  RunningLaunch,
+} from "@/shared/types";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -40,6 +44,10 @@ export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
   const [curseForgeOpen, setCurseForgeOpen] = useState(false);
   const [launchActionState, setLaunchActionState] =
     useState<LaunchActionState>("idle");
+  const [modpackUpdate, setModpackUpdate] =
+    useState<InstanceModpackUpdate | null>(null);
+  const [modpackUpdateChecking, setModpackUpdateChecking] = useState(false);
+  const [updatingModpack, setUpdatingModpack] = useState(false);
   const [missingArtifactsDialogOpen, setMissingArtifactsDialogOpen] =
     useState(false);
   const [pendingMissingPlan, setPendingMissingPlan] =
@@ -86,6 +94,33 @@ export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
 
     return () => window.clearInterval(intervalId);
   }, [refreshRunningLaunches]);
+
+  useEffect(() => {
+    if (!instance?.modpack?.locked) {
+      setModpackUpdate(null);
+      setModpackUpdateChecking(false);
+      return;
+    }
+
+    let cancelled = false;
+    setModpackUpdateChecking(true);
+
+    rpc.requestProxy
+      .getInstanceModpackUpdate({ instanceId: instance.id })
+      .then((update) => {
+        if (!cancelled) setModpackUpdate(update);
+      })
+      .catch(() => {
+        if (!cancelled) setModpackUpdate(null);
+      })
+      .finally(() => {
+        if (!cancelled) setModpackUpdateChecking(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [instance]);
 
   const rememberRunningLaunch = (launch: RunningLaunch) => {
     setRunningLaunches((current) => [
@@ -179,6 +214,31 @@ export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
     void launchPlan.createLaunchPlan(instance.id, { openSheet: true });
   };
 
+  const updateModpack = () => {
+    if (!instance.modpack?.locked || updatingModpack) return;
+
+    void (async () => {
+      setUpdatingModpack(true);
+
+      try {
+        const result = await rpc.requestProxy.updateInstanceModpack({
+          instanceId: instance.id,
+        });
+
+        instancesHook.upsertInstance(result.instance);
+        catalog.replaceContent(result.content);
+        setModpackUpdate(result.update);
+        toast.success(`${result.instance.modpack?.name ?? "Modpack"} updated`);
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Failed to update modpack",
+        );
+      } finally {
+        setUpdatingModpack(false);
+      }
+    })();
+  };
+
   const downloadMissingArtifactsAndLaunch = () => {
     const plan = pendingMissingPlan;
     setMissingArtifactsDialogOpen(false);
@@ -247,14 +307,18 @@ export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
         instance={instance}
         isRunning={!!runningLaunch}
         launchActionState={launchActionState}
+        modpackUpdateAvailable={modpackUpdate?.updateAvailable ?? false}
+        modpackUpdateChecking={modpackUpdateChecking}
         onBrowseCurseForge={() => setCurseForgeOpen(true)}
         onOpenSettings={openSettings}
         onPlay={playInstance}
         onStop={stopInstance}
+        onUpdateModpack={updateModpack}
         onViewLaunchPlan={viewLaunchPlan}
         planLoading={planLoading}
         resourcePackCount={catalog.resourcePacks.length}
         shaderPackCount={catalog.shaderPacks.length}
+        updatingModpack={updatingModpack}
         warningCount={catalog.disabledMods.length}
       />
 
