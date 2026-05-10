@@ -8,6 +8,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -4123,6 +4124,37 @@ describe("launcher backend", () => {
     expect(() => resolveMediaUrl({ url: "file:///etc/passwd" })).toThrow(
       "Media file URL must stay inside launcher storage.",
     );
+
+    if (process.platform !== "win32") {
+      const realDataRoot = mkdtempSync(join(dataRoot, "real-media-root-"));
+      const linkedDataRoot = join(dataRoot, "linked-media-root");
+      const previousDataRoot = process.env.NYXEN_DATA_DIR;
+
+      symlinkSync(realDataRoot, linkedDataRoot, "dir");
+      process.env.NYXEN_DATA_DIR = linkedDataRoot;
+
+      try {
+        const linkedDirectories = ensureLauncherDirectories();
+        const linkedMediaPath = join(
+          linkedDirectories.downloads,
+          "renderer-linked-icon.png",
+        );
+
+        writeFileSync(linkedMediaPath, mediaBytes);
+
+        expect(
+          resolveMediaUrl({ url: pathToFileURL(linkedMediaPath).toString() }),
+        ).toEqual({
+          url: `data:image/png;base64,${Buffer.from(mediaBytes).toString("base64")}`,
+        });
+      } finally {
+        if (previousDataRoot === undefined) {
+          delete process.env.NYXEN_DATA_DIR;
+        } else {
+          process.env.NYXEN_DATA_DIR = previousDataRoot;
+        }
+      }
+    }
   });
 
   test("substitutes mod loader launch variables before spawning Java", async () => {

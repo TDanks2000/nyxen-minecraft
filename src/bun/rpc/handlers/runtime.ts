@@ -130,15 +130,17 @@ export const resolveMediaUrl = ({
     throw new Error("Media URL must use HTTPS or launcher file URLs.");
   }
 
+  const dataRoot = getDataRoot();
   const path = fileURLToPath(parsedUrl);
 
-  if (!isPathInsideDirectory(path, getDataRoot())) {
+  if (!isPathInsideDirectory(path, dataRoot)) {
     throw new Error("Media file URL must stay inside launcher storage.");
   }
 
   const realPath = realpathSync(path);
+  const realDataRoot = realpathSync(dataRoot);
 
-  if (!isPathInsideDirectory(realPath, getDataRoot())) {
+  if (!isPathInsideDirectory(realPath, realDataRoot)) {
     throw new Error("Media file URL must stay inside launcher storage.");
   }
 
