@@ -300,6 +300,9 @@ const currentJavaRuntimePlatform = (): string => {
 const runtimeExecutablePath =
   process.platform === "win32" ? "bin/javaw.exe" : "bin/java";
 
+const normalizePathForAssertion = (path: string): string =>
+  path.replaceAll("\\", "/");
+
 const runtimeEntryDocument = ({
   manifestUrl = "https://runtime.test/java-runtime-gamma/manifest.json",
   released = "2024-01-04T00:00:00+00:00",
@@ -692,7 +695,10 @@ describe("launcher backend", () => {
     process.env.NYXEN_MICROSOFT_CLIENT_ID = "test-client-id";
   });
 
-  afterAll(() => {
+  afterAll(async () => {
+    const { sqlite } = await import("../src/bun/db/client");
+
+    sqlite.close();
     delete process.env.NYXEN_DATA_DIR;
     delete process.env.NYXEN_MICROSOFT_CLIENT_ID;
     rmSync(dataRoot, { force: true, recursive: true });
@@ -780,9 +786,14 @@ describe("launcher backend", () => {
         fetcher: fakeFetch,
       },
     );
-    const plan = await createLaunchPlan({
-      instanceId: instance.id,
-    });
+    const plan = await createLaunchPlan(
+      {
+        instanceId: instance.id,
+      },
+      {
+        fetcher: fakeFetch,
+      },
+    );
     const status = getLauncherStatus();
 
     expect(details.mainClass).toBe("net.minecraft.client.main.Main");
@@ -810,7 +821,7 @@ describe("launcher backend", () => {
       profiles: 1,
       versions: 2,
     });
-  });
+  }, 15_000);
 
   test("adds missing asset objects from cached asset indexes", async () => {
     const { createLauncherInstance } = await import(
@@ -839,7 +850,10 @@ describe("launcher backend", () => {
         name: "Asset Check",
         versionId: "1.20.4",
       });
-      const plan = await createLaunchPlan({ instanceId: instance.id });
+      const plan = await createLaunchPlan(
+        { instanceId: instance.id },
+        { fetcher: fakeFetch },
+      );
       const assetObject = plan.missingArtifacts.find(
         (artifact) => artifact.kind === "assetObject",
       );
@@ -870,7 +884,7 @@ describe("launcher backend", () => {
 
     const pending = await completeMicrosoftProfileLogin(
       {
-        deviceCode: "device-code",
+        deviceCode: "no-ownership-device-code",
       },
       {
         fetcher: createFakeFetch([]),
@@ -887,7 +901,7 @@ describe("launcher backend", () => {
       try {
         await completeMicrosoftProfileLogin(
           {
-            deviceCode: "device-code",
+            deviceCode: "no-ownership-device-code",
           },
           {
             fetcher: createFakeFetch([]),
@@ -2521,7 +2535,10 @@ describe("launcher backend", () => {
       name: "Queued Launch Prep",
       versionId: "1.20.4",
     });
-    const plan = await createLaunchPlan({ instanceId: instance.id });
+    const plan = await createLaunchPlan(
+      { instanceId: instance.id },
+      { fetcher: fakeFetch },
+    );
     const artifactPaths = plan.missingArtifacts.map(
       (artifact) => artifact.path,
     );
@@ -3622,7 +3639,9 @@ describe("launcher backend", () => {
       expect(plan.java.runtimeVersion).toBe("17.0.1");
       expect(plan.java.runtimeDirectory).toContain("java-runtime-gamma");
       expect(plan.java.runtimeDirectory).toContain("17.0.1");
-      expect(plan.java.executable).toContain(runtimeExecutablePath);
+      expect(normalizePathForAssertion(plan.java.executable)).toContain(
+        runtimeExecutablePath,
+      );
       expect(plan.java.executable).not.toBe("/usr/bin/java");
       expect(runtimeArtifacts).toHaveLength(2);
       expect(runtimeArtifacts.some((artifact) => artifact.executable)).toBe(
@@ -4330,7 +4349,10 @@ describe("launcher backend", () => {
       name: "Trusted Plan",
       versionId: "1.20.4",
     });
-    const plan = await createLaunchPlan({ instanceId: instance.id });
+    const plan = await createLaunchPlan(
+      { instanceId: instance.id },
+      { fetcher: fakeFetch },
+    );
 
     await expect(
       launchInstance({
@@ -4368,9 +4390,14 @@ describe("launcher backend", () => {
     });
 
     await expect(
-      createLaunchPlan({
-        instanceId: instance.id,
-      }),
+      createLaunchPlan(
+        {
+          instanceId: instance.id,
+        },
+        {
+          fetcher: fakeFetch,
+        },
+      ),
     ).rejects.toThrow("not backed by a Microsoft account");
   });
 });

@@ -436,7 +436,7 @@ const createRuntimeLink = (
   relativePath: string,
   target: string | undefined,
 ): void => {
-  if (!target || process.platform === "win32") {
+  if (!target) {
     return;
   }
 
@@ -466,6 +466,10 @@ const createRuntimeLink = (
     runtimeDirectory,
     "Java runtime link target",
   );
+
+  if (process.platform === "win32") {
+    return;
+  }
 
   if (pathEntryExists(linkPath)) {
     return;

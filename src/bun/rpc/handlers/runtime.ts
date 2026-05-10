@@ -53,6 +53,14 @@ const getRendererMediaMimeType = (path: string): string => {
   return mimeType;
 };
 
+const fileUrlToPath = (url: URL, errorMessage: string): string => {
+  try {
+    return fileURLToPath(url);
+  } catch {
+    throw new Error(errorMessage);
+  }
+};
+
 const normalizeExternalUrl = (value: string): string => {
   const normalized = value.trim();
 
@@ -74,7 +82,10 @@ const normalizeExternalUrl = (value: string): string => {
   }
 
   if (url.protocol === "file:") {
-    const path = fileURLToPath(url);
+    const path = fileUrlToPath(
+      url,
+      "External file URL must stay inside launcher storage.",
+    );
 
     if (!isPathInsideDirectory(path, getDataRoot())) {
       throw new Error("External file URL must stay inside launcher storage.");
@@ -131,7 +142,10 @@ export const resolveMediaUrl = ({
   }
 
   const dataRoot = getDataRoot();
-  const path = fileURLToPath(parsedUrl);
+  const path = fileUrlToPath(
+    parsedUrl,
+    "Media file URL must stay inside launcher storage.",
+  );
 
   if (!isPathInsideDirectory(path, dataRoot)) {
     throw new Error("Media file URL must stay inside launcher storage.");
