@@ -21,6 +21,7 @@ import {
   listRunningLaunches as listTrackedRunningLaunches,
   stopMinecraftLaunch,
 } from "../../launcher/executor";
+import { getMissingRequiredModpackDependencies } from "../../launcher/instance-content";
 import { markLauncherInstanceLaunched } from "../../launcher/instances";
 import { createLaunchPlan } from "../../launcher/launch-plan";
 import { getLauncherProfileAuthSecrets } from "../../launcher/profiles";
@@ -119,6 +120,18 @@ export const launchInstance = async (
 
   if (plan.missingArtifacts.length > 0) {
     throw new Error("Download missing artifacts before launching Minecraft.");
+  }
+
+  const missingModpackDependencies = getMissingRequiredModpackDependencies(
+    plan.instance,
+  );
+
+  if (missingModpackDependencies.length > 0) {
+    throw new Error(
+      `${plan.instance.name} is missing ${missingModpackDependencies.length} required modpack file${
+        missingModpackDependencies.length === 1 ? "" : "s"
+      }. Reinstall or update the modpack before launching.`,
+    );
   }
 
   if (!plan.profile || plan.profile.kind !== "microsoft") {

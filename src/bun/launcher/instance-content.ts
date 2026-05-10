@@ -118,6 +118,11 @@ type CurseForgeModpackManifestFile = {
   required: boolean;
 };
 
+export type MissingCurseForgeModpackDependency = {
+  fileID: number;
+  projectID: number;
+};
+
 type ParsedCurseForgeModpackManifest = {
   files: Array<CurseForgeModpackManifestFile>;
   minecraftVersion: string;
@@ -125,6 +130,7 @@ type ParsedCurseForgeModpackManifest = {
   modLoaderVersion: string | null;
   name: string | null;
   overrides: string | null;
+  recommendedMemoryMb: number | null;
   version: string | null;
 };
 
@@ -274,6 +280,7 @@ const parseCurseForgeModpackManifest = (
     modLoaderVersion,
     name: optionalString(parsed.name) ?? null,
     overrides: overrides && isSafeZipPath(overrides) ? overrides : null,
+    recommendedMemoryMb: optionalNumber(minecraft.recommendedRam) ?? null,
     version: optionalString(parsed.version) ?? null,
   };
 };
@@ -360,6 +367,53 @@ const readCurseForgeMetadata = (
   }
 
   return metadata;
+};
+
+const readRequiredModpackManifestFiles = (
+  manifestPath: string,
+): Array<CurseForgeModpackManifestFile> => {
+  if (!existsSync(manifestPath)) return [];
+
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(readFileSync(manifestPath, "utf8"));
+  } catch {
+    return [];
+  }
+
+  if (!isRecord(parsed) || !Array.isArray(parsed.files)) return [];
+
+  return parsed.files.flatMap((entry) => {
+    if (!isRecord(entry) || entry.required === false) return [];
+
+    const projectID = optionalNumber(entry.projectID);
+    const fileID = optionalNumber(entry.fileID);
+
+    return projectID && fileID ? [{ fileID, projectID, required: true }] : [];
+  });
+};
+
+export const getMissingRequiredModpackDependencies = (
+  instance: LauncherInstance,
+): Array<MissingCurseForgeModpackDependency> => {
+  if (!instance.modpack?.locked) return [];
+
+  const requiredFiles = readRequiredModpackManifestFiles(
+    instance.modpack.manifestPath,
+  );
+
+  if (requiredFiles.length === 0) return [];
+
+  const installedFiles = new Set(
+    Object.values(readCurseForgeMetadata(instance))
+      .flatMap((files) => files ?? [])
+      .map((file) => `${file.projectId}:${file.fileId}`),
+  );
+
+  return requiredFiles
+    .filter((file) => !installedFiles.has(`${file.projectID}:${file.fileID}`))
+    .map(({ fileID, projectID }) => ({ fileID, projectID }));
 };
 
 const writeCurseForgeMetadata = (
@@ -1983,6 +2037,13 @@ const installCurseForgeModpackData = async (
         instanceId: replacingInstance.id,
         loader: manifest.modLoader,
         loaderVersion: manifest.modLoaderVersion,
+        memoryMaxMb:
+          manifest.recommendedMemoryMb === null
+            ? undefined
+            : Math.max(
+                replacingInstance.memoryMaxMb,
+                manifest.recommendedMemoryMb,
+              ),
         versionId: manifest.minecraftVersion,
       })
     : createLauncherInstance({
@@ -1990,7 +2051,7 @@ const installCurseForgeModpackData = async (
         iconUrl: input.projectLogoUrl ?? undefined,
         loader: manifest.modLoader,
         loaderVersion: manifest.modLoaderVersion ?? undefined,
-        memoryMaxMb: 4096,
+        memoryMaxMb: manifest.recommendedMemoryMb ?? 4096,
         name: manifest.name ?? input.projectName,
         versionId: manifest.minecraftVersion,
       });

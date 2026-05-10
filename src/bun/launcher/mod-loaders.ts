@@ -6,7 +6,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, posix } from "node:path";
 import { inflateRawSync } from "node:zlib";
 import { z } from "zod";
 import type {
@@ -101,9 +101,16 @@ const loaderProfileSchema = z.object({
   minecraftArguments: z.string().optional(),
 });
 
-const installProfileSchema = z.object({
-  versionInfo: loaderProfileSchema.optional(),
-});
+const installProfileDataSchema = z
+  .record(z.string(), z.record(z.string(), z.unknown()))
+  .optional();
+
+const installProfileSchema = z
+  .object({
+    data: installProfileDataSchema,
+    versionInfo: loaderProfileSchema.optional(),
+  })
+  .passthrough();
 
 const getRequestTimeoutMs = (
   options: ModLoaderResolutionOptions = {},
@@ -217,6 +224,90 @@ const encodePathSegment = (value: string): string =>
 
 const normalizeLoaderVersion = (loader: ModLoader, version: string): string =>
   normalizeLauncherPathSegment(version, `${loader} loader version`);
+
+const mavenPathFromName = (name: string): string | null => {
+  const [coordinates, extension = "jar"] = name.split("@");
+  const parts = coordinates?.split(":") ?? [];
+
+  if (parts.length < 3 || parts.length > 4) {
+    return null;
+  }
+
+  const [group, artifact, version, classifier] = parts;
+
+  if (!group || !artifact || !version) {
+    return null;
+  }
+
+  const classifierSuffix = classifier ? `-${classifier}` : "";
+
+  return posix.join(
+    ...group.split("."),
+    artifact,
+    version,
+    `${artifact}-${version}${classifierSuffix}.${extension}`,
+  );
+};
+
+const artifactNameFromInstallProfileValue = (value: unknown): string | null => {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim();
+
+  if (!normalized) {
+    return null;
+  }
+
+  const unwrapped =
+    normalized.startsWith("[") && normalized.endsWith("]")
+      ? normalized.slice(1, -1)
+      : normalized;
+
+  return mavenPathFromName(unwrapped) ? unwrapped : null;
+};
+
+const generatedClientLibraryFromInstallProfile = (
+  installProfile: z.infer<typeof installProfileSchema>,
+): MinecraftLibrary | null => {
+  const name = artifactNameFromInstallProfileValue(
+    installProfile.data?.PATCHED?.client,
+  );
+  const path = name ? mavenPathFromName(name) : null;
+
+  if (!name || !path) {
+    return null;
+  }
+
+  return {
+    downloads: {
+      artifact: {
+        path,
+        url: "",
+      },
+    },
+    name,
+  };
+};
+
+const mergeGeneratedClientLibrary = (
+  libraries: Array<MinecraftLibrary>,
+  generatedClientLibrary: MinecraftLibrary | null,
+): Array<MinecraftLibrary> => {
+  if (!generatedClientLibrary?.downloads?.artifact?.path) {
+    return libraries;
+  }
+
+  const generatedPath = generatedClientLibrary.downloads.artifact.path;
+  const alreadyListed = libraries.some(
+    (library) =>
+      library.name === generatedClientLibrary.name ||
+      library.downloads?.artifact?.path === generatedPath,
+  );
+
+  return alreadyListed ? libraries : [...libraries, generatedClientLibrary];
+};
 
 const resolveLoaderVersion = async (
   instance: LauncherInstance,
@@ -420,13 +511,17 @@ const resolveInstallerLoader = async (
   const profile = loaderProfileSchema.parse(
     versionProfile ?? installProfile.versionInfo,
   );
+  const libraries = mergeGeneratedClientLibrary(
+    profile.libraries ?? [],
+    generatedClientLibraryFromInstallProfile(installProfile),
+  );
 
   return {
     arguments: profile.arguments,
     id: normalizeLauncherPathSegment(profile.id, `${loader} profile id`),
     installerPath,
     installerUrl,
-    libraries: profile.libraries ?? [],
+    libraries,
     mainClass: profile.mainClass,
     minecraftArguments: profile.minecraftArguments,
     version: loaderVersion,

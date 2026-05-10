@@ -1620,6 +1620,7 @@ describe("launcher backend", () => {
   test("installs and updates CurseForge modpacks as locked instances", async () => {
     const {
       downloadCurseForgeFile,
+      getMissingRequiredModpackDependencies,
       getInstanceModpackUpdate,
       setInstanceModEnabled,
       updateInstanceModpack,
@@ -1652,6 +1653,7 @@ describe("launcher backend", () => {
           manifestVersion: 1,
           minecraft: {
             modLoaders: [{ id: "fabric-0.15.7", primary: true }],
+            recommendedRam: 6144,
             version: "1.20.4",
           },
           name: "Fabulously Optimized",
@@ -1856,6 +1858,7 @@ describe("launcher backend", () => {
     expect(instance).toMatchObject({
       loader: "fabric",
       loaderVersion: "0.15.7",
+      memoryMaxMb: 6144,
       name: "Fabulously Optimized",
       versionId: "1.20.4",
     });
@@ -1883,6 +1886,19 @@ describe("launcher backend", () => {
     expect(
       readFileSync(join(instance.folders.resourcePacks, "resource-pack.zip")),
     ).toEqual(Buffer.from(resourcePackArchive));
+    expect(getMissingRequiredModpackDependencies(instance)).toEqual([]);
+    const metadataPath = join(
+      instance.folders.metadata,
+      "curseforge-content.json",
+    );
+    const metadata = JSON.parse(readFileSync(metadataPath, "utf8"));
+    metadata.mods = metadata.mods.filter(
+      (item: { fileId?: string }) => item.fileId !== "333",
+    );
+    writeFileSync(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`);
+    expect(getMissingRequiredModpackDependencies(instance)).toEqual([
+      { fileID: 333, projectID: 222 },
+    ]);
     const originalIconUrl = instance.iconUrl;
     const originalBannerUrl = instance.bannerUrl;
 
@@ -3068,6 +3084,95 @@ describe("launcher backend", () => {
     );
     expect(generatedArtifact?.url).toBe("");
     expect(generatedArtifact?.path).toContain("neoforge-20.4.237-client.jar");
+  });
+
+  test("adds NeoForge generated client artifact from installer profile data", async () => {
+    const { createLauncherInstance } = await import(
+      "../src/bun/launcher/instances"
+    );
+    const { createLaunchPlan } = await import(
+      "../src/bun/launcher/launch-plan"
+    );
+    const { getMinecraftVersionDetails, refreshMinecraftVersionManifest } =
+      await import("../src/bun/launcher/versions");
+    const fetcher = async (
+      input: string | URL | Request,
+    ): Promise<Response> => {
+      const url = input instanceof Request ? input.url : input.toString();
+
+      if (
+        url ===
+        "https://maven.neoforged.net/releases/net/neoforged/neoforge/20.4.237/neoforge-20.4.237-installer.jar"
+      ) {
+        const archive = createStoredZip({
+          "install_profile.json": JSON.stringify({
+            data: {
+              PATCHED: {
+                client: "[net.neoforged:neoforge:20.4.237:client]",
+              },
+            },
+          }),
+          "version.json": JSON.stringify({
+            arguments: {
+              game: ["--launchTarget", "forgeclient"],
+              jvm: [],
+            },
+            id: "neoforge-20.4.237",
+            libraries: [
+              {
+                downloads: {
+                  artifact: {
+                    path: "cpw/mods/bootstraplauncher/2.0.2/bootstraplauncher-2.0.2.jar",
+                    url: "https://maven.neoforged.net/releases/cpw/mods/bootstraplauncher/2.0.2/bootstraplauncher-2.0.2.jar",
+                  },
+                },
+                name: "cpw.mods:bootstraplauncher:2.0.2",
+              },
+            ],
+            mainClass: "cpw.mods.bootstraplauncher.BootstrapLauncher",
+          }),
+        });
+
+        return new Response(
+          archive.buffer.slice(
+            archive.byteOffset,
+            archive.byteOffset + archive.byteLength,
+          ) as ArrayBuffer,
+        );
+      }
+
+      return fakeFetch(input);
+    };
+
+    await refreshMinecraftVersionManifest({ fetcher: fakeFetch });
+    await getMinecraftVersionDetails(
+      { versionId: "1.20.4" },
+      { fetcher: fakeFetch },
+    );
+
+    const instance = createLauncherInstance({
+      loader: "neoforge",
+      loaderVersion: "20.4.237",
+      name: "NeoForge Profile Generated",
+      versionId: "1.20.4",
+    });
+    const plan = await createLaunchPlan(
+      { instanceId: instance.id },
+      { fetcher, requestTimeoutMs: 100 },
+    );
+    const generatedArtifact = plan.missingArtifacts.find(
+      (artifact) => artifact.id === "net.neoforged:neoforge:20.4.237:client",
+    );
+
+    expect(generatedArtifact).toMatchObject({
+      kind: "library",
+      url: "",
+    });
+    if (!generatedArtifact) {
+      throw new Error("Expected generated NeoForge client artifact.");
+    }
+    expect(generatedArtifact.path).toContain("neoforge-20.4.237-client.jar");
+    expect(plan.classpath).toContain(generatedArtifact.path);
   });
 
   test("tracks platform native libraries listed as ordinary artifacts", async () => {
