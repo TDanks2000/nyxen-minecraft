@@ -1796,21 +1796,93 @@ const removeManagedModFiles = (instance: LauncherInstance): void => {
   }
 };
 
+const getInstallableDependencyCategory = (
+  section: Awaited<ReturnType<typeof getCurseForgeProject>>["section"],
+): Exclude<CurseForgeCategory, "modpacks"> | null => {
+  if (
+    section === "mods" ||
+    section === "resource-packs" ||
+    section === "shaders" ||
+    section === "worlds"
+  ) {
+    return section;
+  }
+
+  return null;
+};
+
+const inferDependencyCategoryFromFileName = (
+  fileName: string,
+): Exclude<CurseForgeCategory, "modpacks"> | null => {
+  const extension = extname(fileName).toLowerCase();
+
+  if (extension === ".jar") return "mods";
+  if (extension === ".mcworld") return "worlds";
+
+  return null;
+};
+
 const createDependencyInstallInput = ({
+  category,
   file,
   instance,
+  projectName,
   projectId,
+  projectSlug,
 }: {
+  category: Exclude<CurseForgeCategory, "modpacks">;
   file: Awaited<ReturnType<typeof getCurseForgeProjectFile>>;
   instance: LauncherInstance;
+  projectName?: string;
   projectId: number;
+  projectSlug?: string;
 }): DownloadCurseForgeFileInput => ({
-  category: "mods",
+  category,
   file,
   instanceId: instance.id,
   projectId,
-  projectName: file.displayName || file.fileName,
+  projectName: projectName || file.displayName || file.fileName,
+  projectSlug,
 });
+
+const createModpackDependencyInstallInput = async ({
+  dependency,
+  file,
+  instance,
+  options,
+}: {
+  dependency: CurseForgeModpackManifestFile;
+  file: Awaited<ReturnType<typeof getCurseForgeProjectFile>>;
+  instance: LauncherInstance;
+  options: DownloadCurseForgeFileOptions;
+}): Promise<DownloadCurseForgeFileInput> => {
+  const inferredCategory = inferDependencyCategoryFromFileName(file.fileName);
+
+  if (inferredCategory) {
+    return createDependencyInstallInput({
+      category: inferredCategory,
+      file,
+      instance,
+      projectId: dependency.projectID,
+    });
+  }
+
+  const project = await getCurseForgeProject(dependency.projectID, options);
+  const category = getInstallableDependencyCategory(project.section);
+
+  if (!category) {
+    throw new Error("CurseForge dependency category is not supported.");
+  }
+
+  return createDependencyInstallInput({
+    category,
+    file,
+    instance,
+    projectId: dependency.projectID,
+    projectName: project.name,
+    projectSlug: project.slug,
+  });
+};
 
 const installModpackDependencies = async (
   instance: LauncherInstance,
@@ -1865,10 +1937,11 @@ const installModpackDependencies = async (
         continue;
       }
 
-      const installInput = createDependencyInstallInput({
+      const installInput = await createModpackDependencyInstallInput({
+        dependency,
         file,
         instance,
-        projectId: dependency.projectID,
+        options,
       });
       const fileName = sanitizeCurseForgeFileName(installInput);
       const data = await fetchCurseForgeDownload(installInput, options);

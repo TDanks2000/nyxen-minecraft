@@ -424,14 +424,19 @@ const fakeQuiltFetch = async (
   return fakeFetch(input);
 };
 
-const createStoredZip = (entries: Record<string, string>): Uint8Array => {
+const createStoredZip = (
+  entries: Record<string, string | Uint8Array>,
+): Uint8Array => {
   const localParts: Array<Buffer> = [];
   const centralParts: Array<Buffer> = [];
   let offset = 0;
 
   for (const [name, content] of Object.entries(entries)) {
     const nameBuffer = Buffer.from(name, "utf8");
-    const contentBuffer = Buffer.from(content, "utf8");
+    const contentBuffer =
+      typeof content === "string"
+        ? Buffer.from(content, "utf8")
+        : Buffer.from(content);
     const localHeader = Buffer.alloc(30);
     localHeader.writeUInt32LE(0x04034b50, 0);
     localHeader.writeUInt16LE(20, 4);
@@ -1636,6 +1641,11 @@ describe("launcher backend", () => {
               projectID: 222,
               required: true,
             },
+            {
+              fileID: 335,
+              projectID: 223,
+              required: true,
+            },
           ],
           manifestType: "minecraftModpack",
           manifestVersion: 1,
@@ -1651,6 +1661,16 @@ describe("launcher backend", () => {
       });
     const packV1Archive = createPackArchive(333, "pack-version-1");
     const packV2Archive = createPackArchive(334, "pack-version-2");
+    const resourcePackArchive = createStoredZip({
+      "assets/minecraft/textures/gui/title/background/panorama_0.png":
+        new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),
+      "pack.mcmeta": JSON.stringify({
+        pack: {
+          description: "Texture images used by the modpack",
+          pack_format: 15,
+        },
+      }),
+    });
     let mediaAvailable = true;
     const fetcher = async (
       input: string | URL | Request,
@@ -1734,12 +1754,46 @@ describe("launcher backend", () => {
         });
       }
 
+      if (url === "https://curseforge.test/v1/mods/223") {
+        return jsonResponse({
+          data: {
+            classId: 12,
+            downloadCount: 5,
+            id: 223,
+            latestFiles: [],
+            name: "Modpack Menu Images",
+            slug: "modpack-menu-images",
+            summary: "Resource pack images",
+          },
+        });
+      }
+
+      if (url === "https://curseforge.test/v1/mods/223/files/335") {
+        return jsonResponse({
+          data: {
+            displayName: "Menu Images 1.0",
+            downloadUrl: "https://downloads.example.test/resource-pack.zip",
+            fileDate: "2024-02-01T00:00:00Z",
+            fileName: "resource-pack.zip",
+            gameVersions: ["1.20.4"],
+            id: 335,
+            releaseType: 1,
+          },
+        });
+      }
+
       if (url === "https://downloads.example.test/dependency.jar") {
         return new Response("dependency-v1");
       }
 
       if (url === "https://downloads.example.test/dependency-2.jar") {
         return new Response("dependency-v2");
+      }
+
+      if (url === "https://downloads.example.test/resource-pack.zip") {
+        return new Response(Buffer.from(resourcePackArchive), {
+          headers: { "content-length": String(resourcePackArchive.byteLength) },
+        });
       }
 
       if (
@@ -1808,7 +1862,7 @@ describe("launcher backend", () => {
     expect(instance.bannerUrl?.startsWith("file:")).toBe(true);
     expect(instance.modpack).toMatchObject({
       fileId: "444",
-      installedFiles: 1,
+      installedFiles: 2,
       locked: true,
       projectId: "111",
       skippedFiles: 0,
@@ -1825,6 +1879,9 @@ describe("launcher backend", () => {
     expect(
       readFileSync(join(instance.folders.mods, "dependency.jar"), "utf8"),
     ).toBe("dependency-v1");
+    expect(
+      readFileSync(join(instance.folders.resourcePacks, "resource-pack.zip")),
+    ).toEqual(Buffer.from(resourcePackArchive));
     const originalIconUrl = instance.iconUrl;
     const originalBannerUrl = instance.bannerUrl;
 
@@ -1894,6 +1951,9 @@ describe("launcher backend", () => {
     expect(
       readFileSync(join(instance.folders.mods, "dependency-2.jar"), "utf8"),
     ).toBe("dependency-v2");
+    expect(
+      readFileSync(join(instance.folders.resourcePacks, "resource-pack.zip")),
+    ).toEqual(Buffer.from(resourcePackArchive));
   });
 
   test("queues CurseForge downloads in backend-owned download state", async () => {
