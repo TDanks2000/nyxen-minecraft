@@ -759,6 +759,14 @@ export type ClearDownloadJobInput = {
   jobId: string;
 };
 
+export type ResolveMediaUrlInput = {
+  url: string;
+};
+
+export type ResolveMediaUrlResult = {
+  url: string;
+};
+
 export type LaunchInstanceInput = CreateLaunchPlanInput | { plan: LaunchPlan };
 
 export type RunningLaunch = {

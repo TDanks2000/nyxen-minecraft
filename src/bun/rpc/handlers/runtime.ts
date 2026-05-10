@@ -1,8 +1,15 @@
+import { Buffer } from "node:buffer";
+import { readFileSync, realpathSync, statSync } from "node:fs";
 import os from "node:os";
+import { extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Utils } from "electrobun/bun";
 import { APP_NAME } from "../../../shared/constants";
-import type { AppEnvironment } from "../../../shared/types";
+import type {
+  AppEnvironment,
+  ResolveMediaUrlInput,
+  ResolveMediaUrlResult,
+} from "../../../shared/types";
 import { getDataRoot } from "../../launcher/paths";
 import { isPathInsideDirectory } from "../../launcher/validation";
 
@@ -25,6 +32,26 @@ export const logToBun = ({ message }: { message: string }): void => {
 export const getSystemMemory = (): { totalMb: number } => ({
   totalMb: Math.floor(os.totalmem() / 1024 / 1024),
 });
+
+const maxRendererMediaBytes = 12 * 1024 * 1024;
+
+const rendererMediaMimeByExtension: Record<string, string> = {
+  ".gif": "image/gif",
+  ".jpeg": "image/jpeg",
+  ".jpg": "image/jpeg",
+  ".png": "image/png",
+  ".webp": "image/webp",
+};
+
+const getRendererMediaMimeType = (path: string): string => {
+  const mimeType = rendererMediaMimeByExtension[extname(path).toLowerCase()];
+
+  if (!mimeType) {
+    throw new Error("Media file type is not supported.");
+  }
+
+  return mimeType;
+};
 
 const normalizeExternalUrl = (value: string): string => {
   const normalized = value.trim();
@@ -72,6 +99,66 @@ export const openExternal = ({
 }): { opened: boolean } => ({
   opened: Utils.openExternal(normalizeExternalUrl(url)),
 });
+
+export const resolveMediaUrl = ({
+  url,
+}: ResolveMediaUrlInput): ResolveMediaUrlResult => {
+  const normalized = url.trim();
+
+  if (
+    !normalized ||
+    normalized.length > 4096 ||
+    normalized.includes("\0") ||
+    /[\r\n]/.test(normalized)
+  ) {
+    throw new Error("Media URL is invalid.");
+  }
+
+  let parsedUrl: URL;
+
+  try {
+    parsedUrl = new URL(normalized);
+  } catch {
+    throw new Error("Media URL is invalid.");
+  }
+
+  if (parsedUrl.protocol === "https:") {
+    return { url: parsedUrl.toString() };
+  }
+
+  if (parsedUrl.protocol !== "file:") {
+    throw new Error("Media URL must use HTTPS or launcher file URLs.");
+  }
+
+  const path = fileURLToPath(parsedUrl);
+
+  if (!isPathInsideDirectory(path, getDataRoot())) {
+    throw new Error("Media file URL must stay inside launcher storage.");
+  }
+
+  const realPath = realpathSync(path);
+
+  if (!isPathInsideDirectory(realPath, getDataRoot())) {
+    throw new Error("Media file URL must stay inside launcher storage.");
+  }
+
+  const stat = statSync(realPath);
+
+  if (!stat.isFile()) {
+    throw new Error("Media URL must point to a file.");
+  }
+
+  if (stat.size > maxRendererMediaBytes) {
+    throw new Error("Media file is too large.");
+  }
+
+  const mimeType = getRendererMediaMimeType(realPath);
+  const data = readFileSync(realPath);
+
+  return {
+    url: `data:${mimeType};base64,${Buffer.from(data).toString("base64")}`,
+  };
+};
 
 export { getDatabaseStatus } from "../../db/client";
 export { getSettingsStatus, updateSetting } from "../../settings/store";

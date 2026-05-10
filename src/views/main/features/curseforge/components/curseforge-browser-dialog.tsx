@@ -95,6 +95,7 @@ import type {
 } from "@/views/main/features/curseforge/curseforge-browser-types";
 import { useCurseForgeBrowserSearch } from "@/views/main/features/curseforge/use-curseforge-browser-search";
 import { LOADER_LABELS } from "@/views/main/features/instances/components/instance-format";
+import { useRendererMediaUrl } from "@/views/main/features/instances/hooks/use-renderer-media-url";
 import { cn } from "@/views/main/lib/utils";
 
 type LoaderFilter = Exclude<ModLoader, "vanilla"> | "all";
@@ -121,6 +122,8 @@ const LIST_SKELETON_KEYS = [
 ];
 
 function InstanceBadge({ instance }: { instance: SelectedInstance | null }) {
+  const iconUrl = useRendererMediaUrl(instance?.iconUrl);
+
   if (!instance) {
     return (
       <div className="flex min-w-0 items-center gap-2 rounded-lg border border-border bg-background/70 px-3 py-2">
@@ -141,11 +144,11 @@ function InstanceBadge({ instance }: { instance: SelectedInstance | null }) {
 
   return (
     <div className="flex min-w-0 items-center gap-2 rounded-lg border border-border bg-background/70 px-3 py-2">
-      {instance.iconUrl ? (
+      {iconUrl ? (
         <img
           alt=""
           className="size-9 rounded-md object-cover ring-1 ring-border"
-          src={instance.iconUrl}
+          src={iconUrl}
         />
       ) : (
         <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">

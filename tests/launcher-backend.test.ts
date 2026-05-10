@@ -12,6 +12,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { gzipSync } from "node:zlib";
 import type {
   CurseForgeProjectSection,
@@ -3894,6 +3895,30 @@ describe("launcher backend", () => {
     );
     expect(() => openExternal({ url: "file:///etc/passwd" })).toThrow(
       "External file URL must stay inside launcher storage.",
+    );
+  });
+
+  test("resolves launcher media file URLs for renderer images", async () => {
+    const { resolveMediaUrl } = await import("../src/bun/rpc/handlers/runtime");
+    const { ensureLauncherDirectories } = await import(
+      "../src/bun/launcher/paths"
+    );
+    const directories = ensureLauncherDirectories();
+    const mediaPath = join(directories.downloads, "renderer-icon.png");
+    const mediaBytes = new Uint8Array([137, 80, 78, 71]);
+
+    writeFileSync(mediaPath, mediaBytes);
+
+    expect(
+      resolveMediaUrl({ url: "https://media.example.test/icon.png" }),
+    ).toEqual({ url: "https://media.example.test/icon.png" });
+    expect(
+      resolveMediaUrl({ url: pathToFileURL(mediaPath).toString() }),
+    ).toEqual({
+      url: `data:image/png;base64,${Buffer.from(mediaBytes).toString("base64")}`,
+    });
+    expect(() => resolveMediaUrl({ url: "file:///etc/passwd" })).toThrow(
+      "Media file URL must stay inside launcher storage.",
     );
   });
 

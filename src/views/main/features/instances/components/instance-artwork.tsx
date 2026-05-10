@@ -1,5 +1,6 @@
 import type { LauncherInstance } from "@/shared/types";
 import { Badge } from "@/views/main/components/ui/badge";
+import { useRendererMediaUrl } from "@/views/main/features/instances/hooks/use-renderer-media-url";
 import { cn } from "@/views/main/lib/utils";
 import { LOADER_LABELS } from "./instance-format";
 
@@ -81,11 +82,12 @@ export function InstanceIcon({
   instance: LauncherInstance;
 }) {
   const art = ART_BY_LOADER[instance.loader];
+  const iconUrl = useRendererMediaUrl(instance.iconUrl);
 
-  if (instance.iconUrl) {
+  if (iconUrl) {
     return (
       <img
-        src={instance.iconUrl}
+        src={iconUrl}
         alt=""
         aria-hidden="true"
         className={cn("size-9 shrink-0 rounded-md object-cover", className)}
@@ -116,7 +118,9 @@ export function InstanceArtwork({
   const art = ART_BY_LOADER[instance.loader];
   const isHero = variant === "hero";
   const isIcon = variant === "icon";
-  const artworkUrl = instance.bannerUrl ?? instance.iconUrl;
+  const bannerUrl = useRendererMediaUrl(instance.bannerUrl);
+  const iconUrl = useRendererMediaUrl(instance.iconUrl);
+  const artworkUrl = bannerUrl ?? iconUrl;
 
   return (
     <div

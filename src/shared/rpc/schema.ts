@@ -41,6 +41,8 @@ import type {
   MinecraftVersionDetails,
   MinecraftVersionManifest,
   MinecraftVersionSummary,
+  ResolveMediaUrlInput,
+  ResolveMediaUrlResult,
   RunningLaunch,
   SearchCurseForgeProjectsInput,
   SetInstanceModEnabledInput,
@@ -248,6 +250,10 @@ export type MainViewRPC = {
       openExternal: {
         params: { url: string };
         response: { opened: boolean };
+      };
+      resolveMediaUrl: {
+        params: ResolveMediaUrlInput;
+        response: ResolveMediaUrlResult;
       };
     };
   }>;

@@ -3,8 +3,6 @@ import {
   AlertTriangleIcon,
   BoxesIcon,
   InfoIcon,
-  Loader2Icon,
-  PackageIcon,
   PlayIcon,
   PlusIcon,
   SearchIcon,
@@ -22,10 +20,8 @@ import { Button, buttonVariants } from "@/views/main/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardFooter,
   CardHeader,
-  CardTitle,
 } from "@/views/main/components/ui/card";
 import {
   Empty,
@@ -39,7 +35,6 @@ import {
   InputGroupAddon,
   InputGroupInput,
 } from "@/views/main/components/ui/input-group";
-import { Progress } from "@/views/main/components/ui/progress";
 import { Skeleton } from "@/views/main/components/ui/skeleton";
 import { useDownloadQueueStore } from "@/views/main/features/downloads/download-queue-store";
 import {
@@ -55,14 +50,6 @@ import { LaunchPlanSheet } from "@/views/main/features/instances/components/laun
 import { NewInstanceDialog } from "@/views/main/features/instances/components/new-instance-dialog";
 import { useLaunchPlan } from "@/views/main/features/instances/hooks/use-launch-plan";
 import { useInstances } from "@/views/main/hooks/use-instances";
-
-const getJobProgress = (job: DownloadQueueJob): number =>
-  Math.max(0, Math.min(100, job.progress ?? 0));
-
-const getCompletedInstallItems = (job: DownloadQueueJob): number =>
-  job.items.filter(
-    (item) => item.status === "completed" || item.status === "skipped",
-  ).length;
 
 const isActiveCurseForgeModpackJob = (job: DownloadQueueJob): boolean =>
   job.metadata.kind === "curseForgeFile" &&
@@ -152,66 +139,6 @@ function FeaturedInstancePanel({
         </div>
       </div>
     </div>
-  );
-}
-
-function InstallingModpackCard({ job }: { job: DownloadQueueJob }) {
-  const progress = getJobProgress(job);
-  const totalItems = Math.max(1, job.totalItems, job.items.length);
-  const completedItems = getCompletedInstallItems(job);
-  const imageUrl =
-    job.metadata.kind === "curseForgeFile" ? job.metadata.imageUrl : null;
-
-  return (
-    <Card className="group overflow-hidden pt-0 ring-1 ring-primary/20">
-      <div className="relative h-36 overflow-hidden bg-muted">
-        {imageUrl ? (
-          <img
-            alt=""
-            className="h-full w-full object-cover opacity-80 blur-[1px] transition-transform duration-500 group-hover:scale-[1.03]"
-            src={imageUrl}
-          />
-        ) : (
-          <div className="flex h-full items-center justify-center bg-primary/10 text-primary">
-            <PackageIcon className="size-10" />
-          </div>
-        )}
-        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/45 to-transparent" />
-        <Badge className="absolute top-3 left-3 gap-1.5">
-          <Loader2Icon className="size-3 animate-spin" />
-          Installing
-        </Badge>
-      </div>
-      <CardHeader className="min-w-0 gap-1.5">
-        <div className="min-w-0 flex-1">
-          <CardTitle className="truncate">{job.title}</CardTitle>
-          <CardDescription className="truncate">
-            {job.activeLabel ?? job.subtitle}
-          </CardDescription>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="flex items-center justify-between gap-3 text-xs">
-          <span className="truncate text-muted-foreground">
-            {job.status === "queued" ? "Queued" : "Downloading"}
-          </span>
-          <span className="shrink-0 font-medium tabular-nums">
-            {Math.round(progress)}%
-          </span>
-        </div>
-        <Progress
-          aria-label={`${job.title} install progress`}
-          className="mt-2 [&_[data-slot=progress-track]]:h-2"
-          value={progress}
-        />
-      </CardContent>
-      <CardFooter className="justify-between gap-2">
-        <Badge variant="secondary">CurseForge</Badge>
-        <span className="text-muted-foreground text-xs tabular-nums">
-          {completedItems}/{totalItems} files
-        </span>
-      </CardFooter>
-    </Card>
   );
 }
 
@@ -403,7 +330,7 @@ export function InstancesPage() {
           ) : (
             <>
               {filteredActiveModpackJobs.map((job) => (
-                <InstallingModpackCard job={job} key={job.id} />
+                <InstanceCard installJob={job} key={job.id} />
               ))}
               {filteredInstances.map((instance) => (
                 <InstanceCard
