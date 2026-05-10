@@ -1,7 +1,6 @@
 import {
   AlertCircleIcon,
   BlocksIcon,
-  BoxesIcon,
   CheckCircle2Icon,
   Grid2X2Icon,
   ImageIcon,
@@ -13,6 +12,7 @@ import {
   ServerIcon,
   SlidersHorizontalIcon,
   SparklesIcon,
+  XIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type {
@@ -31,6 +31,7 @@ import { Badge } from "@/views/main/components/ui/badge";
 import { Button } from "@/views/main/components/ui/button";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -70,6 +71,7 @@ import {
   CURSEFORGE_CATEGORIES,
   CURSEFORGE_LOADER_OPTIONS,
   CURSEFORGE_SORT_OPTIONS,
+  categoryRequiresInstanceTarget,
   categorySupportsLoaderFilter,
   DEFAULT_CURSEFORGE_CATEGORY,
   findInstalledCurseForgeItem,
@@ -77,9 +79,12 @@ import {
   formatCurseForgeDownloads,
   getCurseForgeActionState,
   getCurseForgeCategoryLabel,
+  getCurseForgeExpectedFileName,
   getCurseForgeItemKey,
   getVisibleMinecraftVersions,
   hasCurseForgeUpdateAvailable,
+  isCurseForgeCategoryAvailable,
+  requiresManualCurseForgeDownload,
 } from "@/views/main/features/curseforge/curseforge-browser-model";
 import type {
   CurseForgeBrowserActionState,
@@ -160,18 +165,25 @@ function InstanceBadge({ instance }: { instance: SelectedInstance | null }) {
 function InstanceSelector({
   activeInstance,
   availableInstances,
+  canClearInstance,
   onSelectInstance,
 }: {
   activeInstance: SelectedInstance | null;
   availableInstances: Array<SelectedInstance>;
-  onSelectInstance: (instance: SelectedInstance) => void;
+  canClearInstance: boolean;
+  onSelectInstance: (instance: SelectedInstance | null) => void;
 }) {
   return (
     <div className="grid min-w-0 gap-2 lg:grid-cols-[minmax(0,1fr)_12rem]">
       <InstanceBadge instance={activeInstance} />
       <Select
-        disabled={availableInstances.length === 0}
+        disabled={availableInstances.length === 0 && !activeInstance}
         onValueChange={(value) => {
+          if (value === NO_INSTANCE_VALUE) {
+            if (canClearInstance) onSelectInstance(null);
+            return;
+          }
+
           const next = availableInstances.find(
             (instance) => instance.id === value,
           );
@@ -184,8 +196,8 @@ function InstanceSelector({
         </SelectTrigger>
         <SelectContent>
           <SelectGroup>
-            <SelectItem value={NO_INSTANCE_VALUE} disabled>
-              Select instance
+            <SelectItem value={NO_INSTANCE_VALUE} disabled={!canClearInstance}>
+              Browse without instance
             </SelectItem>
             {availableInstances.map((instance) => (
               <SelectItem key={instance.id} value={instance.id}>
@@ -211,9 +223,7 @@ function BrowserSkeleton({
     <div
       className={cn(
         "grid gap-3",
-        viewMode === "grid"
-          ? "grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3"
-          : "grid-cols-1",
+        viewMode === "grid" ? "grid-cols-1 xl:grid-cols-2" : "grid-cols-1",
       )}
     >
       {skeletonKeys.map((key) => (
@@ -252,58 +262,61 @@ function CategoryIcon({ category }: { category: CurseForgeCategory }) {
 function CategoryRail({
   activeCategory,
   installedContent,
+  selectedInstance,
   onCategoryChange,
 }: {
   activeCategory: CurseForgeCategory;
   installedContent: CurseForgeBrowserDialogProps["installedContent"];
+  selectedInstance: SelectedInstance | null;
   onCategoryChange: (category: CurseForgeCategory) => void;
 }) {
   return (
-    <nav className="flex min-h-0 flex-col gap-1 p-3">
-      <div className="px-2 pb-2">
-        <div className="font-semibold text-foreground text-sm">Content</div>
-        <div className="text-muted-foreground text-xs">
-          Pick a CurseForge collection.
-        </div>
-      </div>
+    <nav className="flex min-h-0 flex-col gap-1 p-2">
       {CURSEFORGE_CATEGORIES.map((category) => {
         const active = category.value === activeCategory;
         const installedCount = installedContent?.[category.value]?.length ?? 0;
+        const disabled = !isCurseForgeCategoryAvailable(
+          category.value,
+          selectedInstance,
+        );
 
         return (
           <button
+            aria-disabled={disabled}
             className={cn(
-              "flex min-w-0 items-start gap-3 rounded-lg border border-transparent px-2.5 py-2.5 text-left transition-colors",
+              "flex min-w-0 items-center gap-2 rounded-md border border-transparent px-2 py-2 text-left transition-colors",
               active
                 ? "border-primary/35 bg-primary/10 text-foreground"
                 : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
+              disabled && "cursor-not-allowed opacity-45 hover:bg-transparent",
             )}
+            disabled={disabled}
             key={category.value}
             onClick={() => onCategoryChange(category.value)}
+            title={
+              disabled
+                ? "Modpacks create new instances and cannot be installed into the selected instance."
+                : undefined
+            }
             type="button"
           >
             <span
               className={cn(
-                "mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground",
+                "flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground",
                 active && "bg-primary text-primary-foreground",
               )}
             >
               <CategoryIcon category={category.value} />
             </span>
-            <span className="min-w-0 flex-1">
-              <span className="flex min-w-0 items-center justify-between gap-2">
-                <span className="truncate font-semibold text-sm">
-                  {category.label}
-                </span>
-                {installedCount > 0 ? (
-                  <Badge variant={active ? "default" : "outline"}>
-                    {installedCount}
-                  </Badge>
-                ) : null}
+            <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
+              <span className="truncate font-semibold text-sm">
+                {category.label}
               </span>
-              <span className="mt-1 line-clamp-2 text-xs leading-5">
-                {category.description}
-              </span>
+              {installedCount > 0 ? (
+                <Badge variant={active ? "default" : "outline"}>
+                  {installedCount}
+                </Badge>
+              ) : null}
             </span>
           </button>
         );
@@ -312,162 +325,165 @@ function CategoryRail({
   );
 }
 
-function BrowserModePanel({
-  activeInstance,
-  installActionsConfigured,
+function SelectedProjectSummary({
+  category,
+  item,
+  onClear,
 }: {
-  activeInstance: SelectedInstance | null;
-  installActionsConfigured: boolean;
+  category: CurseForgeCategory;
+  item: CurseForgeProjectSummary;
+  onClear: () => void;
 }) {
+  const versions = getVisibleMinecraftVersions(item, 4);
+
   return (
-    <div className="m-3 mt-auto rounded-lg border border-border bg-background/60 p-3">
-      <div className="flex items-center gap-2">
-        <div
-          className={cn(
-            "flex size-8 shrink-0 items-center justify-center rounded-md",
-            installActionsConfigured
-              ? "bg-primary/10 text-primary"
-              : "bg-muted text-muted-foreground",
-          )}
-        >
-          {installActionsConfigured ? <CheckCircle2Icon /> : <SearchIcon />}
+    <div
+      className="flex min-w-0 gap-3 rounded-lg border border-border bg-card/70 p-3"
+      data-slot="curseforge-selected-project"
+    >
+      {item.logoUrl ? (
+        <img
+          alt=""
+          className="hidden size-12 shrink-0 rounded-md object-cover ring-1 ring-border sm:block"
+          src={item.logoUrl}
+        />
+      ) : null}
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <div className="min-w-0 truncate font-heading font-semibold">
+            {item.name}
+          </div>
+          <Badge variant="secondary">
+            {getCurseForgeCategoryLabel(category)}
+          </Badge>
+          <span className="text-muted-foreground text-xs">
+            {formatCurseForgeDownloads(item.downloadCount)} downloads
+          </span>
         </div>
-        <div className="min-w-0">
-          <div className="font-semibold text-sm">
-            {installActionsConfigured ? "Install Ready" : "Browse Only"}
-          </div>
-          <div className="text-muted-foreground text-xs">
-            {activeInstance
-              ? `Targeting ${activeInstance.name}`
-              : "No install target selected"}
-          </div>
+        <p className="mt-1 line-clamp-2 text-muted-foreground text-sm">
+          {item.summary ||
+            "No CurseForge summary is available for this project."}
+        </p>
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <Badge variant="outline">
+            {formatCurseForgeDate(item.dateModified)}
+          </Badge>
+          {(versions.length > 0 ? versions : ["Not specified"]).map(
+            (version) => (
+              <Badge key={version} variant="outline">
+                {version}
+              </Badge>
+            ),
+          )}
+          {item.modLoaders.slice(0, 3).map((loader) => (
+            <Badge key={loader} variant="outline">
+              {loader}
+            </Badge>
+          ))}
+          {item.allowDistribution === false ? (
+            <Badge variant="outline">Restricted</Badge>
+          ) : null}
         </div>
       </div>
-      <p className="mt-3 text-muted-foreground text-xs leading-5">
-        {installActionsConfigured
-          ? "Compatible projects can run the supplied install callbacks."
-          : "Install services are not connected here, so cards focus on discovery and details."}
-      </p>
+      <Button
+        aria-label="Close project details"
+        className="shrink-0"
+        onClick={onClear}
+        size="icon-sm"
+        variant="ghost"
+      >
+        <XIcon />
+      </Button>
     </div>
   );
 }
 
-function DetailPreview({
-  category,
-  item,
-}: {
+type ManualInstallRequest = {
   category: CurseForgeCategory;
-  item: CurseForgeProjectSummary | null;
-}) {
-  if (!item) {
-    return (
-      <Empty className="h-full rounded-none border-0">
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <BoxesIcon />
-          </EmptyMedia>
-          <EmptyTitle>Select a project</EmptyTitle>
-          <EmptyDescription>
-            Project metadata and compatibility details appear here.
-          </EmptyDescription>
-        </EmptyHeader>
-      </Empty>
-    );
-  }
+  item: CurseForgeProjectSummary;
+};
 
-  const versions = getVisibleMinecraftVersions(item, 8);
+function ManualInstallPanel({
+  disabled,
+  item,
+  onCancel,
+  onOpenDownload,
+  onScanDownloads,
+  pending,
+}: {
+  disabled: boolean;
+  item: CurseForgeProjectSummary;
+  onCancel: () => void;
+  onOpenDownload: () => void;
+  onScanDownloads: () => void;
+  pending: boolean;
+}) {
+  const fileName = getCurseForgeExpectedFileName(item) ?? "the CurseForge file";
 
   return (
-    <div className="flex h-full min-w-0 flex-col gap-4 p-4">
-      <div className="flex min-w-0 gap-3">
-        {item.logoUrl ? (
-          <img
-            alt=""
-            className="size-14 rounded-md object-cover ring-1 ring-border"
-            src={item.logoUrl}
-          />
-        ) : (
-          <div className="flex size-14 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-            <BoxesIcon />
-          </div>
-        )}
-        <div className="min-w-0">
-          <div className="truncate font-heading font-semibold text-lg">
-            {item.name}
-          </div>
-          <div className="text-muted-foreground text-xs">
-            {getCurseForgeCategoryLabel(category)} ·{" "}
-            {formatCurseForgeDownloads(item.downloadCount)} downloads
-          </div>
-        </div>
-      </div>
-
-      <p className="text-muted-foreground text-sm leading-6">
-        {item.summary || "No CurseForge summary is available for this project."}
-      </p>
-
-      <div className="grid grid-cols-2 gap-2 text-sm">
-        <div className="rounded-md border border-border bg-background/60 p-3">
-          <div className="text-muted-foreground text-xs">Updated</div>
-          <div className="mt-1 font-semibold">
-            {formatCurseForgeDate(item.dateModified)}
-          </div>
-        </div>
-        <div className="rounded-md border border-border bg-background/60 p-3">
-          <div className="text-muted-foreground text-xs">Distribution</div>
-          <div className="mt-1 font-semibold">
-            {item.allowDistribution === false ? "Restricted" : "Available"}
-          </div>
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <div className="font-semibold text-sm">Version Support</div>
-        <div className="flex flex-wrap gap-1.5">
-          {versions.length > 0 ? (
-            versions.map((version) => (
-              <Badge key={version} variant="outline">
-                {version}
-              </Badge>
-            ))
+    <Alert className="mb-3 border-primary/30 bg-primary/5">
+      <AlertCircleIcon />
+      <AlertTitle>Manual download required</AlertTitle>
+      <AlertDescription>
+        Open CurseForge, download {fileName} to your Downloads folder, then scan
+        Downloads to copy it into the selected launcher target.
+      </AlertDescription>
+      <div className="mt-2 flex flex-wrap gap-2 group-has-[>svg]/alert:col-start-2">
+        <Button
+          disabled={disabled || pending}
+          onClick={onOpenDownload}
+          size="sm"
+          variant="outline"
+        >
+          <SearchIcon data-icon="inline-start" />
+          Open CurseForge
+        </Button>
+        <Button
+          disabled={disabled || pending}
+          onClick={onScanDownloads}
+          size="sm"
+        >
+          {pending ? (
+            <RefreshCcwIcon className="animate-spin" data-icon="inline-start" />
           ) : (
-            <Badge variant="outline">Not specified</Badge>
+            <CheckCircle2Icon data-icon="inline-start" />
           )}
-        </div>
+          Scan Downloads
+        </Button>
+        <Button disabled={pending} onClick={onCancel} size="sm" variant="ghost">
+          Cancel
+        </Button>
       </div>
-
-      <div className="flex flex-col gap-2">
-        <div className="font-semibold text-sm">Loader Support</div>
-        <div className="flex flex-wrap gap-1.5">
-          {item.modLoaders.length > 0 ? (
-            item.modLoaders.map((loader) => (
-              <Badge key={loader} variant="outline">
-                {loader}
-              </Badge>
-            ))
-          ) : (
-            <Badge variant="outline">Not specified</Badge>
-          )}
-        </div>
-      </div>
-    </div>
+    </Alert>
   );
 }
 
 function getDisabledReason({
   actionState,
+  category,
+  hasFile,
   hasInstallCallback,
+  hasManualInstallCallback,
   hasUpdateCallback,
+  manualDownloadRequired,
 }: {
   actionState: CurseForgeBrowserActionState;
+  category: CurseForgeCategory;
+  hasFile: boolean;
   hasInstallCallback: boolean;
+  hasManualInstallCallback: boolean;
   hasUpdateCallback: boolean;
+  manualDownloadRequired: boolean;
 }): string | null {
   if (actionState === "select-instance") {
     return "Select an instance to install content.";
   }
 
   if (actionState === "incompatible") {
+    if (category === "modpacks") {
+      return "Modpacks create new instances and cannot be installed into the selected instance.";
+    }
+
     return "This project does not match the selected instance.";
   }
 
@@ -479,11 +495,35 @@ function getDisabledReason({
     return "This project is already installed.";
   }
 
-  if (actionState === "update-available" && !hasUpdateCallback) {
+  if (
+    !hasFile &&
+    (actionState === "install" ||
+      actionState === "failed" ||
+      actionState === "update-available")
+  ) {
+    return "CurseForge did not provide file metadata for this project.";
+  }
+
+  if (
+    actionState === "update-available" &&
+    !hasUpdateCallback &&
+    !manualDownloadRequired
+  ) {
     return "Updates are not available from this view.";
   }
 
   if (
+    manualDownloadRequired &&
+    (actionState === "install" ||
+      actionState === "failed" ||
+      actionState === "update-available") &&
+    !hasManualInstallCallback
+  ) {
+    return "Manual install scanning is not available from this view.";
+  }
+
+  if (
+    !manualDownloadRequired &&
     (actionState === "install" || actionState === "failed") &&
     !hasInstallCallback
   ) {
@@ -497,9 +537,12 @@ export function CurseForgeBrowserDialog({
   availableInstances = [],
   initialCategory,
   installedContent,
+  onCompleteManualInstall,
   onInstall,
+  onInstallModpack,
   onOpenChange,
   onOpenDetails,
+  onOpenManualDownload,
   onSelectInstance,
   onUninstall,
   onUpdate,
@@ -521,13 +564,27 @@ export function CurseForgeBrowserDialog({
   const [sortField, setSortField] = useState<CurseForgeSortField>("popularity");
   const [installedOnly, setInstalledOnly] = useState(false);
   const [viewMode, setViewMode] = useState<CurseForgeBrowserViewMode>("grid");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedProject, setSelectedProject] =
     useState<CurseForgeProjectSummary | null>(null);
+  const [manualInstallRequest, setManualInstallRequest] =
+    useState<ManualInstallRequest | null>(null);
   const [pendingKeys, setPendingKeys] = useState<Set<string>>(() => new Set());
   const [failedKeys, setFailedKeys] = useState<Set<string>>(() => new Set());
   const installActionsConfigured = Boolean(
-    onInstall || onUninstall || onUpdate,
+    onInstall ||
+      onUninstall ||
+      onUpdate ||
+      onOpenManualDownload ||
+      onCompleteManualInstall,
   );
+  const canClearInstance = !instanceControlled || Boolean(onSelectInstance);
+  const activeInstallActionsConfigured =
+    activeCategory === "modpacks"
+      ? Boolean(
+          onInstallModpack || (onOpenManualDownload && onCompleteManualInstall),
+        )
+      : installActionsConfigured;
 
   useEffect(() => {
     if (selectedInstance !== undefined) {
@@ -540,6 +597,7 @@ export function CurseForgeBrowserDialog({
 
     setActiveCategory(initialCategory ?? DEFAULT_CURSEFORGE_CATEGORY);
     setSelectedProject(null);
+    setManualInstallRequest(null);
   }, [initialCategory, open]);
 
   useEffect(() => {
@@ -549,6 +607,19 @@ export function CurseForgeBrowserDialog({
       current.trim() ? current : activeInstance.minecraftVersion,
     );
   }, [activeInstance, open]);
+
+  useEffect(() => {
+    if (
+      !open ||
+      isCurseForgeCategoryAvailable(activeCategory, activeInstance)
+    ) {
+      return;
+    }
+
+    setActiveCategory(DEFAULT_CURSEFORGE_CATEGORY);
+    setSelectedProject(null);
+    setManualInstallRequest(null);
+  }, [activeCategory, activeInstance, open]);
 
   const search = useCurseForgeBrowserSearch({
     category: activeCategory,
@@ -574,18 +645,26 @@ export function CurseForgeBrowserDialog({
   ]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !selectedProject) return;
 
-    setSelectedProject((current) => {
-      if (current && visibleProjects.some((item) => item.id === current.id)) {
-        return current;
+    if (!visibleProjects.some((item) => item.id === selectedProject.id)) {
+      setSelectedProject(null);
+    }
+  }, [open, selectedProject, visibleProjects]);
+
+  const handleSelectInstance = (instance: SelectedInstance | null) => {
+    if (!instance) {
+      if (!instanceControlled) {
+        setLocalSelectedInstance(null);
       }
+      setMinecraftVersion("");
+      setLoader("all");
+      setInstalledOnly(false);
+      setManualInstallRequest(null);
+      onSelectInstance?.(null);
+      return;
+    }
 
-      return visibleProjects[0] ?? null;
-    });
-  }, [open, visibleProjects]);
-
-  const handleSelectInstance = (instance: SelectedInstance) => {
     if (!instanceControlled) {
       setLocalSelectedInstance(instance);
     }
@@ -593,6 +672,7 @@ export function CurseForgeBrowserDialog({
     if (instance.loader && instance.loader !== "vanilla") {
       setLoader(instance.loader);
     }
+    setManualInstallRequest(null);
     onSelectInstance?.(instance);
   };
 
@@ -625,6 +705,38 @@ export function CurseForgeBrowserDialog({
     item: CurseForgeProjectSummary,
     installedItem: InstalledCurseForgeItem | null,
   ) => {
+    const manualDownloadRequired = requiresManualCurseForgeDownload(item);
+
+    if (manualDownloadRequired) {
+      setManualInstallRequest({ category: activeCategory, item });
+
+      if (!onOpenManualDownload) return;
+      if (categoryRequiresInstanceTarget(activeCategory) && !activeInstance) {
+        return;
+      }
+
+      void runItemAction(item, () =>
+        onOpenManualDownload({
+          category: activeCategory,
+          instance: activeInstance,
+          item,
+        }),
+      );
+      return;
+    }
+
+    if (activeCategory === "modpacks") {
+      if (!activeInstance && onInstallModpack) {
+        void runItemAction(item, () =>
+          onInstallModpack({
+            category: "modpacks",
+            item,
+          }),
+        );
+      }
+      return;
+    }
+
     if (!activeInstance) return;
 
     if (
@@ -652,6 +764,43 @@ export function CurseForgeBrowserDialog({
         item,
       }),
     );
+  };
+
+  const handleOpenManualDownload = () => {
+    if (!manualInstallRequest || !onOpenManualDownload) return;
+    if (
+      categoryRequiresInstanceTarget(manualInstallRequest.category) &&
+      !activeInstance
+    ) {
+      return;
+    }
+
+    void runItemAction(manualInstallRequest.item, () =>
+      onOpenManualDownload({
+        category: manualInstallRequest.category,
+        instance: activeInstance,
+        item: manualInstallRequest.item,
+      }),
+    );
+  };
+
+  const handleScanManualDownload = () => {
+    if (!manualInstallRequest || !onCompleteManualInstall) return;
+    if (
+      categoryRequiresInstanceTarget(manualInstallRequest.category) &&
+      !activeInstance
+    ) {
+      return;
+    }
+
+    void runItemAction(manualInstallRequest.item, async () => {
+      await onCompleteManualInstall({
+        category: manualInstallRequest.category,
+        instance: activeInstance,
+        item: manualInstallRequest.item,
+      });
+      setManualInstallRequest(null);
+    });
   };
 
   const handleUninstall = (
@@ -691,9 +840,29 @@ export function CurseForgeBrowserDialog({
           ? ` from ${formatCurseForgeDownloads(search.totalCount)}`
           : ""
       }`;
+  const manualInstallPending = manualInstallRequest
+    ? pendingKeys.has(
+        getCurseForgeItemKey(
+          manualInstallRequest.category,
+          manualInstallRequest.item,
+        ),
+      )
+    : false;
+  const manualInstallDisabled =
+    !onOpenManualDownload ||
+    !onCompleteManualInstall ||
+    (manualInstallRequest
+      ? categoryRequiresInstanceTarget(manualInstallRequest.category) &&
+        !activeInstance
+      : true);
   const handleCategoryChange = (category: CurseForgeCategory) => {
+    if (!isCurseForgeCategoryAvailable(category, activeInstance)) {
+      return;
+    }
+
     setActiveCategory(category);
     setSelectedProject(null);
+    setManualInstallRequest(null);
     if (!categorySupportsLoaderFilter(category)) {
       setLoader("all");
     }
@@ -702,52 +871,61 @@ export function CurseForgeBrowserDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="!top-12 !right-2 !bottom-2 !left-2 !h-auto !w-auto !max-w-none !translate-x-0 !translate-y-0 grid grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden rounded-lg bg-background p-0 text-foreground sm:!right-3 sm:!bottom-3 sm:!left-3 sm:!max-w-none"
-        showCloseButton
+        className="!top-12 !right-2 !bottom-2 !left-2 !h-auto !w-auto !max-w-none !translate-x-0 !translate-y-0 grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden rounded-lg bg-background p-0 text-foreground sm:!right-3 sm:!bottom-3 sm:!left-3 sm:!max-w-none"
+        showCloseButton={false}
       >
         <DialogHeader className="border-b border-border bg-card/80 px-4 py-3 sm:px-5">
-          <div className="grid min-w-0 gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(22rem,30rem)]">
-            <div className="min-w-0">
-              <div className="mb-2 flex flex-wrap items-center gap-2">
-                <Badge variant="secondary">CurseForge</Badge>
-                <Badge
-                  variant={installActionsConfigured ? "default" : "outline"}
-                >
-                  {installActionsConfigured ? "Install actions" : "Browse-only"}
-                </Badge>
-                <Badge variant="outline">{resultCountLabel}</Badge>
+          <div className="flex min-w-0 items-start gap-3">
+            <div className="grid min-w-0 flex-1 gap-3 xl:grid-cols-[minmax(12rem,1fr)_minmax(20rem,28rem)]">
+              <div className="min-w-0">
+                <DialogTitle className="font-heading text-xl font-black leading-tight">
+                  CurseForge
+                </DialogTitle>
+                <DialogDescription className="sr-only">
+                  Browse CurseForge Minecraft content and choose an instance for
+                  install actions.
+                </DialogDescription>
+                <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-muted-foreground text-xs">
+                  <span>{resultCountLabel}</span>
+                  <span className="text-primary">•</span>
+                  <span>
+                    {activeInstallActionsConfigured
+                      ? "Install ready"
+                      : "Browse only"}
+                  </span>
+                </div>
               </div>
-              <DialogTitle className="font-heading text-2xl font-black leading-tight">
-                CurseForge Marketplace
-              </DialogTitle>
-              <DialogDescription className="mt-1 max-w-3xl">
-                Browse Minecraft content, inspect compatibility, and target an
-                instance only when install actions are available.
-              </DialogDescription>
+
+              <InstanceSelector
+                activeInstance={activeInstance}
+                availableInstances={availableInstances}
+                canClearInstance={canClearInstance}
+                onSelectInstance={handleSelectInstance}
+              />
             </div>
 
-            <InstanceSelector
-              activeInstance={activeInstance}
-              availableInstances={availableInstances}
-              onSelectInstance={handleSelectInstance}
-            />
+            <DialogClose
+              render={
+                <Button className="shrink-0" size="icon-sm" variant="ghost" />
+              }
+            >
+              <XIcon />
+              <span className="sr-only">Close</span>
+            </DialogClose>
           </div>
         </DialogHeader>
 
-        <div className="grid min-h-0 grid-cols-1 bg-background lg:grid-cols-[17rem_minmax(0,1fr)] xl:grid-cols-[17rem_minmax(0,1fr)_23rem]">
+        <div className="grid min-h-0 grid-cols-1 bg-background lg:grid-cols-[13rem_minmax(0,1fr)]">
           <aside className="hidden min-h-0 border-r border-border bg-sidebar/70 lg:flex lg:flex-col">
             <CategoryRail
               activeCategory={activeCategory}
               installedContent={installedContent}
+              selectedInstance={activeInstance}
               onCategoryChange={handleCategoryChange}
-            />
-            <BrowserModePanel
-              activeInstance={activeInstance}
-              installActionsConfigured={installActionsConfigured}
             />
           </aside>
 
-          <div className="flex min-h-0 min-w-0 flex-col">
+          <div className="relative flex min-h-0 min-w-0 flex-col">
             <div className="border-b border-border bg-background/95 px-4 py-3 sm:px-5">
               <Tabs
                 className="lg:hidden"
@@ -757,32 +935,55 @@ export function CurseForgeBrowserDialog({
                 }
               >
                 <TabsList className="w-full justify-start overflow-x-auto">
-                  {CURSEFORGE_CATEGORIES.map((category) => (
-                    <TabsTrigger key={category.value} value={category.value}>
-                      {category.label}
-                    </TabsTrigger>
-                  ))}
+                  {CURSEFORGE_CATEGORIES.map((category) => {
+                    const disabled = !isCurseForgeCategoryAvailable(
+                      category.value,
+                      activeInstance,
+                    );
+
+                    return (
+                      <TabsTrigger
+                        disabled={disabled}
+                        key={category.value}
+                        title={
+                          disabled
+                            ? "Modpacks create new instances and cannot be installed into the selected instance."
+                            : undefined
+                        }
+                        value={category.value}
+                      >
+                        {category.label}
+                      </TabsTrigger>
+                    );
+                  })}
                 </TabsList>
               </Tabs>
 
-              <div className="mt-3 flex min-w-0 flex-col gap-1 lg:mt-0">
+              <div className="mt-3 flex min-w-0 flex-col gap-2 lg:mt-0">
                 <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="truncate font-heading font-semibold text-lg">
+                    <div className="truncate font-heading font-semibold">
                       {activeCategoryInfo.label}
                     </div>
-                    <div className="truncate text-muted-foreground text-xs">
-                      {activeCategoryInfo.description}
-                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex shrink-0 items-center gap-2">
                     <Button
-                      onClick={search.refresh}
+                      aria-expanded={filtersOpen}
+                      onClick={() => setFiltersOpen((current) => !current)}
                       size="sm"
+                      variant={filtersOpen ? "secondary" : "outline"}
+                    >
+                      <SlidersHorizontalIcon data-icon="inline-start" />
+                      Filters
+                    </Button>
+                    <Button
+                      aria-label="Refresh CurseForge results"
+                      onClick={search.refresh}
+                      size="icon-sm"
+                      title="Refresh"
                       variant="outline"
                     >
-                      <RefreshCcwIcon data-icon="inline-start" />
-                      Refresh
+                      <RefreshCcwIcon />
                     </Button>
                     <ToggleGroup
                       aria-label="View mode"
@@ -812,105 +1013,105 @@ export function CurseForgeBrowserDialog({
                   </div>
                 </div>
 
-                <div className="mt-2 grid gap-2 xl:grid-cols-[minmax(15rem,1fr)_9rem_9rem_10rem_auto]">
-                  <InputGroup className="h-9">
-                    <InputGroupAddon>
-                      <SearchIcon />
-                    </InputGroupAddon>
-                    <InputGroupInput
-                      aria-label="Search CurseForge"
-                      onChange={(event) => setQuery(event.target.value)}
-                      placeholder="Search projects, authors, categories..."
-                      value={query}
-                    />
-                  </InputGroup>
+                <InputGroup className="h-9">
+                  <InputGroupAddon>
+                    <SearchIcon />
+                  </InputGroupAddon>
+                  <InputGroupInput
+                    aria-label="Search CurseForge"
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder="Search projects, authors, categories..."
+                    value={query}
+                  />
+                </InputGroup>
 
-                  <InputGroup className="h-9">
-                    <InputGroupAddon>
-                      <span className="text-xs">MC</span>
-                    </InputGroupAddon>
-                    <InputGroupInput
-                      aria-label="Minecraft version"
-                      onChange={(event) =>
-                        setMinecraftVersion(event.target.value)
+                {filtersOpen ? (
+                  <div className="grid min-w-0 gap-2 rounded-lg border border-border bg-card/45 p-2 md:grid-cols-2 xl:grid-cols-[9rem_9rem_10rem_12rem]">
+                    <InputGroup className="h-9">
+                      <InputGroupAddon>
+                        <span className="text-xs">MC</span>
+                      </InputGroupAddon>
+                      <InputGroupInput
+                        aria-label="Minecraft version"
+                        onChange={(event) =>
+                          setMinecraftVersion(event.target.value)
+                        }
+                        placeholder="All versions"
+                        value={minecraftVersion}
+                      />
+                    </InputGroup>
+
+                    <Select
+                      disabled={!loaderFilterEnabled}
+                      onValueChange={(value) =>
+                        setLoader(value as LoaderFilter)
                       }
-                      placeholder="All versions"
-                      value={minecraftVersion}
-                    />
-                  </InputGroup>
+                      value={loader}
+                    >
+                      <SelectTrigger className="h-9 w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectItem value="all">All loaders</SelectItem>
+                          {CURSEFORGE_LOADER_OPTIONS.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
 
-                  <Select
-                    disabled={!loaderFilterEnabled}
-                    onValueChange={(value) => setLoader(value as LoaderFilter)}
-                    value={loader}
-                  >
-                    <SelectTrigger className="h-9 w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        <SelectItem value="all">All loaders</SelectItem>
-                        {CURSEFORGE_LOADER_OPTIONS.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
+                    <Select
+                      onValueChange={(value) =>
+                        setSortField(value as CurseForgeSortField)
+                      }
+                      value={sortField}
+                    >
+                      <SelectTrigger className="h-9 w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          {CURSEFORGE_SORT_OPTIONS.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
 
-                  <Select
-                    onValueChange={(value) =>
-                      setSortField(value as CurseForgeSortField)
-                    }
-                    value={sortField}
-                  >
-                    <SelectTrigger className="h-9 w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        {CURSEFORGE_SORT_OPTIONS.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-
-                  <div className="flex min-w-0 items-center justify-between gap-2 rounded-lg border border-input px-2.5">
-                    <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
-                      <SlidersHorizontalIcon className="size-3.5" />
-                      Installed
+                    <div className="flex h-9 min-w-0 items-center justify-between gap-2 rounded-lg border border-input px-2.5">
+                      <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
+                        <SlidersHorizontalIcon className="size-3.5" />
+                        Installed
+                      </div>
+                      <Switch
+                        checked={installedOnly}
+                        disabled={!activeInstance}
+                        onCheckedChange={setInstalledOnly}
+                        size="sm"
+                      />
                     </div>
-                    <Switch
-                      checked={installedOnly}
-                      disabled={!activeInstance}
-                      onCheckedChange={setInstalledOnly}
-                      size="sm"
-                    />
                   </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2 pt-1 text-muted-foreground text-xs">
-                  <span>
-                    {activeInstance
-                      ? `Target: ${activeInstance.name}`
-                      : "Browsing without an instance"}
-                  </span>
-                  <span className="text-primary">•</span>
-                  <span>
-                    {installActionsConfigured
-                      ? "Install callbacks connected"
-                      : "Install actions hidden until a service is connected"}
-                  </span>
-                </div>
+                ) : null}
               </div>
             </div>
 
             <ScrollArea className="min-h-0 flex-1">
-              <div className="p-4 sm:p-5">
+              <div className={cn("p-4 sm:p-5", selectedProject && "pb-32")}>
+                {manualInstallRequest ? (
+                  <ManualInstallPanel
+                    disabled={manualInstallDisabled}
+                    item={manualInstallRequest.item}
+                    onCancel={() => setManualInstallRequest(null)}
+                    onOpenDownload={handleOpenManualDownload}
+                    onScanDownloads={handleScanManualDownload}
+                    pending={manualInstallPending}
+                  />
+                ) : null}
                 {search.error ? (
                   <Alert variant="destructive">
                     <AlertCircleIcon />
@@ -952,7 +1153,7 @@ export function CurseForgeBrowserDialog({
                     className={cn(
                       "grid gap-3",
                       viewMode === "grid"
-                        ? "grid-cols-1 2xl:grid-cols-2"
+                        ? "grid-cols-1 xl:grid-cols-2"
                         : "grid-cols-1",
                     )}
                   >
@@ -971,10 +1172,24 @@ export function CurseForgeBrowserDialog({
                         pending: pendingKeys.has(key),
                         selectedInstance: activeInstance,
                       });
+                      const manualDownloadRequired =
+                        requiresManualCurseForgeDownload(item);
                       const actionDisabledReason = getDisabledReason({
                         actionState,
-                        hasInstallCallback: Boolean(onInstall),
-                        hasUpdateCallback: Boolean(onUpdate),
+                        category: activeCategory,
+                        hasFile: Boolean(item.latestFile),
+                        hasInstallCallback:
+                          activeCategory === "modpacks"
+                            ? Boolean(onInstallModpack)
+                            : Boolean(onInstall),
+                        hasManualInstallCallback: Boolean(
+                          onOpenManualDownload && onCompleteManualInstall,
+                        ),
+                        hasUpdateCallback:
+                          activeCategory === "modpacks"
+                            ? false
+                            : Boolean(onUpdate),
+                        manualDownloadRequired,
                       });
 
                       return (
@@ -982,10 +1197,13 @@ export function CurseForgeBrowserDialog({
                           actionDisabledReason={actionDisabledReason}
                           actionState={actionState}
                           category={activeCategory}
-                          installActionsConfigured={installActionsConfigured}
+                          installActionsConfigured={
+                            activeInstallActionsConfigured
+                          }
                           installedItem={installedItem}
                           item={item}
                           key={key}
+                          manualDownloadRequired={manualDownloadRequired}
                           onDetails={() => handleDetails(item)}
                           onPrimaryAction={() =>
                             handlePrimaryAction(item, installedItem)
@@ -1004,13 +1222,17 @@ export function CurseForgeBrowserDialog({
                 )}
               </div>
             </ScrollArea>
-          </div>
 
-          <aside className="hidden min-h-0 border-l border-border bg-card/45 xl:block">
-            <ScrollArea className="h-full">
-              <DetailPreview category={activeCategory} item={selectedProject} />
-            </ScrollArea>
-          </aside>
+            {selectedProject ? (
+              <div className="absolute inset-x-0 bottom-0 z-20 border-t border-border bg-background/95 px-4 py-3 shadow-[0_-24px_48px_-36px_black] sm:px-5">
+                <SelectedProjectSummary
+                  category={activeCategory}
+                  item={selectedProject}
+                  onClear={() => setSelectedProject(null)}
+                />
+              </div>
+            ) : null}
+          </div>
         </div>
       </DialogContent>
     </Dialog>

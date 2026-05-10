@@ -3,14 +3,11 @@ import {
   ArchiveIcon,
   CameraIcon,
   CheckCircle2Icon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
   FileTextIcon,
   FolderOpenIcon,
   GaugeIcon,
   HammerIcon,
   HardDriveIcon,
-  MoreHorizontalIcon,
   PlugZapIcon,
   PuzzleIcon,
   RefreshCwIcon,
@@ -23,7 +20,7 @@ import {
   WrenchIcon,
   ZapIcon,
 } from "lucide-react";
-import type { ElementType } from "react";
+import { type ElementType, useMemo, useState } from "react";
 import type {
   InstanceContent,
   InstanceFileEntry,
@@ -38,7 +35,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/views/main/components/ui/card";
-import { Checkbox } from "@/views/main/components/ui/checkbox";
 import {
   InputGroup,
   InputGroupAddon,
@@ -54,19 +50,12 @@ import {
 } from "@/views/main/components/ui/select";
 import { Switch } from "@/views/main/components/ui/switch";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/views/main/components/ui/table";
-import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
 } from "@/views/main/components/ui/tabs";
+import { InstanceSettingsPanel } from "@/views/main/features/instances/components/instance-settings-panel";
 import { rpc } from "@/views/main/lib/rpc";
 import { cn } from "@/views/main/lib/utils";
 
@@ -81,6 +70,9 @@ type InstanceTabValue =
   | "versions"
   | "worlds";
 
+type ModStatusFilter = "all" | "disabled" | "enabled";
+type ModSortField = "modified" | "name" | "size";
+
 type InstanceCatalogTabsProps = {
   activeTab: string;
   content: InstanceContent | null;
@@ -93,6 +85,8 @@ type InstanceCatalogTabsProps = {
   mods: Array<InstanceFileEntry>;
   mutating: boolean;
   onCreateLaunchPlan: () => void;
+  onInstanceDeleted: (instanceId: string) => void;
+  onInstanceUpdated: (instance: LauncherInstance) => void;
   onRefreshContent: () => void;
   onSetActiveTab: (tab: string) => void;
   onSetAllModsEnabled: (enabled: boolean) => void;
@@ -118,6 +112,18 @@ const TAB_ITEMS: Array<{
   { icon: CameraIcon, label: "Screenshots", value: "screenshots" },
   { icon: FileTextIcon, label: "Logs", value: "logs" },
   { icon: Settings2Icon, label: "Settings", value: "settings" },
+];
+
+const MOD_STATUS_FILTERS: Array<{ label: string; value: ModStatusFilter }> = [
+  { label: "All mods", value: "all" },
+  { label: "Enabled", value: "enabled" },
+  { label: "Disabled", value: "disabled" },
+];
+
+const MOD_SORT_OPTIONS: Array<{ label: string; value: ModSortField }> = [
+  { label: "Name", value: "name" },
+  { label: "Recently modified", value: "modified" },
+  { label: "Size", value: "size" },
 ];
 
 const openExternalPath = (path: string) => {
@@ -327,50 +333,48 @@ function ModCard({
   const enabled = entry.enabled === true;
 
   return (
-    <article className="rounded-lg border border-border bg-background/45 p-3">
-      <div className="flex items-start gap-3">
-        <Checkbox aria-label={`Select ${entry.displayName}`} />
+    <article
+      className={cn(
+        "group flex min-w-0 flex-col rounded-lg border bg-background/55 p-3 transition-colors",
+        enabled
+          ? "border-primary/25 hover:border-primary/55"
+          : "border-border opacity-80 hover:border-muted-foreground/45 hover:opacity-100",
+      )}
+    >
+      <div className="flex min-w-0 items-start gap-3">
         <ModIcon enabled={enabled} />
         <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-start justify-between gap-2">
-            <div className="min-w-0">
-              <h3 className="truncate font-heading text-sm font-semibold">
+          <div className="flex min-w-0 items-start gap-2">
+            <div className="min-w-0 flex-1">
+              <h3 className="truncate font-heading text-sm font-semibold leading-5">
                 {entry.displayName}
               </h3>
-              <p className="mt-1 truncate font-mono text-xs text-muted-foreground">
+              <p className="mt-1 line-clamp-2 break-all font-mono text-muted-foreground text-xs leading-5">
                 {entry.fileName}
               </p>
             </div>
-            <Button
-              aria-label={`Open ${entry.displayName}`}
-              onClick={() => openExternalPath(entry.path)}
-              size="icon-sm"
-              variant="ghost"
-            >
-              <MoreHorizontalIcon />
-            </Button>
           </div>
 
-          <div className="mt-3 flex flex-wrap gap-1.5">
+          <div className="mt-3 flex min-w-0 flex-wrap gap-1.5">
             <StatusBadge enabled={entry.enabled} />
             <Badge variant="secondary">Local Jar</Badge>
             <Badge variant="ghost">{formatBytes(entry.sizeBytes)}</Badge>
           </div>
 
-          <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
-            <div className="rounded-md bg-muted/30 px-2 py-1.5">
+          <div className="mt-3 grid gap-2 text-xs [grid-template-columns:repeat(auto-fit,minmax(8rem,1fr))]">
+            <div className="min-w-0 rounded-md bg-muted/30 px-2 py-1.5">
               <div className="text-muted-foreground">Modified</div>
-              <div className="mt-0.5 font-semibold">
+              <div className="mt-0.5 truncate font-semibold">
                 {formatModified(entry.modifiedAt)}
               </div>
             </div>
-            <div className="rounded-md bg-muted/30 px-2 py-1.5">
+            <div className="min-w-0 rounded-md bg-muted/30 px-2 py-1.5">
               <div className="text-muted-foreground">Updater</div>
-              <div className="mt-0.5 font-semibold">Manual file</div>
+              <div className="mt-0.5 truncate font-semibold">Manual file</div>
             </div>
           </div>
 
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2 border-border border-t pt-3">
             <div className="flex items-center gap-2">
               <Switch
                 aria-label={`${enabled ? "Disable" : "Enable"} ${entry.displayName}`}
@@ -385,14 +389,6 @@ function ModCard({
                 {enabled ? "Enabled" : "Disabled"}
               </span>
             </div>
-            <Button
-              onClick={() => openExternalPath(entry.path)}
-              size="sm"
-              variant="outline"
-            >
-              <FolderOpenIcon data-icon="inline-start" />
-              Open
-            </Button>
           </div>
         </div>
       </div>
@@ -400,83 +396,15 @@ function ModCard({
   );
 }
 
-function ModTableRow({
-  entry,
-  mutating,
-  onToggleMod,
-}: {
-  entry: InstanceFileEntry;
-  mutating: boolean;
-  onToggleMod: (fileName: string, name: string, enabled: boolean) => void;
-}) {
-  const enabled = entry.enabled === true;
-
-  return (
-    <TableRow className="border-border/70 hover:bg-muted/35">
-      <TableCell className="w-8">
-        <Checkbox aria-label={`Select ${entry.displayName}`} />
-      </TableCell>
-      <TableCell className="min-w-48">
-        <div className="flex min-w-0 items-center gap-3">
-          <ModIcon enabled={enabled} />
-          <div className="min-w-0">
-            <div className="truncate font-semibold text-foreground">
-              {entry.displayName}
-            </div>
-            <div className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
-              {entry.fileName}
-            </div>
-          </div>
-        </div>
-      </TableCell>
-      <TableCell>
-        <div className="flex items-center gap-2">
-          <Switch
-            aria-label={`${enabled ? "Disable" : "Enable"} ${entry.displayName}`}
-            checked={enabled}
-            disabled={mutating}
-            onCheckedChange={(checked) =>
-              onToggleMod(entry.fileName, entry.displayName, checked)
-            }
-            size="sm"
-          />
-          <span className="text-xs font-medium">
-            {enabled ? "Enabled" : "Disabled"}
-          </span>
-        </div>
-      </TableCell>
-      <TableCell>{formatBytes(entry.sizeBytes)}</TableCell>
-      <TableCell>{formatModified(entry.modifiedAt)}</TableCell>
-      <TableCell>
-        <Badge variant="secondary">Local Jar</Badge>
-      </TableCell>
-      <TableCell className="max-w-64 whitespace-normal text-xs leading-5 text-muted-foreground">
-        {entry.path}
-      </TableCell>
-      <TableCell>
-        <div className="flex justify-end gap-1.5">
-          <Button
-            onClick={() => openExternalPath(entry.path)}
-            size="sm"
-            variant="outline"
-          >
-            Open
-          </Button>
-        </div>
-      </TableCell>
-    </TableRow>
-  );
-}
-
 function QuickActions({
-  instance,
   latestLog,
+  logsFolderPath,
   onCreateLaunchPlan,
   onRefreshContent,
   onSetActiveTab,
 }: {
-  instance: LauncherInstance;
   latestLog: InstanceFileEntry | null;
+  logsFolderPath: string;
   onCreateLaunchPlan: () => void;
   onRefreshContent: () => void;
   onSetActiveTab: (tab: string) => void;
@@ -489,18 +417,7 @@ function QuickActions({
       <CardContent className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-2">
         <Button
           className="w-full"
-          onClick={() => openExternalPath(instance.folders.mods)}
-          size="sm"
-          variant="outline"
-        >
-          <FolderOpenIcon data-icon="inline-start" />
-          Open Mods
-        </Button>
-        <Button
-          className="w-full"
-          onClick={() =>
-            openExternalPath(latestLog?.path ?? instance.folders.logs)
-          }
+          onClick={() => openExternalPath(latestLog?.path ?? logsFolderPath)}
           size="sm"
           variant="outline"
         >
@@ -603,7 +520,6 @@ function WarningPanel({
           `${disabledModsCount} mod${disabledModsCount === 1 ? "" : "s"} disabled`,
         ]
       : []),
-    ...(instance.profileId ? [] : ["Offline profile selected"]),
   ];
 
   return (
@@ -650,46 +566,6 @@ function WarningPanel({
   );
 }
 
-function SettingsGrid({ instance }: { instance: LauncherInstance }) {
-  const paths: Array<[label: string, path: string]> = [
-    ["Game directory", instance.gameDirectory],
-    ["Mods", instance.folders.mods],
-    ["Resource packs", instance.folders.resourcePacks],
-    ["Shader packs", instance.folders.shaderPacks],
-    ["Screenshots", instance.folders.screenshots],
-    ["Logs", instance.folders.logs],
-    ["Metadata", instance.metadataPath],
-  ];
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Settings</CardTitle>
-      </CardHeader>
-      <CardContent className="grid gap-3 lg:grid-cols-2">
-        {paths.map(([label, path]) => (
-          <div
-            className="min-w-0 rounded-lg border border-border bg-background/45 p-3"
-            key={label}
-          >
-            <div className="text-xs text-muted-foreground">{label}</div>
-            <div className="mt-1 truncate font-mono text-xs">{path}</div>
-            <Button
-              className="mt-3"
-              onClick={() => openExternalPath(path)}
-              size="sm"
-              variant="outline"
-            >
-              <FolderOpenIcon data-icon="inline-start" />
-              Open
-            </Button>
-          </div>
-        ))}
-      </CardContent>
-    </Card>
-  );
-}
-
 export function InstanceCatalogTabs({
   activeTab,
   content,
@@ -702,6 +578,8 @@ export function InstanceCatalogTabs({
   mods,
   mutating,
   onCreateLaunchPlan,
+  onInstanceDeleted,
+  onInstanceUpdated,
   onRefreshContent,
   onSetActiveTab,
   onSetAllModsEnabled,
@@ -713,7 +591,50 @@ export function InstanceCatalogTabs({
   worlds,
 }: InstanceCatalogTabsProps) {
   const latestLog = logs[0] ?? null;
-  const filteredMods = mods;
+  const [modQuery, setModQuery] = useState("");
+  const [modStatusFilter, setModStatusFilter] =
+    useState<ModStatusFilter>("all");
+  const [modSortField, setModSortField] = useState<ModSortField>("name");
+  const filteredMods = useMemo(() => {
+    const query = modQuery.trim().toLowerCase();
+
+    return [...mods]
+      .filter((entry) => {
+        const matchesStatus =
+          modStatusFilter === "all" ||
+          (modStatusFilter === "enabled" && entry.enabled === true) ||
+          (modStatusFilter === "disabled" && entry.enabled === false);
+        const matchesQuery =
+          query.length === 0 ||
+          [entry.displayName, entry.fileName, entry.path]
+            .join(" ")
+            .toLowerCase()
+            .includes(query);
+
+        return matchesStatus && matchesQuery;
+      })
+      .sort((a, b) => {
+        if (modSortField === "modified") {
+          return (
+            new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime()
+          );
+        }
+
+        if (modSortField === "size") {
+          return b.sizeBytes - a.sizeBytes;
+        }
+
+        return a.displayName.localeCompare(b.displayName);
+      });
+  }, [modQuery, modSortField, modStatusFilter, mods]);
+  const filteredEnabledCount = filteredMods.filter(
+    (entry) => entry.enabled === true,
+  ).length;
+  const filteredDisabledCount = filteredMods.filter(
+    (entry) => entry.enabled === false,
+  ).length;
+  const allModsEnabled = mods.length > 0 && disabledModsCount === 0;
+  const allModsDisabled = mods.length > 0 && enabledModsCount === 0;
 
   return (
     <Tabs
@@ -745,44 +666,81 @@ export function InstanceCatalogTabs({
       <TabsContent value="mods" className="w-full min-w-0">
         <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
           <div className="min-w-0 overflow-hidden rounded-lg border border-border bg-card/70 shadow-[0_22px_70px_-58px_black]">
-            <div className="flex flex-col gap-2 border-b border-border bg-background/35 p-3 md:flex-row md:flex-wrap md:items-center">
-              <InputGroup className="w-full md:w-64">
+            <div className="grid gap-2 border-b border-border bg-background/35 p-3 sm:grid-cols-3">
+              {[
+                ["Enabled", enabledModsCount],
+                ["Disabled", disabledModsCount],
+                ["Total", mods.length],
+              ].map(([label, value]) => (
+                <div
+                  className="min-w-0 rounded-md border border-border bg-background/50 px-3 py-2"
+                  key={label}
+                >
+                  <div className="text-muted-foreground text-xs">{label}</div>
+                  <div className="mt-0.5 truncate font-heading font-semibold text-lg">
+                    {value}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="grid min-w-0 gap-2 border-b border-border bg-background/25 p-3 lg:grid-cols-[minmax(14rem,1fr)_10rem_11rem]">
+              <InputGroup className="h-9 min-w-0">
                 <InputGroupAddon>
                   <SearchIcon />
                 </InputGroupAddon>
                 <InputGroupInput
                   aria-label="Search mods"
-                  disabled
-                  placeholder="Local mod search is coming soon"
+                  onChange={(event) => setModQuery(event.target.value)}
+                  placeholder="Search local mods"
+                  value={modQuery}
                 />
               </InputGroup>
 
-              <Select value="all">
-                <SelectTrigger className="w-full md:w-36">
+              <Select
+                onValueChange={(value) =>
+                  setModStatusFilter(value as ModStatusFilter)
+                }
+                value={modStatusFilter}
+              >
+                <SelectTrigger className="h-9 w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
-                    <SelectItem value="all">Filter: All</SelectItem>
+                    {MOD_STATUS_FILTERS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
                   </SelectGroup>
                 </SelectContent>
               </Select>
 
-              <Select value="name">
-                <SelectTrigger className="w-full md:w-40">
+              <Select
+                onValueChange={(value) =>
+                  setModSortField(value as ModSortField)
+                }
+                value={modSortField}
+              >
+                <SelectTrigger className="h-9 w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
-                    <SelectItem value="name">Sort: File Name</SelectItem>
+                    {MOD_SORT_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
                   </SelectGroup>
                 </SelectContent>
               </Select>
 
-              <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-3 md:ml-auto md:w-auto md:flex md:flex-wrap">
+              <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2 lg:col-span-3 xl:grid-cols-4">
                 <Button
-                  className="w-full md:w-auto"
-                  disabled={mutating || mods.length === 0}
+                  className="w-full"
+                  disabled={mutating || mods.length === 0 || allModsEnabled}
                   onClick={() => onSetAllModsEnabled(true)}
                   size="sm"
                   variant="outline"
@@ -791,8 +749,8 @@ export function InstanceCatalogTabs({
                   Enable All
                 </Button>
                 <Button
-                  className="w-full md:w-auto"
-                  disabled={mutating || mods.length === 0}
+                  className="w-full"
+                  disabled={mutating || mods.length === 0 || allModsDisabled}
                   onClick={() => onSetAllModsEnabled(false)}
                   size="sm"
                   variant="outline"
@@ -801,12 +759,21 @@ export function InstanceCatalogTabs({
                   Disable All
                 </Button>
                 <Button
-                  className="w-full md:w-auto"
+                  className="w-full"
                   onClick={onRefreshContent}
                   size="sm"
+                  variant="outline"
                 >
                   <RefreshCwIcon data-icon="inline-start" />
                   Refresh
+                </Button>
+                <Button
+                  className="w-full"
+                  onClick={() => openExternalPath(instance.folders.mods)}
+                  size="sm"
+                >
+                  <FolderOpenIcon data-icon="inline-start" />
+                  Open Mods Folder
                 </Button>
               </div>
             </div>
@@ -819,96 +786,64 @@ export function InstanceCatalogTabs({
               <div className="p-3">
                 <EmptyPanel
                   action={
-                    <Button
-                      onClick={() => openExternalPath(instance.folders.mods)}
-                      size="sm"
-                      variant="outline"
-                    >
-                      <FolderOpenIcon data-icon="inline-start" />
-                      Open Mods Folder
-                    </Button>
+                    mods.length === 0 ? undefined : (
+                      <Button
+                        onClick={() => {
+                          setModQuery("");
+                          setModStatusFilter("all");
+                        }}
+                        size="sm"
+                        variant="outline"
+                      >
+                        Clear Filters
+                      </Button>
+                    )
                   }
-                  description="Drop .jar files into the instance mods folder and refresh this page."
+                  description={
+                    mods.length === 0
+                      ? "Drop .jar files into the instance mods folder and refresh this page."
+                      : "No local mods match the current search and status filter."
+                  }
                   icon={PuzzleIcon}
-                  title="No local mods found"
+                  title={
+                    mods.length === 0 ? "No local mods found" : "No mods match"
+                  }
                 />
               </div>
             ) : (
-              <>
-                <div className="flex flex-col gap-2 p-3 lg:hidden">
-                  {filteredMods.map((entry) => (
-                    <ModCard
-                      entry={entry}
-                      key={entry.id}
-                      mutating={mutating}
-                      onToggleMod={onToggleMod}
-                    />
-                  ))}
-                </div>
-
-                <div className="hidden lg:block">
-                  <Table className="min-w-[920px]">
-                    <TableHeader className="bg-muted/20">
-                      <TableRow className="hover:bg-transparent">
-                        <TableHead className="w-8">
-                          <Checkbox aria-label="Select all visible mods" />
-                        </TableHead>
-                        <TableHead>Name</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Size</TableHead>
-                        <TableHead>Modified</TableHead>
-                        <TableHead>Type</TableHead>
-                        <TableHead>Path</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredMods.map((entry) => (
-                        <ModTableRow
-                          entry={entry}
-                          key={entry.id}
-                          mutating={mutating}
-                          onToggleMod={onToggleMod}
-                        />
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </>
+              <div className="grid gap-3 p-3 [grid-template-columns:repeat(auto-fit,minmax(min(100%,20rem),1fr))]">
+                {filteredMods.map((entry) => (
+                  <ModCard
+                    entry={entry}
+                    key={entry.id}
+                    mutating={mutating}
+                    onToggleMod={onToggleMod}
+                  />
+                ))}
+              </div>
             )}
 
             <div className="flex flex-col gap-3 border-t border-border bg-background/35 px-3 py-3 text-xs text-muted-foreground sm:flex-row sm:flex-wrap sm:items-center">
               <span>
                 Showing {filteredMods.length} of {mods.length} mods
               </span>
-              <span>{enabledModsCount} enabled</span>
-              <span>{disabledModsCount} disabled</span>
-              <div className="flex items-center gap-1 sm:ml-auto">
-                <Button
-                  aria-label="Previous mod page"
-                  disabled
-                  size="icon-sm"
-                  variant="outline"
-                >
-                  <ChevronLeftIcon />
-                </Button>
-                <Button size="sm">1</Button>
-                <Button
-                  aria-label="Next mod page"
-                  disabled
-                  size="icon-sm"
-                  variant="outline"
-                >
-                  <ChevronRightIcon />
-                </Button>
-              </div>
+              <span>{filteredEnabledCount} enabled in view</span>
+              <span>{filteredDisabledCount} disabled in view</span>
+              <span className="sm:ml-auto">
+                Sorted by{" "}
+                {
+                  MOD_SORT_OPTIONS.find(
+                    (option) => option.value === modSortField,
+                  )?.label
+                }
+              </span>
             </div>
           </div>
 
           <aside className="flex min-w-0 flex-col gap-3">
             <QuickActions
-              instance={instance}
               latestLog={latestLog}
+              logsFolderPath={instance.folders.logs}
               onCreateLaunchPlan={onCreateLaunchPlan}
               onRefreshContent={onRefreshContent}
               onSetActiveTab={onSetActiveTab}
@@ -1037,7 +972,11 @@ export function InstanceCatalogTabs({
       </TabsContent>
 
       <TabsContent value="settings" className="w-full min-w-0">
-        <SettingsGrid instance={instance} />
+        <InstanceSettingsPanel
+          instance={instance}
+          onInstanceDeleted={onInstanceDeleted}
+          onInstanceUpdated={onInstanceUpdated}
+        />
       </TabsContent>
     </Tabs>
   );

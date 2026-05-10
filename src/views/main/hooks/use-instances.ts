@@ -6,7 +6,9 @@ export function useInstances(): {
   data: Array<LauncherInstance> | null;
   loading: boolean;
   error: string | null;
+  removeInstance: (instanceId: string) => void;
   refresh: () => void;
+  upsertInstance: (instance: LauncherInstance) => void;
 } {
   const [data, setData] = useState<Array<LauncherInstance> | null>(null);
   const [loading, setLoading] = useState(true);
@@ -14,6 +16,27 @@ export function useInstances(): {
   const [tick, setTick] = useState(0);
 
   const refresh = useCallback(() => setTick((t) => t + 1), []);
+  const upsertInstance = useCallback((instance: LauncherInstance) => {
+    setData((current) => {
+      const next = current ? [...current] : [];
+      const existingIndex = next.findIndex((item) => item.id === instance.id);
+
+      if (existingIndex >= 0) {
+        next[existingIndex] = instance;
+      } else {
+        next.push(instance);
+      }
+
+      return next.sort((a, b) => a.name.localeCompare(b.name));
+    });
+  }, []);
+  const removeInstance = useCallback((instanceId: string) => {
+    setData((current) =>
+      current
+        ? current.filter((instance) => instance.id !== instanceId)
+        : current,
+    );
+  }, []);
 
   useEffect(() => {
     void tick;
@@ -42,5 +65,5 @@ export function useInstances(): {
     };
   }, [tick]);
 
-  return { data, loading, error, refresh };
+  return { data, loading, error, refresh, removeInstance, upsertInstance };
 }

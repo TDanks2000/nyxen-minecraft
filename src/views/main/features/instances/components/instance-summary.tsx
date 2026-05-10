@@ -95,11 +95,13 @@ export function InstanceSummary({
         />
         <StatCell
           detail={
-            instance.profileId ? "Account selected" : "No account required"
+            instance.profileId
+              ? "Account selected"
+              : "Uses first verified profile"
           }
           icon={ShieldCheckIcon}
           label="Profile"
-          value={instance.profileId ? "Linked" : "Offline Mode"}
+          value={instance.profileId ? "Linked" : "Automatic"}
         />
         <StatCell
           action={

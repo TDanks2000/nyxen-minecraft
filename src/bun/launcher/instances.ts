@@ -1,11 +1,20 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  renameSync,
+  rmSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname } from "node:path";
 import { asc, eq } from "drizzle-orm";
 import type {
   CreateLauncherInstanceInput,
+  DeleteLauncherInstanceInput,
+  DeleteLauncherInstanceResult,
   LauncherInstance,
   ModLoader,
+  UpdateLauncherInstanceInput,
 } from "../../shared/types";
 import { db } from "../db/client";
 import * as schema from "../db/schema";
@@ -13,6 +22,7 @@ import {
   ensureInstanceFolders,
   ensurePrivateDirectory,
   ensurePrivateFile,
+  getInstanceDirectory,
   getInstanceMetadataPath,
   normalizeLauncherPathSegment,
 } from "./paths";
@@ -151,6 +161,27 @@ const parseStringArray = (value: string): Array<string> => {
   }
 
   return [];
+};
+
+const getLauncherInstanceRowOrThrow = (instanceId: string): InstanceRow => {
+  const normalizedId = instanceId.trim();
+
+  if (!normalizedId) {
+    throw new Error("Launcher instance id is required.");
+  }
+
+  const row =
+    db
+      .select()
+      .from(schema.launcherInstances)
+      .where(eq(schema.launcherInstances.id, normalizedId))
+      .get() ?? null;
+
+  if (!row) {
+    throw new Error("Launcher instance does not exist.");
+  }
+
+  return row;
 };
 
 const writeInstanceMetadata = (instance: LauncherInstance): void => {
@@ -326,4 +357,93 @@ export const createLauncherInstance = (
   db.insert(schema.launcherInstances).values(instance).run();
 
   return toInstance(instance);
+};
+
+export const updateLauncherInstance = (
+  input: UpdateLauncherInstanceInput,
+): LauncherInstance => {
+  const existing = getLauncherInstanceRowOrThrow(input.instanceId);
+  const versionId =
+    input.versionId === undefined
+      ? existing.versionId
+      : normalizeVersionId(input.versionId);
+
+  assertVersionExists(versionId);
+
+  const memoryMinMb = normalizeMemory(input.memoryMinMb, existing.memoryMinMb);
+  const memoryMaxMb = Math.max(
+    memoryMinMb,
+    normalizeMemory(input.memoryMaxMb, existing.memoryMaxMb),
+  );
+  const now = new Date().toISOString();
+  const values = {
+    gameArgs:
+      input.gameArgs === undefined
+        ? existing.gameArgs
+        : JSON.stringify(normalizeStringArray(input.gameArgs, "Game args")),
+    iconUrl:
+      input.iconUrl === undefined
+        ? existing.iconUrl
+        : normalizeIconUrl(input.iconUrl ?? undefined),
+    javaArgs:
+      input.javaArgs === undefined
+        ? existing.javaArgs
+        : JSON.stringify(normalizeStringArray(input.javaArgs, "Java args")),
+    javaExecutable:
+      input.javaExecutable === undefined
+        ? existing.javaExecutable
+        : normalizeJavaExecutable(input.javaExecutable ?? undefined),
+    loader:
+      input.loader === undefined
+        ? (existing.loader as ModLoader)
+        : normalizeLoader(input.loader),
+    loaderVersion:
+      input.loaderVersion === undefined
+        ? existing.loaderVersion
+        : normalizeOptionalText(
+            input.loaderVersion ?? undefined,
+            "Loader version",
+          ),
+    memoryMaxMb,
+    memoryMinMb,
+    name: input.name === undefined ? existing.name : normalizeName(input.name),
+    profileId:
+      input.profileId === undefined
+        ? existing.profileId
+        : normalizeProfileId(input.profileId ?? undefined),
+    updatedAt: now,
+    versionId,
+  };
+  const updated = {
+    ...existing,
+    ...values,
+  };
+
+  db.update(schema.launcherInstances)
+    .set(values)
+    .where(eq(schema.launcherInstances.id, existing.id))
+    .run();
+
+  return toInstance(updated);
+};
+
+export const deleteLauncherInstance = (
+  input: DeleteLauncherInstanceInput,
+): DeleteLauncherInstanceResult => {
+  const existing = getLauncherInstanceRowOrThrow(input.instanceId);
+  const deleteFiles = input.deleteFiles === true;
+
+  if (deleteFiles) {
+    rmSync(getInstanceDirectory(existing.id), { force: true, recursive: true });
+  }
+
+  db.delete(schema.launcherInstances)
+    .where(eq(schema.launcherInstances.id, existing.id))
+    .run();
+
+  return {
+    deleted: true,
+    deletedFiles: deleteFiles,
+    instanceId: existing.id,
+  };
 };

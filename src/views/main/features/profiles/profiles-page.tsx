@@ -69,6 +69,9 @@ const getProfileStatus = (
 const formatAccountId = (accountId: string | null): string =>
   accountId ? `${accountId.slice(0, 8)}...${accountId.slice(-4)}` : "No UUID";
 
+const getProfileKindLabel = (profile: LauncherProfile): string =>
+  profile.kind === "offline" ? "Unavailable" : profile.kind;
+
 function MinecraftCharacterPlaceholder() {
   return (
     <div className="flex flex-col items-center gap-0" aria-hidden="true">
@@ -198,7 +201,7 @@ export function ProfilesPage() {
                       <small className="block truncate text-muted-foreground text-sm font-semibold capitalize">
                         {isVerifiedMinecraftProfile(profile)
                           ? formatAccountId(profile.accountId)
-                          : profile.kind}
+                          : getProfileKindLabel(profile)}
                       </small>
                     </div>
                     <Badge variant={status.tone}>{status.label}</Badge>
@@ -235,7 +238,7 @@ export function ProfilesPage() {
               </CardHeader>
               <CardContent className="absolute right-4 bottom-4 left-4 flex flex-wrap gap-2">
                 <Badge variant="outline" className="capitalize">
-                  {primaryProfile.kind}
+                  {getProfileKindLabel(primaryProfile)}
                 </Badge>
                 {isVerifiedMinecraftProfile(primaryProfile) ? (
                   <Badge>

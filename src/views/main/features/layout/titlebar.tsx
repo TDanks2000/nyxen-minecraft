@@ -16,7 +16,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { APP_NAME } from "@/shared/constants";
-import type { LauncherProfile } from "@/shared/types";
+import type { InstanceContent, LauncherProfile } from "@/shared/types";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,6 +29,7 @@ import {
 import { CurseForgeBrowserDialog } from "@/views/main/features/curseforge/components/curseforge-browser-dialog";
 import { toSelectedInstance } from "@/views/main/features/curseforge/curseforge-browser-model";
 import type { SelectedInstance } from "@/views/main/features/curseforge/curseforge-browser-types";
+import { useCurseForgeInstall } from "@/views/main/features/curseforge/use-curseforge-install";
 import { NewInstanceDialog } from "@/views/main/features/instances/components/new-instance-dialog";
 import { AddProfileDialog } from "@/views/main/features/profiles/components/add-profile-dialog";
 import { MinecraftSkinHead } from "@/views/main/features/profiles/components/minecraft-skin";
@@ -86,7 +87,7 @@ const getProfileStateLabel = (profile: LauncherProfile | null): string => {
     return "Online";
   }
 
-  return profile.kind === "microsoft" ? "Needs sign-in" : "Offline";
+  return profile.kind === "microsoft" ? "Needs sign-in" : "Unavailable";
 };
 
 function ProfileFace({
@@ -136,12 +137,17 @@ export function Titlebar() {
   const [isMaximized, setIsMaximized] = useState(false);
   const [addProfileOpen, setAddProfileOpen] = useState(false);
   const [curseForgeOpen, setCurseForgeOpen] = useState(false);
+  const [curseForgeContent, setCurseForgeContent] =
+    useState<InstanceContent | null>(null);
   const [curseForgeInstance, setCurseForgeInstance] =
     useState<SelectedInstance | null>(null);
   const [newInstanceOpen, setNewInstanceOpen] = useState(false);
   const navigate = useNavigate();
   const instances = useInstances();
   const profiles = useProfiles();
+  const curseForgeInstall = useCurseForgeInstall({
+    onContentUpdated: setCurseForgeContent,
+  });
   const curseForgeInstances = useMemo(
     () => (instances.data ?? []).map(toSelectedInstance),
     [instances.data],
@@ -166,6 +172,37 @@ export function Titlebar() {
   useEffect(() => {
     syncWindowState().catch(console.error);
   }, [syncWindowState]);
+
+  useEffect(() => {
+    if (!curseForgeOpen || !curseForgeInstance) {
+      setCurseForgeContent(null);
+      return;
+    }
+
+    let cancelled = false;
+    setCurseForgeContent(null);
+
+    rpc.requestProxy
+      .getInstanceContent({ instanceId: curseForgeInstance.id })
+      .then((content) => {
+        if (!cancelled) {
+          setCurseForgeContent(content);
+        }
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Failed to load installed CurseForge content.";
+        toast.error(message);
+        setCurseForgeContent(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [curseForgeOpen, curseForgeInstance]);
 
   const handleMinimize = useCallback(() => {
     rpc.requestProxy.minimizeWindow(null).catch(console.error);
@@ -374,13 +411,19 @@ export function Titlebar() {
       <NewInstanceDialog
         open={newInstanceOpen}
         onOpenChange={setNewInstanceOpen}
-        onCreated={() => {}}
+        onCreated={() => instances.refresh()}
       />
       <CurseForgeBrowserDialog
         availableInstances={curseForgeInstances}
+        installedContent={curseForgeContent?.curseForge}
+        onCompleteManualInstall={curseForgeInstall.completeManualInstall}
+        onInstall={curseForgeInstall.install}
+        onInstallModpack={curseForgeInstall.installModpack}
+        onOpenManualDownload={curseForgeInstall.openManualDownload}
         open={curseForgeOpen}
         onOpenChange={setCurseForgeOpen}
         onSelectInstance={setCurseForgeInstance}
+        onUpdate={curseForgeInstall.update}
         selectedInstance={curseForgeInstance}
       />
       <AddProfileDialog

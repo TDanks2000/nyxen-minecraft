@@ -1,10 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import type { CurseForgeProjectSummary } from "../src/shared/types";
 import {
+  categoryRequiresInstanceTarget,
   findInstalledCurseForgeItem,
   getCurseForgeActionState,
+  getCurseForgeExpectedFileName,
   hasCurseForgeUpdateAvailable,
+  isCurseForgeCategoryAvailable,
   isCurseForgeItemCompatible,
+  requiresManualCurseForgeDownload,
 } from "../src/views/main/features/curseforge/curseforge-browser-model";
 import type {
   InstalledContentByCategory,
@@ -88,6 +92,41 @@ describe("curseforge browser model", () => {
     ).toBe("select-instance");
   });
 
+  test("treats modpacks as library-level installs instead of instance content", () => {
+    const modpack = createProject({ section: "modpacks" });
+
+    expect(categoryRequiresInstanceTarget("modpacks")).toBe(false);
+    expect(categoryRequiresInstanceTarget("mods")).toBe(true);
+    expect(isCurseForgeCategoryAvailable("modpacks", null)).toBe(true);
+    expect(isCurseForgeCategoryAvailable("modpacks", selectedInstance)).toBe(
+      false,
+    );
+    expect(isCurseForgeItemCompatible(modpack, "modpacks", null)).toBe(true);
+    expect(
+      isCurseForgeItemCompatible(modpack, "modpacks", selectedInstance),
+    ).toBe(false);
+    expect(
+      getCurseForgeActionState({
+        category: "modpacks",
+        failed: false,
+        installedItem: null,
+        item: modpack,
+        pending: false,
+        selectedInstance: null,
+      }),
+    ).toBe("install");
+    expect(
+      getCurseForgeActionState({
+        category: "modpacks",
+        failed: false,
+        installedItem: null,
+        item: modpack,
+        pending: false,
+        selectedInstance,
+      }),
+    ).toBe("incompatible");
+  });
+
   test("detects incompatible Minecraft versions and loaders", () => {
     expect(
       isCurseForgeItemCompatible(
@@ -139,5 +178,36 @@ describe("curseforge browser model", () => {
         selectedInstance,
       }),
     ).toBe("update-available");
+  });
+
+  test("detects manual download requirements from missing download URLs", () => {
+    const directProject = createProject({
+      latestFile: {
+        displayName: "Direct Mod",
+        downloadUrl: "https://downloads.example.test/direct.jar",
+        fileDate: "2024-02-01T00:00:00Z",
+        fileName: "direct.jar",
+        gameVersions: ["1.20.4"],
+        id: 123,
+        modLoaders: ["fabric"],
+        releaseType: "release",
+      },
+    });
+    const manualProject = createProject({
+      latestFile: {
+        displayName: "Manual Mod",
+        downloadUrl: null,
+        fileDate: "2024-02-01T00:00:00Z",
+        fileName: "manual.jar",
+        gameVersions: ["1.20.4"],
+        id: 456,
+        modLoaders: ["fabric"],
+        releaseType: "release",
+      },
+    });
+
+    expect(requiresManualCurseForgeDownload(directProject)).toBe(false);
+    expect(requiresManualCurseForgeDownload(manualProject)).toBe(true);
+    expect(getCurseForgeExpectedFileName(manualProject)).toBe("manual.jar");
   });
 });

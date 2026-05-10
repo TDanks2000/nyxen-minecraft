@@ -171,12 +171,12 @@ export function LaunchPlanSheet({
                     </p>
                   ) : (
                     <p className="text-sm text-amber-500 font-medium">
-                      Offline mode
+                      No verified profile
                     </p>
                   )}
                   {!plan.profile && (
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Sign in to a Microsoft account to play online.
+                      Add a verified Microsoft profile before launching.
                     </p>
                   )}
                 </div>

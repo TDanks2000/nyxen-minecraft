@@ -1,13 +1,14 @@
+import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { CurseForgeBrowserDialog } from "@/views/main/features/curseforge/components/curseforge-browser-dialog";
 import { toSelectedInstance } from "@/views/main/features/curseforge/curseforge-browser-model";
+import { useCurseForgeInstall } from "@/views/main/features/curseforge/use-curseforge-install";
 import { InstanceCatalogTabs } from "@/views/main/features/instances/components/instance-catalog-tabs";
 import { InstanceDetailsHeader } from "@/views/main/features/instances/components/instance-details-header";
 import {
   InstanceDetailsLoadingState,
   InstanceDetailsNotFoundState,
 } from "@/views/main/features/instances/components/instance-details-states";
-import { InstanceSummary } from "@/views/main/features/instances/components/instance-summary";
 import { LaunchPlanSheet } from "@/views/main/features/instances/components/launch-plan-sheet";
 import { useInstanceCatalog } from "@/views/main/features/instances/hooks/use-instance-catalog";
 import { useLaunchPlan } from "@/views/main/features/instances/hooks/use-launch-plan";
@@ -16,11 +17,15 @@ import { useInstances } from "@/views/main/hooks/use-instances";
 export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
   const [activeTab, setActiveTab] = useState("mods");
   const [curseForgeOpen, setCurseForgeOpen] = useState(false);
+  const navigate = useNavigate();
   const instancesHook = useInstances();
   const launchPlan = useLaunchPlan();
   const instance =
     instancesHook.data?.find((item) => item.id === instanceId) ?? null;
   const catalog = useInstanceCatalog(instance);
+  const curseForgeInstall = useCurseForgeInstall({
+    onContentUpdated: catalog.replaceContent,
+  });
 
   if (instancesHook.loading) return <InstanceDetailsLoadingState />;
   if (!instance) return <InstanceDetailsNotFoundState />;
@@ -47,14 +52,6 @@ export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
       />
 
       <div className="mx-auto flex w-full max-w-[90rem] min-w-0 flex-col gap-4 px-4 pt-4 pb-8 sm:px-5">
-        <InstanceSummary
-          enabledModsCount={catalog.enabledMods.length}
-          instance={instance}
-          resourcePackCount={catalog.resourcePacks.length}
-          shaderPackCount={catalog.shaderPacks.length}
-          totalModsCount={catalog.mods.length}
-        />
-
         <InstanceCatalogTabs
           activeTab={activeTab}
           content={catalog.content}
@@ -66,6 +63,13 @@ export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
           mutating={catalog.mutating}
           mods={catalog.mods}
           onCreateLaunchPlan={playInstance}
+          onInstanceDeleted={(deletedInstanceId) => {
+            instancesHook.removeInstance(deletedInstanceId);
+            void navigate({ to: "/instances" });
+          }}
+          onInstanceUpdated={(updatedInstance) => {
+            instancesHook.upsertInstance(updatedInstance);
+          }}
           onRefreshContent={() => {
             void catalog.refreshContent();
           }}
@@ -91,9 +95,14 @@ export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
       />
       <CurseForgeBrowserDialog
         availableInstances={[selectedCurseForgeInstance]}
+        installedContent={catalog.content?.curseForge}
         initialCategory="mods"
+        onCompleteManualInstall={curseForgeInstall.completeManualInstall}
+        onInstall={curseForgeInstall.install}
+        onOpenManualDownload={curseForgeInstall.openManualDownload}
         open={curseForgeOpen}
         onOpenChange={setCurseForgeOpen}
+        onUpdate={curseForgeInstall.update}
         selectedInstance={selectedCurseForgeInstance}
       />
     </div>

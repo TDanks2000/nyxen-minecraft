@@ -17,6 +17,7 @@ export type SelectedInstance = {
 export type InstalledCurseForgeItem = {
   projectId: string;
   fileId?: string;
+  fileName?: string;
   slug?: string;
   name: string;
   version?: string;
@@ -47,6 +48,17 @@ export type CurseForgeInstallParams = CurseForgeBrowserActionParams & {
   item: CurseForgeItem;
 };
 
+export type CurseForgeInstallModpackParams = {
+  category: Extract<CurseForgeCategory, "modpacks">;
+  item: CurseForgeItem;
+};
+
+export type CurseForgeManualInstallParams = {
+  category: CurseForgeCategory;
+  instance: SelectedInstance | null;
+  item: CurseForgeItem;
+};
+
 export type CurseForgeUninstallParams = CurseForgeBrowserActionParams & {
   item: InstalledCurseForgeItem;
 };
@@ -63,8 +75,17 @@ export type CurseForgeBrowserDialogProps = {
   selectedInstance?: SelectedInstance | null;
   availableInstances?: Array<SelectedInstance>;
   installedContent?: InstalledContentByCategory;
-  onSelectInstance?: (instance: SelectedInstance) => void;
+  onSelectInstance?: (instance: SelectedInstance | null) => void;
   onInstall?: (params: CurseForgeInstallParams) => Promise<void> | void;
+  onInstallModpack?: (
+    params: CurseForgeInstallModpackParams,
+  ) => Promise<void> | void;
+  onOpenManualDownload?: (
+    params: CurseForgeManualInstallParams,
+  ) => Promise<void> | void;
+  onCompleteManualInstall?: (
+    params: CurseForgeManualInstallParams,
+  ) => Promise<void> | void;
   onUninstall?: (params: CurseForgeUninstallParams) => Promise<void> | void;
   onUpdate?: (params: CurseForgeUpdateParams) => Promise<void> | void;
   onOpenDetails?: (item: CurseForgeItem, category: CurseForgeCategory) => void;

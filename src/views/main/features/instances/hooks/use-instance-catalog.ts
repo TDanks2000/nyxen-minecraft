@@ -44,6 +44,15 @@ export function useInstanceCatalog(instance: LauncherInstance | null) {
     void refreshContent({ silent: false });
   }, [refreshContent]);
 
+  const replaceContent = useCallback(
+    (next: InstanceContent) => {
+      if (!instance || next.instanceId !== instance.id) return;
+      setContent(next);
+      setError(null);
+    },
+    [instance],
+  );
+
   const enabledMods = useMemo(
     () => content?.mods.filter((mod) => mod.enabled === true) ?? [],
     [content?.mods],
@@ -121,6 +130,7 @@ export function useInstanceCatalog(instance: LauncherInstance | null) {
     loading,
     mods: content?.mods ?? [],
     mutating,
+    replaceContent,
     refreshContent,
     resourcePacks: content?.resourcePacks ?? [],
     screenshots: content?.screenshots ?? [],

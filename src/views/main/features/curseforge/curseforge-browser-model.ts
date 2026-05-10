@@ -77,6 +77,24 @@ export const categorySupportsLoaderFilter = (
   category: CurseForgeCategory,
 ): boolean => category === "mods" || category === "modpacks";
 
+export const categoryRequiresInstanceTarget = (
+  category: CurseForgeCategory,
+): boolean => category !== "modpacks";
+
+export const isCurseForgeCategoryAvailable = (
+  category: CurseForgeCategory,
+  selectedInstance: SelectedInstance | null,
+): boolean => !(category === "modpacks" && selectedInstance);
+
+export const getCurseForgeExpectedFileName = (
+  item: CurseForgeProjectSummary,
+): string | null =>
+  item.latestFile?.fileName || item.latestFile?.displayName || null;
+
+export const requiresManualCurseForgeDownload = (
+  item: CurseForgeProjectSummary,
+): boolean => Boolean(item.latestFile && !item.latestFile.downloadUrl);
+
 export const getCurseForgeCategoryLabel = (
   category: CurseForgeCategory,
 ): string =>
@@ -173,6 +191,8 @@ export const isCurseForgeItemCompatible = (
   category: CurseForgeCategory,
   selectedInstance: SelectedInstance | null,
 ): boolean => {
+  if (category === "modpacks") return !selectedInstance;
+
   if (!selectedInstance) return false;
 
   const minecraftVersions = getProjectMinecraftVersions(item);
@@ -206,7 +226,9 @@ export const getCurseForgeActionState = ({
   pending: boolean;
   selectedInstance: SelectedInstance | null;
 }): CurseForgeBrowserActionState => {
-  if (!selectedInstance) return "select-instance";
+  if (categoryRequiresInstanceTarget(category) && !selectedInstance) {
+    return "select-instance";
+  }
   if (failed) return "failed";
   if (pending) return "installing";
 

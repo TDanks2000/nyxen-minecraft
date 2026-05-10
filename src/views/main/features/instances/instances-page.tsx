@@ -174,7 +174,7 @@ function InstanceCard({
       </CardContent>
       <CardFooter className="justify-between gap-2">
         <Badge variant={instance.profileId ? "secondary" : "outline"}>
-          {instance.profileId ? "Profile linked" : "Offline"}
+          {instance.profileId ? "Profile linked" : "Auto profile"}
         </Badge>
         <div className="flex shrink-0 items-center gap-1.5">
           <Link

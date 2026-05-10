@@ -29,6 +29,7 @@ import {
   getAuthorLine,
   getCurseForgeCategoryLabel,
   getVisibleMinecraftVersions,
+  requiresManualCurseForgeDownload,
 } from "@/views/main/features/curseforge/curseforge-browser-model";
 import type {
   CurseForgeBrowserActionState,
@@ -44,6 +45,7 @@ type CurseForgeResultCardProps = {
   installActionsConfigured: boolean;
   installedItem: InstalledCurseForgeItem | null;
   item: CurseForgeProjectSummary;
+  manualDownloadRequired: boolean;
   onDetails: () => void;
   onPrimaryAction: () => void;
   onSecondaryAction?: () => void;
@@ -61,7 +63,35 @@ const actionLabelByState: Record<CurseForgeBrowserActionState, string> = {
   "update-available": "Update",
 };
 
-function ActionIcon({ state }: { state: CurseForgeBrowserActionState }) {
+function getActionLabel(
+  state: CurseForgeBrowserActionState,
+  category: CurseForgeCategory,
+  manualDownloadRequired: boolean,
+) {
+  if (manualDownloadRequired && state === "update-available") {
+    return "Manual update";
+  }
+
+  if (manualDownloadRequired && state === "install") {
+    return "Manual install";
+  }
+
+  if (state === "install" && category === "modpacks") {
+    return "Install pack";
+  }
+
+  return actionLabelByState[state];
+}
+
+function ActionIcon({
+  category,
+  manualDownloadRequired,
+  state,
+}: {
+  category: CurseForgeCategory;
+  manualDownloadRequired: boolean;
+  state: CurseForgeBrowserActionState;
+}) {
   if (state === "installed") return <CheckIcon data-icon="inline-start" />;
   if (state === "installing") {
     return <RefreshCcwIcon className="animate-spin" data-icon="inline-start" />;
@@ -72,6 +102,10 @@ function ActionIcon({ state }: { state: CurseForgeBrowserActionState }) {
   if (state === "failed" || state === "incompatible") {
     return <AlertTriangleIcon data-icon="inline-start" />;
   }
+  if (manualDownloadRequired) {
+    return <ExternalLinkIcon data-icon="inline-start" />;
+  }
+  if (category === "modpacks") return <PackageIcon data-icon="inline-start" />;
 
   return <DownloadIcon data-icon="inline-start" />;
 }
@@ -139,6 +173,9 @@ function ProjectBadges({
     <div className="flex flex-wrap gap-1.5">
       <Badge variant="secondary">{getCurseForgeCategoryLabel(category)}</Badge>
       {installedItem ? <Badge variant="default">Installed</Badge> : null}
+      {requiresManualCurseForgeDownload(item) ? (
+        <Badge variant="outline">Manual download</Badge>
+      ) : null}
       {versions.map((version) => (
         <Badge key={version} variant="outline">
           {version}
@@ -160,6 +197,7 @@ export function CurseForgeResultCard({
   installActionsConfigured,
   installedItem,
   item,
+  manualDownloadRequired,
   onDetails,
   onPrimaryAction,
   onSecondaryAction,
@@ -248,8 +286,12 @@ export function CurseForgeResultCard({
               title={actionDisabledReason ?? undefined}
               variant={actionState === "failed" ? "destructive" : "default"}
             >
-              <ActionIcon state={actionState} />
-              {actionLabelByState[actionState]}
+              <ActionIcon
+                category={category}
+                manualDownloadRequired={manualDownloadRequired}
+                state={actionState}
+              />
+              {getActionLabel(actionState, category, manualDownloadRequired)}
             </Button>
           ) : (
             <Button onClick={onDetails} size="sm" variant="outline">

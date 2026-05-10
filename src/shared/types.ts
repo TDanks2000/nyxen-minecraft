@@ -360,6 +360,9 @@ export type InstanceContent = {
     shaderPacks: number;
     worlds: number;
   };
+  curseForge: Partial<
+    Record<CurseForgeCategory, Array<InstalledCurseForgeFile>>
+  >;
   instanceId: string;
   logs: Array<InstanceFileEntry>;
   mods: Array<InstanceFileEntry>;
@@ -381,6 +384,44 @@ export type SetInstanceModEnabledInput = {
   instanceId: string;
 };
 
+export type InstalledCurseForgeFile = {
+  category: CurseForgeCategory;
+  fileId: string;
+  fileName: string;
+  installedAt: string;
+  name: string;
+  projectId: string;
+  slug?: string;
+  version?: string;
+};
+
+export type DownloadCurseForgeFileInput = {
+  category: CurseForgeCategory;
+  file: CurseForgeProjectFileSummary;
+  instanceId?: string;
+  projectId: number;
+  projectName: string;
+  projectSlug?: string;
+};
+
+export type DownloadCurseForgeFileResult = {
+  category: CurseForgeCategory;
+  content: InstanceContent | null;
+  fileName: string;
+  installedItem: InstalledCurseForgeFile | null;
+  path: string;
+};
+
+export type InstallDownloadedCurseForgeFileInput =
+  DownloadCurseForgeFileInput & {
+    downloadsDirectory?: string;
+  };
+
+export type InstallDownloadedCurseForgeFileResult =
+  DownloadCurseForgeFileResult & {
+    sourcePath: string;
+  };
+
 export type CreateLauncherInstanceInput = {
   gameArgs?: Array<string>;
   iconUrl?: string;
@@ -393,6 +434,32 @@ export type CreateLauncherInstanceInput = {
   name: string;
   profileId?: string;
   versionId: string;
+};
+
+export type UpdateLauncherInstanceInput = {
+  gameArgs?: Array<string>;
+  iconUrl?: string | null;
+  instanceId: string;
+  javaArgs?: Array<string>;
+  javaExecutable?: string | null;
+  loader?: ModLoader;
+  loaderVersion?: string | null;
+  memoryMaxMb?: number;
+  memoryMinMb?: number;
+  name?: string;
+  profileId?: string | null;
+  versionId?: string;
+};
+
+export type DeleteLauncherInstanceInput = {
+  deleteFiles?: boolean;
+  instanceId: string;
+};
+
+export type DeleteLauncherInstanceResult = {
+  deleted: boolean;
+  deletedFiles: boolean;
+  instanceId: string;
 };
 
 export type LaunchPlanMissingArtifact = {

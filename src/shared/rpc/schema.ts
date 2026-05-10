@@ -8,10 +8,16 @@ import type {
   CurseForgeSearchResult,
   CurseForgeStatus,
   DatabaseStatus,
+  DeleteLauncherInstanceInput,
+  DeleteLauncherInstanceResult,
   DownloadArtifactsInput,
   DownloadArtifactsResult,
+  DownloadCurseForgeFileInput,
+  DownloadCurseForgeFileResult,
   GetInstanceContentInput,
   GetMinecraftVersionDetailsInput,
+  InstallDownloadedCurseForgeFileInput,
+  InstallDownloadedCurseForgeFileResult,
   InstanceContent,
   LauncherInstance,
   LauncherProfile,
@@ -32,6 +38,7 @@ import type {
   SetInstanceModEnabledInput,
   SettingsStatus,
   SettingValue,
+  UpdateLauncherInstanceInput,
 } from "../types";
 
 export type MainViewRPC = {
@@ -106,6 +113,14 @@ export type MainViewRPC = {
         params: CreateLauncherInstanceInput;
         response: LauncherInstance;
       };
+      updateLauncherInstance: {
+        params: UpdateLauncherInstanceInput;
+        response: LauncherInstance;
+      };
+      deleteLauncherInstance: {
+        params: DeleteLauncherInstanceInput;
+        response: DeleteLauncherInstanceResult;
+      };
       listLauncherInstances: {
         params: null;
         response: Array<LauncherInstance>;
@@ -125,6 +140,14 @@ export type MainViewRPC = {
       downloadArtifacts: {
         params: DownloadArtifactsInput;
         response: DownloadArtifactsResult;
+      };
+      downloadCurseForgeFile: {
+        params: DownloadCurseForgeFileInput;
+        response: DownloadCurseForgeFileResult;
+      };
+      installDownloadedCurseForgeFile: {
+        params: InstallDownloadedCurseForgeFileInput;
+        response: InstallDownloadedCurseForgeFileResult;
       };
       launchInstance: {
         params: LaunchInstanceInput;

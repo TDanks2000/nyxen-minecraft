@@ -824,6 +824,61 @@ describe("launcher backend", () => {
     expect((rejection as Error).message).toContain("does not own Minecraft");
   });
 
+  test("updates and deletes launcher instance settings", async () => {
+    const {
+      createLauncherInstance,
+      deleteLauncherInstance,
+      getLauncherInstance,
+      updateLauncherInstance,
+    } = await import("../src/bun/launcher/instances");
+    const { refreshMinecraftVersionManifest } = await import(
+      "../src/bun/launcher/versions"
+    );
+
+    await refreshMinecraftVersionManifest({ fetcher: fakeFetch });
+
+    const instance = createLauncherInstance({
+      memoryMaxMb: 2048,
+      name: "Editable Instance",
+      versionId: "1.20.4",
+    });
+    const updated = updateLauncherInstance({
+      gameArgs: ["--width", "1280"],
+      instanceId: instance.id,
+      javaArgs: ["-XX:+UseG1GC"],
+      loader: "fabric",
+      loaderVersion: "0.15.7",
+      memoryMaxMb: 6144,
+      memoryMinMb: 1024,
+      name: "Edited Instance",
+      versionId: "1.20.4",
+    });
+    const metadata = JSON.parse(readFileSync(updated.metadataPath, "utf8"));
+
+    expect(updated.name).toBe("Edited Instance");
+    expect(updated.loader).toBe("fabric");
+    expect(updated.loaderVersion).toBe("0.15.7");
+    expect(updated.memoryMinMb).toBe(1024);
+    expect(updated.memoryMaxMb).toBe(6144);
+    expect(updated.javaArgs).toEqual(["-XX:+UseG1GC"]);
+    expect(updated.gameArgs).toEqual(["--width", "1280"]);
+    expect(metadata.name).toBe("Edited Instance");
+    expect(metadata.loader).toBe("fabric");
+
+    const result = deleteLauncherInstance({
+      deleteFiles: true,
+      instanceId: instance.id,
+    });
+
+    expect(result).toEqual({
+      deleted: true,
+      deletedFiles: true,
+      instanceId: instance.id,
+    });
+    expect(getLauncherInstance(instance.id)).toBeNull();
+    expect(existsSync(instance.instanceDirectory)).toBe(false);
+  });
+
   test("returns pending while Minecraft ownership checks run in the background", async () => {
     const { completeMicrosoftProfileLogin } = await import(
       "../src/bun/launcher/microsoft-auth"
@@ -1202,6 +1257,124 @@ describe("launcher backend", () => {
         instanceId: instance.id,
       }),
     ).toThrow("File name is invalid.");
+  });
+
+  test("downloads CurseForge files into instance folders and metadata", async () => {
+    const { downloadCurseForgeFile } = await import(
+      "../src/bun/launcher/instance-content"
+    );
+    const { createLauncherInstance } = await import(
+      "../src/bun/launcher/instances"
+    );
+    const { refreshMinecraftVersionManifest } = await import(
+      "../src/bun/launcher/versions"
+    );
+
+    await refreshMinecraftVersionManifest({ fetcher: fakeFetch });
+
+    const instance = createLauncherInstance({
+      name: "CurseForge Direct Install",
+      versionId: "1.20.4",
+    });
+    const requests: Array<string> = [];
+
+    const result = await downloadCurseForgeFile(
+      {
+        category: "mods",
+        file: {
+          displayName: "Example Mod 1.0",
+          downloadUrl: "https://downloads.example.test/example-mod.jar",
+          fileDate: "2024-02-01T00:00:00Z",
+          fileName: "example-mod.jar",
+          gameVersions: ["1.20.4"],
+          id: 456,
+          modLoaders: ["fabric"],
+          releaseType: "release",
+        },
+        instanceId: instance.id,
+        projectId: 123,
+        projectName: "Example Mod",
+        projectSlug: "example-mod",
+      },
+      {
+        fetcher: async (input) => {
+          requests.push(input.toString());
+          return new Response("mod-data", {
+            headers: { "content-length": "8" },
+          });
+        },
+      },
+    );
+
+    expect(requests).toEqual([
+      "https://downloads.example.test/example-mod.jar",
+    ]);
+    expect(result.fileName).toBe("example-mod.jar");
+    expect(
+      readFileSync(join(instance.folders.mods, "example-mod.jar"), "utf8"),
+    ).toBe("mod-data");
+    expect(result.content?.counts.mods).toBe(1);
+    expect(result.content?.curseForge.mods?.[0]).toMatchObject({
+      category: "mods",
+      fileId: "456",
+      fileName: "example-mod.jar",
+      name: "Example Mod",
+      projectId: "123",
+      slug: "example-mod",
+    });
+  });
+
+  test("installs manually downloaded CurseForge files from Downloads", async () => {
+    const { installDownloadedCurseForgeFile } = await import(
+      "../src/bun/launcher/instance-content"
+    );
+    const { createLauncherInstance } = await import(
+      "../src/bun/launcher/instances"
+    );
+    const { refreshMinecraftVersionManifest } = await import(
+      "../src/bun/launcher/versions"
+    );
+
+    await refreshMinecraftVersionManifest({ fetcher: fakeFetch });
+
+    const instance = createLauncherInstance({
+      name: "CurseForge Manual Install",
+      versionId: "1.20.4",
+    });
+    const downloadsDirectory = join(dataRoot, "manual-downloads");
+    mkdirSync(downloadsDirectory, { recursive: true });
+    writeFileSync(join(downloadsDirectory, "manual-mod.jar"), "manual-data");
+
+    const result = installDownloadedCurseForgeFile({
+      category: "mods",
+      downloadsDirectory,
+      file: {
+        displayName: "Manual Mod 1.0",
+        downloadUrl: null,
+        fileDate: "2024-02-01T00:00:00Z",
+        fileName: "manual-mod.jar",
+        gameVersions: ["1.20.4"],
+        id: 789,
+        modLoaders: ["fabric"],
+        releaseType: "release",
+      },
+      instanceId: instance.id,
+      projectId: 321,
+      projectName: "Manual Mod",
+      projectSlug: "manual-mod",
+    });
+
+    expect(result.sourcePath).toBe(join(downloadsDirectory, "manual-mod.jar"));
+    expect(
+      readFileSync(join(instance.folders.mods, "manual-mod.jar"), "utf8"),
+    ).toBe("manual-data");
+    expect(existsSync(join(downloadsDirectory, "manual-mod.jar"))).toBe(true);
+    expect(result.content?.curseForge.mods?.[0]).toMatchObject({
+      fileId: "789",
+      fileName: "manual-mod.jar",
+      projectId: "321",
+      slug: "manual-mod",
+    });
   });
 
   test("searches CurseForge modpacks through the backend API client", async () => {

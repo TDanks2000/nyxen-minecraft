@@ -2,17 +2,13 @@ import { Link } from "@tanstack/react-router";
 import { formatDistanceToNow } from "date-fns";
 import {
   ArrowLeftIcon,
-  CheckCircle2Icon,
   ChevronDownIcon,
-  Clock3Icon,
   DownloadIcon,
   FolderOpenIcon,
   HammerIcon,
   MoreHorizontalIcon,
-  PackageIcon,
   PlayIcon,
   Settings2Icon,
-  SparklesIcon,
 } from "lucide-react";
 import type { LauncherInstance, ModLoader } from "@/shared/types";
 import { Badge } from "@/views/main/components/ui/badge";
@@ -113,8 +109,8 @@ export function InstanceDetailsHeader({
         aria-hidden="true"
       />
 
-      <div className="relative mx-auto grid max-w-[90rem] gap-4 px-4 py-4 sm:px-5 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)] xl:grid-cols-[minmax(0,1fr)_16rem_minmax(24rem,32rem)]">
-        <div className="flex min-w-0 flex-col justify-between gap-5 lg:col-span-2 xl:col-span-1">
+      <div className="relative mx-auto grid max-w-[90rem] gap-4 px-4 py-4 sm:px-5 lg:grid-cols-[minmax(0,1fr)_minmax(22rem,30rem)]">
+        <div className="flex min-w-0 flex-col justify-between gap-5">
           <div className="flex flex-col gap-3">
             <Button
               render={<Link to="/instances" />}
@@ -135,6 +131,11 @@ export function InstanceDetailsHeader({
               <h1 className="min-w-0 flex-1 basis-56 truncate font-heading text-3xl font-black leading-none tracking-normal text-foreground sm:text-4xl">
                 {instance.name}
               </h1>
+              <Badge variant={warningCount > 0 ? "outline" : "default"}>
+                {warningCount > 0
+                  ? `${warningCount} warning${warningCount === 1 ? "" : "s"}`
+                  : "Ready"}
+              </Badge>
             </div>
 
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground sm:text-sm">
@@ -173,12 +174,21 @@ export function InstanceDetailsHeader({
 
             <Button
               className="w-full sm:w-auto"
+              onClick={onOpenSettings}
+              size="lg"
+              variant="outline"
+            >
+              <Settings2Icon data-icon="inline-start" />
+              Settings
+            </Button>
+            <Button
+              className="w-full sm:w-auto"
               onClick={onBrowseCurseForge}
               size="lg"
               variant="outline"
             >
               <DownloadIcon data-icon="inline-start" />
-              Browse CurseForge
+              CurseForge
             </Button>
             <Button
               className="w-full sm:w-auto"
@@ -187,16 +197,7 @@ export function InstanceDetailsHeader({
               variant="outline"
             >
               <FolderOpenIcon data-icon="inline-start" />
-              Open Folder
-            </Button>
-            <Button
-              className="w-full sm:w-auto"
-              onClick={onOpenSettings}
-              size="lg"
-              variant="outline"
-            >
-              <Settings2Icon data-icon="inline-start" />
-              Instance Settings
+              Folder
             </Button>
             <Button
               aria-label="Open instance metadata"
@@ -206,34 +207,6 @@ export function InstanceDetailsHeader({
               variant="outline"
             >
               <MoreHorizontalIcon />
-            </Button>
-          </div>
-        </div>
-
-        <div className="flex min-w-0 items-start xl:justify-center">
-          <div className="flex h-full w-full flex-col justify-between rounded-lg border border-border bg-card/70 p-4 shadow-[0_24px_70px_-52px_black] backdrop-blur">
-            <div className="flex items-start gap-3">
-              <CheckCircle2Icon className="mt-1 size-8 shrink-0 text-primary" />
-              <div className="min-w-0">
-                <div className="font-heading text-lg font-semibold leading-tight">
-                  Ready to play
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  {warningCount > 0
-                    ? `${warningCount} local warning${warningCount === 1 ? "" : "s"}`
-                    : "All systems go!"}
-                </div>
-              </div>
-            </div>
-            <Button
-              disabled={planLoading}
-              onClick={onPlay}
-              size="sm"
-              variant="outline"
-              className="mt-4 w-fit"
-            >
-              <SparklesIcon data-icon="inline-start" />
-              View Launch Report
             </Button>
           </div>
         </div>
@@ -277,29 +250,6 @@ export function InstanceDetailsHeader({
               <div className="text-xs text-muted-foreground">Shader Packs</div>
               <div className="mt-1 font-heading text-xl font-black leading-none">
                 {shaderPackCount}
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 divide-y divide-border/70 bg-background/45 sm:grid-cols-2 sm:divide-x sm:divide-y-0">
-            <div className="min-w-0 px-4 py-3">
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <PackageIcon className="size-3.5" />
-                Last updated
-              </div>
-              <div className="mt-1 truncate text-sm font-semibold">
-                {formatDistanceToNow(new Date(instance.updatedAt), {
-                  addSuffix: true,
-                })}
-              </div>
-            </div>
-            <div className="min-w-0 px-4 py-3">
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Clock3Icon className="size-3.5" />
-                Last launched
-              </div>
-              <div className="mt-1 truncate text-sm font-semibold">
-                {lastPlayed}
               </div>
             </div>
           </div>

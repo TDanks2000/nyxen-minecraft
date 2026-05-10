@@ -85,12 +85,16 @@ export {
   searchCurseForgeProjects,
 } from "../../launcher/curseforge";
 export {
+  downloadCurseForgeFile,
   getInstanceContent,
+  installDownloadedCurseForgeFile,
   setInstanceModEnabled,
 } from "../../launcher/instance-content";
 export {
   createLauncherInstance,
+  deleteLauncherInstance,
   listLauncherInstances,
+  updateLauncherInstance,
 } from "../../launcher/instances";
 export { createLaunchPlan } from "../../launcher/launch-plan";
 export { listLoaderVersions } from "../../launcher/loader-versions";
