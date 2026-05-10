@@ -269,7 +269,6 @@ export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
           instance={instance}
           mutating={catalog.mutating}
           mods={catalog.mods}
-          onCreateLaunchPlan={viewLaunchPlan}
           onInstanceDeleted={(deletedInstanceId) => {
             instancesHook.removeInstance(deletedInstanceId);
             void navigate({ to: "/instances" });

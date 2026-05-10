@@ -17,7 +17,6 @@ import {
   ShieldAlertIcon,
   SlidersHorizontalIcon,
   TerminalSquareIcon,
-  WrenchIcon,
   ZapIcon,
 } from "lucide-react";
 import { type ElementType, useMemo, useState } from "react";
@@ -85,7 +84,6 @@ type InstanceCatalogTabsProps = {
   logs: Array<InstanceFileEntry>;
   mods: Array<InstanceFileEntry>;
   mutating: boolean;
-  onCreateLaunchPlan: () => void;
   onInstanceDeleted: (instanceId: string) => void;
   onInstanceUpdated: (instance: LauncherInstance) => void;
   onRefreshContent: () => void;
@@ -400,13 +398,11 @@ function ModCard({
 function QuickActions({
   latestLog,
   logsFolderPath,
-  onCreateLaunchPlan,
   onRefreshContent,
   onSetActiveTab,
 }: {
   latestLog: InstanceFileEntry | null;
   logsFolderPath: string;
-  onCreateLaunchPlan: () => void;
   onRefreshContent: () => void;
   onSetActiveTab: (tab: string) => void;
 }) {
@@ -433,10 +429,6 @@ function QuickActions({
         >
           <RefreshCwIcon data-icon="inline-start" />
           Refresh
-        </Button>
-        <Button className="w-full" onClick={onCreateLaunchPlan} size="sm">
-          <WrenchIcon data-icon="inline-start" />
-          Launch Report
         </Button>
         <Button
           className="w-full sm:col-span-2"
@@ -578,7 +570,6 @@ export function InstanceCatalogTabs({
   logs,
   mods,
   mutating,
-  onCreateLaunchPlan,
   onInstanceDeleted,
   onInstanceUpdated,
   onRefreshContent,
@@ -848,7 +839,6 @@ export function InstanceCatalogTabs({
             <QuickActions
               latestLog={latestLog}
               logsFolderPath={instance.folders.logs}
-              onCreateLaunchPlan={onCreateLaunchPlan}
               onRefreshContent={onRefreshContent}
               onSetActiveTab={onSetActiveTab}
             />
