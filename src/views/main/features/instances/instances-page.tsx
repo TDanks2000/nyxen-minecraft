@@ -63,6 +63,35 @@ const isCompletedCurseForgeModpackJob = (job: DownloadQueueJob): boolean =>
   job.result?.kind === "curseForgeFile" &&
   Boolean(job.result.result.instance);
 
+const getActiveModpackJobInstanceId = (
+  job: DownloadQueueJob,
+  instances: Array<LauncherInstance>,
+): string | null => {
+  if (job.metadata.kind !== "curseForgeFile") return null;
+  const metadata = job.metadata;
+
+  if (
+    metadata.targetInstanceId &&
+    instances.some((instance) => instance.id === metadata.targetInstanceId)
+  ) {
+    return metadata.targetInstanceId;
+  }
+
+  const projectId = String(metadata.projectId);
+  const projectMatch = instances.find(
+    (instance) => instance.modpack?.projectId === projectId,
+  );
+
+  if (projectMatch) return projectMatch.id;
+
+  const titleMatch = instances.find(
+    (instance) =>
+      instance.modpack?.name === job.title || instance.name === job.title,
+  );
+
+  return titleMatch?.id ?? null;
+};
+
 function FeaturedInstancePanel({
   instance,
   loading,
@@ -179,34 +208,71 @@ export function InstancesPage() {
     () => downloadJobs.filter(isActiveCurseForgeModpackJob),
     [downloadJobs],
   );
+  const { activeModpackJobByInstanceId, matchedActiveModpackJobIds } =
+    useMemo(() => {
+      const byInstanceId = new Map<string, DownloadQueueJob>();
+      const matchedJobIds = new Set<string>();
+
+      for (const job of activeModpackJobs) {
+        const instanceId = getActiveModpackJobInstanceId(job, instances);
+
+        if (!instanceId) continue;
+
+        const existing = byInstanceId.get(instanceId);
+        if (
+          !existing ||
+          (existing.status === "queued" && job.status === "running")
+        ) {
+          byInstanceId.set(instanceId, job);
+        }
+
+        matchedJobIds.add(job.id);
+      }
+
+      return {
+        activeModpackJobByInstanceId: byInstanceId,
+        matchedActiveModpackJobIds: matchedJobIds,
+      };
+    }, [activeModpackJobs, instances]);
+  const unmatchedActiveModpackJobs = useMemo(
+    () =>
+      activeModpackJobs.filter(
+        (job) => !matchedActiveModpackJobIds.has(job.id),
+      ),
+    [activeModpackJobs, matchedActiveModpackJobIds],
+  );
 
   const filteredInstances = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return instances;
-    return instances.filter((instance) =>
-      [
+    return instances.filter((instance) => {
+      const installJob = activeModpackJobByInstanceId.get(instance.id);
+      return [
         instance.name,
         instance.versionId,
         instance.loader,
         instance.loaderVersion ?? "",
+        installJob?.title ?? "",
+        installJob?.subtitle ?? "",
+        installJob?.activeLabel ?? "",
       ]
         .join(" ")
         .toLowerCase()
-        .includes(needle),
-    );
-  }, [instances, query]);
+        .includes(needle);
+    });
+  }, [activeModpackJobByInstanceId, instances, query]);
 
   const filteredActiveModpackJobs = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    if (!needle) return activeModpackJobs;
+    if (!needle) return unmatchedActiveModpackJobs;
 
-    return activeModpackJobs.filter((job) =>
+    return unmatchedActiveModpackJobs.filter((job) =>
       [job.title, job.subtitle, job.activeLabel ?? ""]
         .join(" ")
         .toLowerCase()
         .includes(needle),
     );
-  }, [activeModpackJobs, query]);
+  }, [query, unmatchedActiveModpackJobs]);
 
   const featuredInstance = useMemo(() => {
     return (
@@ -335,6 +401,7 @@ export function InstancesPage() {
               {filteredInstances.map((instance) => (
                 <InstanceCard
                   key={instance.id}
+                  installJob={activeModpackJobByInstanceId.get(instance.id)}
                   instance={instance}
                   launchDisabled={launchPlan.loadingInstanceId !== null}
                   launchLoading={launchPlan.loadingInstanceId === instance.id}
