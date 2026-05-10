@@ -291,19 +291,35 @@ export const launchMinecraft = (
 
   const { executable, args } = buildCommand(plan, options);
 
-  const child = spawn(executable, args, {
-    cwd: plan.directories.game,
-    detached: true,
-    stdio: "ignore",
-  });
+  let child: ChildProcess;
 
-  child.unref();
+  try {
+    child = spawn(executable, args, {
+      cwd: plan.directories.game,
+      detached: true,
+      stdio: "ignore",
+    });
+  } catch (error) {
+    throw new Error(
+      error instanceof Error
+        ? `Failed to start Java: ${error.message}`
+        : "Failed to start Java.",
+    );
+  }
+
+  child.once("error", () => {
+    if (runningLaunches.get(plan.instance.id)?.child === child) {
+      runningLaunches.delete(plan.instance.id);
+    }
+  });
 
   if (!child.pid) {
     throw new Error(
       "Failed to start Java. Make sure Java is installed and available on PATH.",
     );
   }
+
+  child.unref();
 
   const launch: RunningLaunchEntry = {
     child,

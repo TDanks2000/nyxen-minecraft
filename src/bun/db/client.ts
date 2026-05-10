@@ -152,12 +152,29 @@ ensureLauncherInstanceColumn("modpack_metadata", "modpack_metadata text");
 export const db = drizzle(sqlite, { schema });
 
 export const getDatabaseStatus = (): DatabaseStatus => {
-  const result =
+  const metadataRecords =
     db.select({ value: count() }).from(schema.appMetadata).get()?.value ?? 0;
+  const manifestRecords =
+    db.select({ value: count() }).from(schema.minecraftVersionManifests).get()
+      ?.value ?? 0;
+  const versionRecords =
+    db.select({ value: count() }).from(schema.minecraftVersions).get()?.value ??
+    0;
+  const profileRecords =
+    db.select({ value: count() }).from(schema.launcherProfiles).get()?.value ??
+    0;
+  const instanceRecords =
+    db.select({ value: count() }).from(schema.launcherInstances).get()?.value ??
+    0;
 
   return {
     driver: "drizzle",
     path: databasePath,
-    records: result,
+    records:
+      metadataRecords +
+      manifestRecords +
+      versionRecords +
+      profileRecords +
+      instanceRecords,
   };
 };

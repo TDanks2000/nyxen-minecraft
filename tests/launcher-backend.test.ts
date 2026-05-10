@@ -945,6 +945,37 @@ describe("launcher backend", () => {
     expect(existsSync(instance.instanceDirectory)).toBe(false);
   });
 
+  test("reports database records across launcher tables", async () => {
+    const { getDatabaseStatus } = await import("../src/bun/db/client");
+    const { createLauncherInstance } = await import(
+      "../src/bun/launcher/instances"
+    );
+    const { createLauncherProfile } = await import(
+      "../src/bun/launcher/profiles"
+    );
+    const { refreshMinecraftVersionManifest } = await import(
+      "../src/bun/launcher/versions"
+    );
+
+    await refreshMinecraftVersionManifest({ fetcher: fakeFetch });
+
+    const before = getDatabaseStatus();
+    const profile = createLauncherProfile({
+      displayName: "DbCountUser",
+      kind: "offline",
+    });
+
+    createLauncherInstance({
+      name: "Db Count Instance",
+      profileId: profile.id,
+      versionId: "1.20.4",
+    });
+
+    expect(getDatabaseStatus().records).toBeGreaterThanOrEqual(
+      before.records + 2,
+    );
+  });
+
   test("guards runtime changes when local mods are installed", async () => {
     const { createLauncherInstance, updateLauncherInstance } = await import(
       "../src/bun/launcher/instances"
@@ -1142,6 +1173,59 @@ describe("launcher backend", () => {
           }),
       }),
     ).rejects.toThrow("Version id cannot contain path separators");
+  });
+
+  test("refetches corrupt cached Minecraft version details", async () => {
+    const { getMinecraftVersionDetails, refreshMinecraftVersionManifest } =
+      await import("../src/bun/launcher/versions");
+
+    await refreshMinecraftVersionManifest({ fetcher: fakeFetch });
+    const cached = await getMinecraftVersionDetails(
+      { refresh: true, versionId: "1.20.4" },
+      { fetcher: fakeFetch },
+    );
+    let detailRequests = 0;
+
+    writeFileSync(cached.path, "{not-json");
+
+    const refreshed = await getMinecraftVersionDetails(
+      { versionId: "1.20.4" },
+      {
+        fetcher: async (input) => {
+          const url = input instanceof Request ? input.url : input.toString();
+
+          if (url === "https://metadata.test/versions/1.20.4.json") {
+            detailRequests += 1;
+          }
+
+          return fakeFetch(input);
+        },
+      },
+    );
+
+    expect(refreshed.id).toBe("1.20.4");
+    expect(detailRequests).toBe(1);
+    expect(JSON.parse(readFileSync(cached.path, "utf8")).id).toBe("1.20.4");
+  });
+
+  test("rejects mismatched Minecraft version detail metadata", async () => {
+    const { getMinecraftVersionDetails, refreshMinecraftVersionManifest } =
+      await import("../src/bun/launcher/versions");
+
+    await refreshMinecraftVersionManifest({ fetcher: fakeFetch });
+
+    await expect(
+      getMinecraftVersionDetails(
+        { refresh: true, versionId: "1.20.4" },
+        {
+          fetcher: async () =>
+            jsonResponse({
+              ...versionDetailsDocument,
+              id: "1.20.5",
+            }),
+        },
+      ),
+    ).rejects.toThrow("Minecraft version metadata id does not match request");
   });
 
   test("rejects launcher instances with non-Java executables", async () => {
@@ -3652,6 +3736,46 @@ describe("launcher backend", () => {
     if (process.platform !== "win32") {
       expect(statSync(executablePath).mode & 0o111).not.toBe(0);
     }
+  });
+
+  test("rejects unsafe external URLs before opening them", async () => {
+    const { openExternal } = await import("../src/bun/rpc/handlers/runtime");
+
+    expect(() => openExternal({ url: "javascript:alert(1)" })).toThrow(
+      "External URL must use HTTP, HTTPS, or launcher file URLs.",
+    );
+    expect(() => openExternal({ url: "file:///etc/passwd" })).toThrow(
+      "External file URL must stay inside launcher storage.",
+    );
+  });
+
+  test("handles missing Java executables without tracking a launch", async () => {
+    const { launchMinecraft, listRunningLaunches } = await import(
+      "../src/bun/launcher/executor"
+    );
+    const { getLauncherDirectories } = await import(
+      "../src/bun/launcher/paths"
+    );
+    const directories = getLauncherDirectories();
+    const plan = createTestLaunchPlan(directories, {
+      java: {
+        component: "java-runtime-gamma",
+        executable: join(dataRoot, "missing-runtime", "bin", "java"),
+        management: "auto",
+        majorVersion: 17,
+        memoryMaxMb: 4096,
+        memoryMinMb: 512,
+        runtimeDirectory: null,
+        runtimePlatform: null,
+        runtimeVersion: null,
+      },
+    });
+
+    mkdirSync(plan.directories.game, { recursive: true });
+
+    expect(() => launchMinecraft(plan)).toThrow("Failed to start Java");
+    await wait(0);
+    expect(listRunningLaunches()).toEqual([]);
   });
 
   test("launch RPC rebuilds renderer-provided plans before launching", async () => {

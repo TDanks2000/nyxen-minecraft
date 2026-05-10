@@ -1,11 +1,13 @@
+import { randomUUID } from "node:crypto";
 import {
   existsSync,
-  mkdirSync,
   readFileSync,
+  renameSync,
   statSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import type {
@@ -19,6 +21,8 @@ import { db } from "../db/client";
 import * as schema from "../db/schema";
 import {
   ensureLauncherDirectories,
+  ensurePrivateDirectory,
+  ensurePrivateFile,
   getVersionDirectory,
   isLauncherPathSegment,
   normalizeLauncherPathSegment,
@@ -97,7 +101,9 @@ const versionDetailsSchema = z.object({
     .optional(),
   assets: z.string().optional(),
   downloads: z.record(z.string(), downloadSchema).optional(),
-  id: z.string().min(1),
+  id: z.string().min(1).refine(isLauncherPathSegment, {
+    message: "Version details id cannot contain path separators.",
+  }),
   javaVersion: z
     .object({
       component: z.string().min(1),
@@ -386,6 +392,25 @@ const readVersionDetails = (
   );
 };
 
+const writeVersionDetails = (path: string, document: unknown): void => {
+  const tempPath = `${path}.write-${process.pid}-${randomUUID()}.tmp`;
+
+  ensurePrivateDirectory(dirname(path));
+
+  try {
+    writeFileSync(tempPath, `${JSON.stringify(document, null, 2)}\n`, {
+      flag: "wx",
+    });
+    ensurePrivateFile(tempPath);
+    renameSync(tempPath, path);
+    ensurePrivateFile(path);
+  } finally {
+    if (existsSync(tempPath)) {
+      unlinkSync(tempPath);
+    }
+  }
+};
+
 export const getMinecraftVersionDetails = async (
   input: GetMinecraftVersionDetailsInput,
   options: VersionServiceOptions = {},
@@ -406,16 +431,25 @@ export const getMinecraftVersionDetails = async (
   const detailsPath = getVersionDetailsPath(versionId);
 
   if (!input.refresh && existsSync(detailsPath)) {
-    return readVersionDetails(detailsPath, version.url);
+    try {
+      return readVersionDetails(detailsPath, version.url);
+    } catch {
+      // Corrupt caches should recover automatically on the next metadata read.
+    }
   }
 
-  mkdirSync(getVersionDirectory(versionId), { recursive: true });
+  ensurePrivateDirectory(getVersionDirectory(versionId));
 
   const received = await fetchJson(version.url, options);
   const parsed = versionDetailsSchema.parse(received);
+
+  if (parsed.id !== versionId) {
+    throw new Error("Minecraft version metadata id does not match request.");
+  }
+
   const cachedAt = (options.now?.() ?? new Date()).toISOString();
 
-  writeFileSync(detailsPath, `${JSON.stringify(received, null, 2)}\n`);
+  writeVersionDetails(detailsPath, received);
 
   return toVersionDetails(parsed, detailsPath, version.url, cachedAt);
 };
