@@ -34,13 +34,15 @@ export function DashboardPage() {
   const playInstance = (instanceId: string) => {
     void launchPlan.createLaunchPlan(instanceId);
   };
+  const initialInstancesLoading =
+    instancesHook.loading && instancesHook.data === null;
 
   return (
     <div className="flex flex-col">
       <DashboardHero
         instance={heroInstance}
         launchDisabled={launchPlan.loadingInstanceId !== null}
-        loading={instancesHook.loading}
+        loading={initialInstancesLoading}
         onCreateInstance={openNewInstanceDialog}
         onPlayInstance={playInstance}
       />
@@ -55,7 +57,7 @@ export function DashboardPage() {
         instanceCount={statusHook.data?.counts.instances}
         instances={instances}
         launchLoadingId={launchPlan.loadingInstanceId}
-        loading={instancesHook.loading}
+        loading={initialInstancesLoading}
         onCreateInstance={openNewInstanceDialog}
         onPlayInstance={playInstance}
       />

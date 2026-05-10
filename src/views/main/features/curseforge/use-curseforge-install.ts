@@ -107,7 +107,9 @@ export function useCurseForgeInstall({
         input: createInstallInput({ category, instance, item }),
         kind: "curseForgeFile",
       });
-      const finishedJob = await waitForDownloadJob(job.id);
+      const finishedJob = await waitForDownloadJob(job.id, {
+        timeoutMs: category === "modpacks" ? 60 * 60_000 : 15 * 60_000,
+      });
       const result =
         finishedJob.result?.kind === "curseForgeFile"
           ? finishedJob.result.result

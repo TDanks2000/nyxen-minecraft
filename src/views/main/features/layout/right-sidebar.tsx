@@ -11,6 +11,7 @@ import { useEffect } from "react";
 import { Area, AreaChart, ResponsiveContainer } from "recharts";
 import type { DownloadQueueJob } from "@/shared/types";
 import { Button } from "@/views/main/components/ui/button";
+import { Progress } from "@/views/main/components/ui/progress";
 import { useDownloadQueueStore } from "@/views/main/features/downloads/download-queue-store";
 import { cn } from "@/views/main/lib/utils";
 
@@ -48,6 +49,9 @@ const formatSidebarTime = (value: string): string =>
     hour: "numeric",
     minute: "2-digit",
   }).format(new Date(value));
+
+const formatProgressPercent = (value: number | null): string =>
+  value === null ? "Working" : `${Math.round(value)}%`;
 
 function DownloadJobIcon({ status }: { status: DownloadQueueJob["status"] }) {
   if (status === "completed") {
@@ -97,10 +101,11 @@ function DownloadJobCard({
     (item) => item.status === "failed",
   ).length;
   const completedCount = job.items.filter(
-    (item) => item.status === "completed",
+    (item) => item.status === "completed" || item.status === "skipped",
   ).length;
-  const totalItems = Math.max(1, job.totalItems);
-  const completedRatio = completedCount / totalItems;
+  const totalItems = Math.max(1, job.totalItems, job.items.length);
+  const progressValue =
+    job.progress ?? Math.min(100, (completedCount / totalItems) * 100);
   const statusLabel =
     job.status === "queued"
       ? "Queued"
@@ -113,9 +118,9 @@ function DownloadJobCard({
     job.status === "queued"
       ? `${job.totalItems} file${job.totalItems === 1 ? "" : "s"} waiting`
       : job.status === "running"
-        ? `${job.totalItems} file${job.totalItems === 1 ? "" : "s"} in progress`
+        ? (job.activeLabel ?? `${totalItems} files in progress`)
         : job.status === "completed"
-          ? `${job.totalItems} file${job.totalItems === 1 ? "" : "s"} ready`
+          ? `${totalItems} file${totalItems === 1 ? "" : "s"} ready`
           : failedCount > 0
             ? `${failedCount} failed file${failedCount === 1 ? "" : "s"}`
             : "Download failed";
@@ -177,30 +182,21 @@ function DownloadJobCard({
                 {job.status === "queued"
                   ? "Waiting"
                   : job.status === "running"
-                    ? "In progress"
-                    : `${completedCount}/${job.totalItems}`}
+                    ? formatProgressPercent(progressValue)
+                    : `${formatProgressPercent(progressValue)} · ${completedCount}/${totalItems}`}
               </span>
             </div>
-            <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
-              <div
-                className={cn(
-                  "h-full rounded-full bg-primary transition-all",
-                  job.status === "running" && "w-1/2 animate-pulse opacity-80",
-                  job.status === "completed" && "w-full",
-                  job.status === "failed" && "bg-destructive",
-                )}
-                style={
-                  job.status === "failed"
-                    ? {
-                        width: `${Math.max(
-                          8,
-                          Math.min(100, completedRatio * 100),
-                        )}%`,
-                      }
-                    : undefined
-                }
-              />
-            </div>
+            <Progress
+              aria-label={`${job.title} download progress`}
+              className={cn(
+                "mt-1.5",
+                job.status === "failed" &&
+                  "[&_[data-slot=progress-indicator]]:bg-destructive",
+                job.status === "running" &&
+                  "[&_[data-slot=progress-indicator]]:opacity-90",
+              )}
+              value={progressValue}
+            />
           </div>
 
           <div className="mt-2 flex flex-wrap gap-1">

@@ -61,6 +61,7 @@ import {
 } from "@/views/main/components/ui/tabs";
 import { InstanceLogsPanel } from "@/views/main/features/instances/components/instance-logs-panel";
 import { InstanceSettingsPanel } from "@/views/main/features/instances/components/instance-settings-panel";
+import { getModManagementState } from "@/views/main/features/instances/instance-catalog-model";
 import { rpc } from "@/views/main/lib/rpc";
 import { cn } from "@/views/main/lib/utils";
 
@@ -640,7 +641,15 @@ export function InstanceCatalogTabs({
   ).length;
   const allModsEnabled = mods.length > 0 && disabledModsCount === 0;
   const allModsDisabled = mods.length > 0 && enabledModsCount === 0;
-  const modpackLocked = instance.modpack?.locked ?? false;
+  const modManagement = getModManagementState({
+    content,
+    contentLoading,
+    instance,
+  });
+  const modpackLocked = modManagement.managedByModpack;
+  const modpackName =
+    instance.modpack?.name ?? content?.curseForge.modpacks?.[0]?.name;
+  const initialContentLoading = contentLoading && !content;
 
   return (
     <Tabs
@@ -677,8 +686,8 @@ export function InstanceCatalogTabs({
                 <ShieldAlertIcon />
                 <AlertTitle>Modpack Managed</AlertTitle>
                 <AlertDescription>
-                  Mods are controlled by {instance.modpack?.name}. Use Update
-                  Modpack when CurseForge has a newer pack version.
+                  Mods are controlled by {modpackName ?? "the linked modpack"}.
+                  Use Update Modpack when CurseForge has a newer pack version.
                 </AlertDescription>
               </Alert>
             ) : null}
@@ -758,7 +767,7 @@ export function InstanceCatalogTabs({
                 <Button
                   className="w-full"
                   disabled={
-                    modpackLocked ||
+                    modManagement.controlsDisabled ||
                     mutating ||
                     mods.length === 0 ||
                     allModsEnabled
@@ -773,7 +782,7 @@ export function InstanceCatalogTabs({
                 <Button
                   className="w-full"
                   disabled={
-                    modpackLocked ||
+                    modManagement.controlsDisabled ||
                     mutating ||
                     mods.length === 0 ||
                     allModsDisabled
@@ -811,7 +820,7 @@ export function InstanceCatalogTabs({
               </div>
             </div>
 
-            {contentLoading ? (
+            {initialContentLoading ? (
               <div className="p-6 text-sm text-muted-foreground">
                 Loading instance content...
               </div>
@@ -852,7 +861,7 @@ export function InstanceCatalogTabs({
                     entry={entry}
                     key={entry.id}
                     managedByModpack={modpackLocked}
-                    mutating={mutating}
+                    mutating={mutating || modManagement.controlsDisabled}
                     onToggleMod={onToggleMod}
                   />
                 ))}

@@ -1561,6 +1561,7 @@ describe("launcher backend", () => {
       });
     const packV1Archive = createPackArchive(333, "pack-version-1");
     const packV2Archive = createPackArchive(334, "pack-version-2");
+    let mediaAvailable = true;
     const fetcher = async (
       input: string | URL | Request,
     ): Promise<Response> => {
@@ -1655,6 +1656,10 @@ describe("launcher backend", () => {
         url === "https://media.example.test/icon.png" ||
         url === "https://media.example.test/banner.png"
       ) {
+        if (!mediaAvailable) {
+          return new Response("missing", { status: 404 });
+        }
+
         return new Response("image-data", {
           headers: { "content-type": "image/png" },
         });
@@ -1730,6 +1735,9 @@ describe("launcher backend", () => {
     expect(
       readFileSync(join(instance.folders.mods, "dependency.jar"), "utf8"),
     ).toBe("dependency-v1");
+    const originalIconUrl = instance.iconUrl;
+    const originalBannerUrl = instance.bannerUrl;
+
     expect(() =>
       setInstanceModEnabled({
         enabled: false,
@@ -1770,6 +1778,7 @@ describe("launcher backend", () => {
     );
     expect(update.updateAvailable).toBe(true);
 
+    mediaAvailable = false;
     const updated = await updateInstanceModpack(
       { instanceId: instance.id },
       {
@@ -1781,6 +1790,10 @@ describe("launcher backend", () => {
 
     expect(updated.instance.id).toBe(instance.id);
     expect(updated.instance.modpack?.fileId).toBe("445");
+    expect(updated.instance.iconUrl).toBe(originalIconUrl);
+    expect(updated.instance.bannerUrl).toBe(originalBannerUrl);
+    expect(updated.instance.modpack?.iconUrl).toBe(originalIconUrl);
+    expect(updated.instance.modpack?.bannerUrl).toBe(originalBannerUrl);
     expect(updated.update.updateAvailable).toBe(false);
     expect(
       readFileSync(join(instance.gameDirectory, "options.txt"), "utf8"),
@@ -1875,10 +1888,421 @@ describe("launcher backend", () => {
     }
   });
 
-  test("queues launch artifact preparation in backend-owned download state", async () => {
+  test("updates CurseForge queue progress while file bytes stream", async () => {
     const { clearFinishedDownloadJobs, enqueueDownloadJob, listDownloadJobs } =
       await import("../src/bun/launcher/download-queue");
     const { createLauncherInstance } = await import(
+      "../src/bun/launcher/instances"
+    );
+    const { refreshMinecraftVersionManifest } = await import(
+      "../src/bun/launcher/versions"
+    );
+
+    await refreshMinecraftVersionManifest({ fetcher: fakeFetch });
+
+    const instance = createLauncherInstance({
+      name: "Streaming CurseForge Install",
+      versionId: "1.20.4",
+    });
+    const originalFetch = globalThis.fetch;
+    const requests: Array<string> = [];
+    const encoder = new TextEncoder();
+    const streamState: {
+      controller: ReadableStreamDefaultController<Uint8Array> | null;
+    } = { controller: null };
+    let resolveStreamStarted: () => void = () => undefined;
+    const streamStarted = new Promise<void>((resolve) => {
+      resolveStreamStarted = resolve;
+    });
+
+    globalThis.fetch = (async (input) => {
+      requests.push(input.toString());
+
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            streamState.controller = controller;
+            controller.enqueue(encoder.encode("queued-"));
+            resolveStreamStarted();
+          },
+        }),
+        { headers: { "content-length": "15" } },
+      );
+    }) as typeof fetch;
+
+    try {
+      const queued = await enqueueDownloadJob({
+        input: {
+          category: "mods",
+          file: {
+            displayName: "Streaming Mod 1.0",
+            downloadUrl: "https://downloads.example.test/streaming-mod.jar",
+            fileDate: "2024-02-01T00:00:00Z",
+            fileName: "streaming-mod.jar",
+            gameVersions: ["1.20.4"],
+            id: 655,
+            modLoaders: ["fabric"],
+            releaseType: "release",
+          },
+          instanceId: instance.id,
+          projectId: 322,
+          projectName: "Streaming Mod",
+          projectSlug: "streaming-mod",
+        },
+        kind: "curseForgeFile",
+      });
+
+      await streamStarted;
+
+      let runningJob = listDownloadJobs().find((job) => job.id === queued.id);
+
+      for (
+        let attempt = 0;
+        attempt < 50 &&
+        (runningJob?.status !== "running" ||
+          !runningJob.progress ||
+          runningJob.progress >= 100);
+        attempt++
+      ) {
+        await wait(10);
+        runningJob = listDownloadJobs().find((job) => job.id === queued.id);
+      }
+
+      expect(requests).toEqual([
+        "https://downloads.example.test/streaming-mod.jar",
+      ]);
+      expect(runningJob?.status).toBe("running");
+      expect(runningJob?.progress).toBeGreaterThan(0);
+      expect(runningJob?.progress).toBeLessThan(100);
+      expect(runningJob?.activeLabel).toBe("streaming-mod.jar");
+      expect(runningJob?.items[0]).toMatchObject({
+        downloadedBytes: 7,
+        label: "streaming-mod.jar",
+        progress: expect.any(Number),
+        status: "running",
+        totalBytes: 15,
+      });
+
+      const streamController = streamState.controller;
+      expect(streamController).not.toBeNull();
+      if (!streamController) {
+        throw new Error("Expected streaming response controller.");
+      }
+      streamController.enqueue(encoder.encode("mod-data"));
+      streamController.close();
+
+      let finalJob = listDownloadJobs().find((job) => job.id === queued.id);
+
+      for (
+        let attempt = 0;
+        attempt < 50 && finalJob?.status !== "completed";
+        attempt++
+      ) {
+        await wait(10);
+        finalJob = listDownloadJobs().find((job) => job.id === queued.id);
+      }
+
+      expect(finalJob).toMatchObject({
+        activeLabel: null,
+        progress: 100,
+        source: "curseforge",
+        status: "completed",
+        title: "Streaming Mod",
+        totalItems: 1,
+      });
+      expect(finalJob?.items[0]).toMatchObject({
+        downloadedBytes: 15,
+        progress: 100,
+        status: "completed",
+        totalBytes: 15,
+      });
+      expect(
+        readFileSync(join(instance.folders.mods, "streaming-mod.jar"), "utf8"),
+      ).toBe("queued-mod-data");
+    } finally {
+      globalThis.fetch = originalFetch;
+      clearFinishedDownloadJobs();
+    }
+  });
+
+  test("records actual CurseForge byte totals when content length is unknown", async () => {
+    const { clearFinishedDownloadJobs, enqueueDownloadJob, listDownloadJobs } =
+      await import("../src/bun/launcher/download-queue");
+    const { createLauncherInstance } = await import(
+      "../src/bun/launcher/instances"
+    );
+    const { refreshMinecraftVersionManifest } = await import(
+      "../src/bun/launcher/versions"
+    );
+
+    await refreshMinecraftVersionManifest({ fetcher: fakeFetch });
+
+    const instance = createLauncherInstance({
+      name: "Unknown Size CurseForge Install",
+      versionId: "1.20.4",
+    });
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = (async (_input: string | URL | Request) =>
+      new Response("unknown-size-mod", {
+        headers: { "content-type": "application/java-archive" },
+      })) as typeof fetch;
+
+    try {
+      const queued = await enqueueDownloadJob({
+        input: {
+          category: "mods",
+          file: {
+            displayName: "Unknown Size Mod 1.0",
+            downloadUrl: "https://downloads.example.test/unknown-size.jar",
+            fileDate: "2024-02-01T00:00:00Z",
+            fileName: "unknown-size.jar",
+            gameVersions: ["1.20.4"],
+            id: 656,
+            modLoaders: ["fabric"],
+            releaseType: "release",
+          },
+          instanceId: instance.id,
+          projectId: 323,
+          projectName: "Unknown Size Mod",
+          projectSlug: "unknown-size-mod",
+        },
+        kind: "curseForgeFile",
+      });
+
+      let finalJob = listDownloadJobs().find((job) => job.id === queued.id);
+
+      for (
+        let attempt = 0;
+        attempt < 50 && finalJob?.status !== "completed";
+        attempt++
+      ) {
+        await wait(10);
+        finalJob = listDownloadJobs().find((job) => job.id === queued.id);
+      }
+
+      expect(finalJob).toMatchObject({
+        progress: 100,
+        status: "completed",
+        totalItems: 1,
+      });
+      expect(finalJob?.items[0]).toMatchObject({
+        downloadedBytes: 16,
+        progress: 100,
+        status: "completed",
+        totalBytes: 16,
+      });
+      expect(
+        readFileSync(join(instance.folders.mods, "unknown-size.jar"), "utf8"),
+      ).toBe("unknown-size-mod");
+    } finally {
+      globalThis.fetch = originalFetch;
+      clearFinishedDownloadJobs();
+    }
+  });
+
+  test("reports queued CurseForge modpack progress across dependency downloads", async () => {
+    const { clearFinishedDownloadJobs, enqueueDownloadJob, listDownloadJobs } =
+      await import("../src/bun/launcher/download-queue");
+    const { refreshMinecraftVersionManifest } = await import(
+      "../src/bun/launcher/versions"
+    );
+
+    await refreshMinecraftVersionManifest({ fetcher: fakeFetch });
+
+    const packArchive = createStoredZip({
+      "manifest.json": JSON.stringify({
+        files: [
+          {
+            fileID: 333,
+            projectID: 222,
+            required: true,
+          },
+        ],
+        manifestType: "minecraftModpack",
+        manifestVersion: 1,
+        minecraft: {
+          modLoaders: [{ id: "fabric-0.15.7", primary: true }],
+          version: "1.20.4",
+        },
+        name: "Queued Progress Pack",
+        version: "1.0.0",
+      }),
+    });
+    const originalFetch = globalThis.fetch;
+    const originalApiKey = Bun.env.NYXEN_CURSEFORGE_API_KEY;
+    const encoder = new TextEncoder();
+    const streamState: {
+      controller: ReadableStreamDefaultController<Uint8Array> | null;
+    } = { controller: null };
+    let dependencyStreamClosed = false;
+    let resolveDependencyStarted: () => void = () => undefined;
+    const dependencyStarted = new Promise<void>((resolve) => {
+      resolveDependencyStarted = resolve;
+    });
+
+    Bun.env.NYXEN_CURSEFORGE_API_KEY = "test-curseforge-key";
+    globalThis.fetch = (async (input) => {
+      const url = input instanceof Request ? input.url : input.toString();
+
+      if (url === "https://downloads.example.test/progress-pack.zip") {
+        return new Response(Buffer.from(packArchive), {
+          headers: { "content-length": String(packArchive.byteLength) },
+        });
+      }
+
+      if (url === "https://api.curseforge.com/v1/mods/222/files/333") {
+        return jsonResponse({
+          data: {
+            displayName: "Progress Dependency",
+            downloadUrl:
+              "https://downloads.example.test/progress-dependency.jar",
+            fileDate: "2024-02-01T00:00:00Z",
+            fileName: "progress-dependency.jar",
+            gameVersions: ["1.20.4", "Fabric"],
+            id: 333,
+            releaseType: 1,
+          },
+        });
+      }
+
+      if (url === "https://downloads.example.test/progress-dependency.jar") {
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              streamState.controller = controller;
+              controller.enqueue(encoder.encode("depend"));
+              resolveDependencyStarted();
+            },
+          }),
+          { headers: { "content-length": "10" } },
+        );
+      }
+
+      return new Response("not found", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const queued = await enqueueDownloadJob({
+        input: {
+          category: "modpacks",
+          file: {
+            displayName: "Queued Progress Pack 1.0.0",
+            downloadUrl: "https://downloads.example.test/progress-pack.zip",
+            fileDate: "2024-02-01T00:00:00Z",
+            fileName: "progress-pack.zip",
+            gameVersions: ["1.20.4", "Fabric"],
+            id: 444,
+            modLoaders: ["fabric"],
+            releaseType: "release",
+          },
+          projectId: 111,
+          projectName: "Queued Progress Pack",
+          projectSlug: "queued-progress-pack",
+        },
+        kind: "curseForgeFile",
+      });
+
+      await dependencyStarted;
+
+      let runningJob = listDownloadJobs().find((job) => job.id === queued.id);
+
+      for (
+        let attempt = 0;
+        attempt < 50 &&
+        (() => {
+          const dependencyItem = runningJob?.items.find(
+            (item) => item.id === "curseforge:222:333",
+          );
+
+          return (
+            runningJob?.totalItems !== 2 ||
+            runningJob?.status !== "running" ||
+            dependencyItem?.downloadedBytes !== 6 ||
+            !runningJob.progress ||
+            runningJob.progress <= 50 ||
+            runningJob.progress >= 100
+          );
+        })();
+        attempt++
+      ) {
+        await wait(10);
+        runningJob = listDownloadJobs().find((job) => job.id === queued.id);
+      }
+
+      const dependencyItem = runningJob?.items.find(
+        (item) => item.id === "curseforge:222:333",
+      );
+
+      expect(runningJob?.metadata).toMatchObject({
+        category: "modpacks",
+        kind: "curseForgeFile",
+        projectId: 111,
+      });
+      expect(runningJob?.totalItems).toBe(2);
+      expect(runningJob?.progress).toBeGreaterThan(50);
+      expect(runningJob?.progress).toBeLessThan(100);
+      expect(runningJob?.activeLabel).toBe("progress-dependency.jar");
+      expect(dependencyItem).toMatchObject({
+        downloadedBytes: 6,
+        label: "progress-dependency.jar",
+        status: "running",
+        totalBytes: 10,
+      });
+
+      const streamController = streamState.controller;
+      expect(streamController).not.toBeNull();
+      if (!streamController) {
+        throw new Error("Expected dependency response controller.");
+      }
+      streamController.enqueue(encoder.encode("ency"));
+      streamController.close();
+      dependencyStreamClosed = true;
+
+      let finalJob = listDownloadJobs().find((job) => job.id === queued.id);
+
+      for (
+        let attempt = 0;
+        attempt < 50 && finalJob?.status !== "completed";
+        attempt++
+      ) {
+        await wait(10);
+        finalJob = listDownloadJobs().find((job) => job.id === queued.id);
+      }
+
+      expect(finalJob).toMatchObject({
+        activeLabel: null,
+        progress: 100,
+        status: "completed",
+        title: "Queued Progress Pack",
+        totalItems: 2,
+      });
+      expect(finalJob?.result?.kind).toBe("curseForgeFile");
+      if (finalJob?.result?.kind !== "curseForgeFile") {
+        throw new Error("Expected CurseForge modpack result.");
+      }
+      expect(finalJob.result.result.instance?.modpack).toMatchObject({
+        installedFiles: 1,
+        projectId: "111",
+      });
+    } finally {
+      if (streamState.controller && !dependencyStreamClosed) {
+        streamState.controller.close();
+      }
+      globalThis.fetch = originalFetch;
+      if (originalApiKey === undefined) {
+        delete Bun.env.NYXEN_CURSEFORGE_API_KEY;
+      } else {
+        Bun.env.NYXEN_CURSEFORGE_API_KEY = originalApiKey;
+      }
+      clearFinishedDownloadJobs();
+    }
+  });
+
+  test("queues launch artifact preparation in backend-owned download state", async () => {
+    const { clearFinishedDownloadJobs, enqueueDownloadJob, listDownloadJobs } =
+      await import("../src/bun/launcher/download-queue");
+    const { createLauncherInstance, listLauncherInstances } = await import(
       "../src/bun/launcher/instances"
     );
     const { createLaunchPlan } = await import(
@@ -1891,6 +2315,8 @@ describe("launcher backend", () => {
     await refreshMinecraftVersionManifest({ fetcher: fakeFetch });
 
     const instance = createLauncherInstance({
+      bannerUrl: "https://media.example.test/queued-launch-banner.png",
+      iconUrl: "https://media.example.test/queued-launch-icon.png",
       name: "Queued Launch Prep",
       versionId: "1.20.4",
     });
@@ -1932,6 +2358,12 @@ describe("launcher backend", () => {
       expect(finalJob?.result).toEqual({
         kind: "launchArtifacts",
         result: { failed: [], succeeded: 0 },
+      });
+      expect(
+        listLauncherInstances().find((item) => item.id === instance.id),
+      ).toMatchObject({
+        bannerUrl: instance.bannerUrl,
+        iconUrl: instance.iconUrl,
       });
     } finally {
       clearFinishedDownloadJobs();

@@ -681,15 +681,32 @@ export type DownloadQueueItemStatus =
   | "queued"
   | "running"
   | "completed"
-  | "failed";
+  | "failed"
+  | "skipped";
 
 export type DownloadQueueItem = {
+  downloadedBytes: number;
   error: string | null;
   id: string;
   kind: string;
   label: string;
+  progress: number | null;
   status: DownloadQueueItemStatus;
+  totalBytes: number | null;
 };
+
+export type DownloadQueueJobMetadata =
+  | {
+      category: CurseForgeCategory;
+      fileId: number;
+      imageUrl: string | null;
+      kind: "curseForgeFile";
+      projectId: number;
+      targetInstanceId: string | null;
+    }
+  | {
+      kind: "launchArtifacts" | "minecraftVersionManifest";
+    };
 
 export type DownloadQueueJobResult =
   | {
@@ -706,11 +723,14 @@ export type DownloadQueueJobResult =
     };
 
 export type DownloadQueueJob = {
+  activeLabel: string | null;
   completedAt: string | null;
   createdAt: string;
   error: string | null;
   id: string;
   items: Array<DownloadQueueItem>;
+  metadata: DownloadQueueJobMetadata;
+  progress: number | null;
   result: DownloadQueueJobResult | null;
   source: "launch" | "curseforge";
   startedAt: string | null;

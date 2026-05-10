@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import type { InstanceContent, LauncherInstance } from "@/shared/types";
+import { getModManagementState } from "@/views/main/features/instances/instance-catalog-model";
 import { rpc } from "@/views/main/lib/rpc";
 
 export function useInstanceCatalog(instance: LauncherInstance | null) {
@@ -53,21 +54,41 @@ export function useInstanceCatalog(instance: LauncherInstance | null) {
     [instance],
   );
 
+  const scopedContent = useMemo(
+    () => (instance && content?.instanceId === instance.id ? content : null),
+    [content, instance],
+  );
+  const effectiveLoading =
+    loading || (instance !== null && scopedContent === null && error === null);
+  const modManagement = useMemo(
+    () =>
+      getModManagementState({
+        content: scopedContent,
+        contentLoading: effectiveLoading,
+        instance,
+      }),
+    [effectiveLoading, instance, scopedContent],
+  );
+
   const enabledMods = useMemo(
-    () => content?.mods.filter((mod) => mod.enabled === true) ?? [],
-    [content?.mods],
+    () => scopedContent?.mods.filter((mod) => mod.enabled === true) ?? [],
+    [scopedContent?.mods],
   );
 
   const disabledMods = useMemo(
-    () => content?.mods.filter((mod) => mod.enabled === false) ?? [],
-    [content?.mods],
+    () => scopedContent?.mods.filter((mod) => mod.enabled === false) ?? [],
+    [scopedContent?.mods],
   );
 
   const toggleMod = useCallback(
     async (fileName: string, name: string, enabled: boolean) => {
       if (!instance) return;
-      if (instance.modpack?.locked) {
+      if (modManagement.reason === "modpack") {
         toast.error("Mods are managed by this instance's linked modpack.");
+        return;
+      }
+      if (modManagement.reason === "loading") {
+        toast.message("Wait for instance content to finish loading.");
         return;
       }
 
@@ -86,18 +107,25 @@ export function useInstanceCatalog(instance: LauncherInstance | null) {
         setMutating(false);
       }
     },
-    [instance],
+    [instance, modManagement.reason],
   );
 
   const setAllModsEnabled = useCallback(
     async (enabled: boolean) => {
-      if (!instance || !content) return;
-      if (instance.modpack?.locked) {
+      if (!instance) return;
+      if (modManagement.reason === "modpack") {
         toast.error("Mods are managed by this instance's linked modpack.");
         return;
       }
+      if (modManagement.reason === "loading") {
+        toast.message("Wait for instance content to finish loading.");
+        return;
+      }
+      if (!scopedContent) return;
 
-      const targets = content.mods.filter((mod) => mod.enabled !== enabled);
+      const targets = scopedContent.mods.filter(
+        (mod) => mod.enabled !== enabled,
+      );
 
       if (targets.length === 0) {
         toast.message(
@@ -108,7 +136,7 @@ export function useInstanceCatalog(instance: LauncherInstance | null) {
 
       setMutating(true);
       try {
-        let nextContent = content;
+        let nextContent = scopedContent;
         for (const mod of targets) {
           nextContent = await rpc.requestProxy.setInstanceModEnabled({
             enabled,
@@ -127,26 +155,26 @@ export function useInstanceCatalog(instance: LauncherInstance | null) {
         setMutating(false);
       }
     },
-    [content, instance, refreshContent],
+    [instance, modManagement.reason, refreshContent, scopedContent],
   );
 
   return {
-    content,
+    content: scopedContent,
     disabledMods,
     enabledMods,
     error,
-    loading,
-    mods: content?.mods ?? [],
+    loading: effectiveLoading,
+    mods: scopedContent?.mods ?? [],
     mutating,
     replaceContent,
     refreshContent,
-    resourcePacks: content?.resourcePacks ?? [],
-    screenshots: content?.screenshots ?? [],
-    serverList: content?.serverList ?? null,
+    resourcePacks: scopedContent?.resourcePacks ?? [],
+    screenshots: scopedContent?.screenshots ?? [],
+    serverList: scopedContent?.serverList ?? null,
     setAllModsEnabled,
-    shaderPacks: content?.shaderPacks ?? [],
-    logs: content?.logs ?? [],
+    shaderPacks: scopedContent?.shaderPacks ?? [],
+    logs: scopedContent?.logs ?? [],
     toggleMod,
-    worlds: content?.worlds ?? [],
+    worlds: scopedContent?.worlds ?? [],
   };
 }

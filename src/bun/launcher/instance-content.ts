@@ -85,6 +85,25 @@ const maxCompressedLogBytes = 2 * 1024 * 1024;
 
 type DownloadCurseForgeFileOptions = CurseForgeOptions & {
   maxBytes?: number;
+  onProgress?: (event: CurseForgeDownloadProgressEvent) => void;
+};
+
+export type CurseForgeDownloadProgressItem = {
+  downloadedBytes?: number;
+  error?: string | null;
+  id: string;
+  kind?: string;
+  label?: string;
+  progress?: number | null;
+  status?: "queued" | "running" | "completed" | "failed" | "skipped";
+  totalBytes?: number | null;
+};
+
+export type CurseForgeDownloadProgressEvent = {
+  activeLabel?: string | null;
+  item?: CurseForgeDownloadProgressItem;
+  items?: Array<CurseForgeDownloadProgressItem>;
+  totalItems?: number;
 };
 
 type InstallCurseForgeFileDataOptions = {
@@ -1333,6 +1352,164 @@ const getCurseForgeCategoryLabel = (category: CurseForgeCategory): string => {
   return "World";
 };
 
+const getCurseForgeProgressItemId = (
+  input: DownloadCurseForgeFileInput,
+): string => `curseforge:${input.projectId}:${input.file.id}`;
+
+const getCurseForgeProgressFileLabel = (
+  input: DownloadCurseForgeFileInput,
+): string =>
+  basename(
+    (
+      input.file.fileName ||
+      input.file.displayName ||
+      `${input.projectName}.jar`
+    ).replaceAll("\\", "/"),
+  );
+
+const emitCurseForgeProgress = (
+  options: DownloadCurseForgeFileOptions,
+  event: CurseForgeDownloadProgressEvent,
+): void => {
+  try {
+    options.onProgress?.(event);
+  } catch {
+    // Progress updates should never fail the actual install.
+  }
+};
+
+const parseContentLength = (value: string | null): number | null => {
+  if (!value?.trim()) return null;
+
+  const parsed = Number(value);
+
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.trunc(parsed) : null;
+};
+
+const concatDownloadChunks = (
+  chunks: Array<Uint8Array>,
+  totalBytes: number,
+): Uint8Array => {
+  const data = new Uint8Array(totalBytes);
+  let offset = 0;
+
+  for (const chunk of chunks) {
+    data.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  return data;
+};
+
+const readDownloadResponse = async ({
+  input,
+  maxBytes,
+  options,
+  response,
+}: {
+  input: DownloadCurseForgeFileInput;
+  maxBytes: number;
+  options: DownloadCurseForgeFileOptions;
+  response: Response;
+}): Promise<Uint8Array> => {
+  const itemId = getCurseForgeProgressItemId(input);
+  const itemKind = getCurseForgeCategoryLabel(input.category);
+  const itemLabel = getCurseForgeProgressFileLabel(input);
+  const declaredBytes = parseContentLength(
+    response.headers.get("content-length"),
+  );
+
+  if (declaredBytes !== null && declaredBytes > maxBytes) {
+    throw new Error("CurseForge file is too large to download.");
+  }
+
+  emitCurseForgeProgress(options, {
+    activeLabel: itemLabel,
+    item: {
+      downloadedBytes: 0,
+      id: itemId,
+      kind: itemKind,
+      label: itemLabel,
+      status: "running",
+      totalBytes: declaredBytes,
+    },
+  });
+
+  if (!response.body) {
+    const data = new Uint8Array(await response.arrayBuffer());
+
+    if (data.byteLength > maxBytes) {
+      throw new Error("CurseForge file is too large to download.");
+    }
+
+    emitCurseForgeProgress(options, {
+      activeLabel: itemLabel,
+      item: {
+        downloadedBytes: data.byteLength,
+        id: itemId,
+        kind: itemKind,
+        label: itemLabel,
+        progress: 100,
+        status: "completed",
+        totalBytes: declaredBytes ?? data.byteLength,
+      },
+    });
+
+    return data;
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Array<Uint8Array> = [];
+  let downloadedBytes = 0;
+
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+
+      if (done) break;
+      if (!value) continue;
+
+      const chunk = value instanceof Uint8Array ? value : new Uint8Array(value);
+      downloadedBytes += chunk.byteLength;
+
+      if (downloadedBytes > maxBytes) {
+        throw new Error("CurseForge file is too large to download.");
+      }
+
+      chunks.push(chunk);
+      emitCurseForgeProgress(options, {
+        activeLabel: itemLabel,
+        item: {
+          downloadedBytes,
+          id: itemId,
+          kind: itemKind,
+          label: itemLabel,
+          status: "running",
+          totalBytes: declaredBytes,
+        },
+      });
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const data = concatDownloadChunks(chunks, downloadedBytes);
+  emitCurseForgeProgress(options, {
+    activeLabel: itemLabel,
+    item: {
+      downloadedBytes,
+      id: itemId,
+      kind: itemKind,
+      label: itemLabel,
+      progress: 100,
+      status: "completed",
+      totalBytes: declaredBytes ?? downloadedBytes,
+    },
+  });
+
+  return data;
+};
+
 const fetchCurseForgeDownload = async (
   input: DownloadCurseForgeFileInput,
   options: DownloadCurseForgeFileOptions,
@@ -1376,19 +1553,22 @@ const fetchCurseForgeDownload = async (
   }
 
   const maxBytes = Math.max(1, options.maxBytes ?? maxCurseForgeDownloadBytes);
-  const contentLength = Number(response.headers.get("content-length") ?? "");
 
-  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
-    throw new Error("CurseForge file is too large to download.");
+  try {
+    return await readDownloadResponse({ input, maxBytes, options, response });
+  } catch (error) {
+    emitCurseForgeProgress(options, {
+      activeLabel: getCurseForgeProgressFileLabel(input),
+      item: {
+        error: error instanceof Error ? error.message : "Download failed.",
+        id: getCurseForgeProgressItemId(input),
+        kind: getCurseForgeCategoryLabel(input.category),
+        label: getCurseForgeProgressFileLabel(input),
+        status: "failed",
+      },
+    });
+    throw error;
   }
-
-  const data = new Uint8Array(await response.arrayBuffer());
-
-  if (data.byteLength > maxBytes) {
-    throw new Error("CurseForge file is too large to download.");
-  }
-
-  return data;
 };
 
 const writeDownloadedFile = (path: string, data: Uint8Array): void => {
@@ -1453,12 +1633,11 @@ const fetchMediaAsset = async (
     );
   }
 
-  const contentLength = Number(response.headers.get("content-length") ?? "");
+  const contentLength = parseContentLength(
+    response.headers.get("content-length"),
+  );
 
-  if (
-    Number.isFinite(contentLength) &&
-    contentLength > maxCurseForgeMediaBytes
-  ) {
+  if (contentLength !== null && contentLength > maxCurseForgeMediaBytes) {
     throw new Error("CurseForge artwork is too large to download.");
   }
 
@@ -1640,6 +1819,19 @@ const installModpackDependencies = async (
 ): Promise<{ installedFiles: number; skippedFiles: number }> => {
   let installedFiles = 0;
   let skippedFiles = 0;
+  const requiredDependencies = manifest.files.filter(
+    (dependency) => dependency.required,
+  );
+
+  emitCurseForgeProgress(options, {
+    items: requiredDependencies.map((dependency) => ({
+      id: `curseforge:${dependency.projectID}:${dependency.fileID}`,
+      kind: "Mod",
+      label: `Project ${dependency.projectID} file ${dependency.fileID}`,
+      status: "queued",
+    })),
+    totalItems: 1 + requiredDependencies.length,
+  });
 
   for (const dependency of manifest.files) {
     if (!dependency.required) {
@@ -1647,15 +1839,29 @@ const installModpackDependencies = async (
       continue;
     }
 
+    const dependencyItemId = `curseforge:${dependency.projectID}:${dependency.fileID}`;
+    let dependencyLabel = `Project ${dependency.projectID} file ${dependency.fileID}`;
+
     try {
       const file = await getCurseForgeProjectFile(
         dependency.projectID,
         dependency.fileID,
         options,
       );
+      dependencyLabel = file.fileName || file.displayName || dependencyLabel;
 
       if (!file.downloadUrl) {
         skippedFiles += 1;
+        emitCurseForgeProgress(options, {
+          item: {
+            error: null,
+            id: dependencyItemId,
+            kind: "Mod",
+            label: dependencyLabel,
+            progress: 100,
+            status: "skipped",
+          },
+        });
         continue;
       }
 
@@ -1675,6 +1881,16 @@ const installModpackDependencies = async (
       installedFiles += 1;
     } catch {
       skippedFiles += 1;
+      emitCurseForgeProgress(options, {
+        item: {
+          error: null,
+          id: dependencyItemId,
+          kind: "Mod",
+          label: dependencyLabel,
+          progress: 100,
+          status: "skipped",
+        },
+      });
     }
   }
 
@@ -1724,8 +1940,21 @@ const installCurseForgeModpackData = async (
     options,
   );
   const media = await saveCurseForgeMediaAssets(instance, input, options);
-  const iconUrl = media.iconUrl ?? input.projectLogoUrl ?? null;
-  const bannerUrl = media.bannerUrl ?? input.projectScreenshotUrls?.[0] ?? null;
+  const existingIconUrl =
+    replacingInstance?.modpack?.iconUrl ?? replacingInstance?.iconUrl ?? null;
+  const existingBannerUrl =
+    replacingInstance?.modpack?.bannerUrl ??
+    replacingInstance?.bannerUrl ??
+    null;
+  const iconUrl = replacingInstance
+    ? (media.iconUrl ?? existingIconUrl ?? input.projectLogoUrl ?? null)
+    : (media.iconUrl ?? input.projectLogoUrl ?? null);
+  const bannerUrl = replacingInstance
+    ? (media.bannerUrl ??
+      existingBannerUrl ??
+      input.projectScreenshotUrls?.[0] ??
+      null)
+    : (media.bannerUrl ?? input.projectScreenshotUrls?.[0] ?? null);
   const installedItem: InstalledCurseForgeFile = {
     category: "modpacks",
     fileId: String(input.file.id),

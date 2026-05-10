@@ -6,12 +6,17 @@ import {
   InfoIcon,
   Loader2Icon,
   MoreHorizontalIcon,
+  PackageIcon,
   PlayIcon,
   PlusIcon,
   SearchIcon,
 } from "lucide-react";
-import { useMemo, useState } from "react";
-import type { LauncherInstance, ModLoader } from "@/shared/types";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type {
+  DownloadQueueJob,
+  LauncherInstance,
+  ModLoader,
+} from "@/shared/types";
 import {
   Alert,
   AlertAction,
@@ -40,7 +45,9 @@ import {
   InputGroupAddon,
   InputGroupInput,
 } from "@/views/main/components/ui/input-group";
+import { Progress } from "@/views/main/components/ui/progress";
 import { Skeleton } from "@/views/main/components/ui/skeleton";
+import { useDownloadQueueStore } from "@/views/main/features/downloads/download-queue-store";
 import {
   InstanceArtwork,
   InstanceIcon,
@@ -63,6 +70,26 @@ const formatRelative = (value: string | null): string =>
   value
     ? `Played ${formatDistanceToNow(new Date(value), { addSuffix: true })}`
     : "Never played";
+
+const getJobProgress = (job: DownloadQueueJob): number =>
+  Math.max(0, Math.min(100, job.progress ?? 0));
+
+const getCompletedInstallItems = (job: DownloadQueueJob): number =>
+  job.items.filter(
+    (item) => item.status === "completed" || item.status === "skipped",
+  ).length;
+
+const isActiveCurseForgeModpackJob = (job: DownloadQueueJob): boolean =>
+  job.metadata.kind === "curseForgeFile" &&
+  job.metadata.category === "modpacks" &&
+  (job.status === "queued" || job.status === "running");
+
+const isCompletedCurseForgeModpackJob = (job: DownloadQueueJob): boolean =>
+  job.metadata.kind === "curseForgeFile" &&
+  job.metadata.category === "modpacks" &&
+  job.status === "completed" &&
+  job.result?.kind === "curseForgeFile" &&
+  Boolean(job.result.result.instance);
 
 function FeaturedInstancePanel({
   instance,
@@ -206,6 +233,66 @@ function InstanceCard({
   );
 }
 
+function InstallingModpackCard({ job }: { job: DownloadQueueJob }) {
+  const progress = getJobProgress(job);
+  const totalItems = Math.max(1, job.totalItems, job.items.length);
+  const completedItems = getCompletedInstallItems(job);
+  const imageUrl =
+    job.metadata.kind === "curseForgeFile" ? job.metadata.imageUrl : null;
+
+  return (
+    <Card className="group overflow-hidden pt-0 ring-1 ring-primary/20">
+      <div className="relative h-36 overflow-hidden bg-muted">
+        {imageUrl ? (
+          <img
+            alt=""
+            className="h-full w-full object-cover opacity-80 blur-[1px] transition-transform duration-500 group-hover:scale-[1.03]"
+            src={imageUrl}
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center bg-primary/10 text-primary">
+            <PackageIcon className="size-10" />
+          </div>
+        )}
+        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/45 to-transparent" />
+        <Badge className="absolute top-3 left-3 gap-1.5">
+          <Loader2Icon className="size-3 animate-spin" />
+          Installing
+        </Badge>
+      </div>
+      <CardHeader className="min-w-0 gap-1.5">
+        <div className="min-w-0 flex-1">
+          <CardTitle className="truncate">{job.title}</CardTitle>
+          <CardDescription className="truncate">
+            {job.activeLabel ?? job.subtitle}
+          </CardDescription>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-center justify-between gap-3 text-xs">
+          <span className="truncate text-muted-foreground">
+            {job.status === "queued" ? "Queued" : "Downloading"}
+          </span>
+          <span className="shrink-0 font-medium tabular-nums">
+            {Math.round(progress)}%
+          </span>
+        </div>
+        <Progress
+          aria-label={`${job.title} install progress`}
+          className="mt-2 [&_[data-slot=progress-track]]:h-2"
+          value={progress}
+        />
+      </CardContent>
+      <CardFooter className="justify-between gap-2">
+        <Badge variant="secondary">CurseForge</Badge>
+        <span className="text-muted-foreground text-xs tabular-nums">
+          {completedItems}/{totalItems} files
+        </span>
+      </CardFooter>
+    </Card>
+  );
+}
+
 function LoadingGrid() {
   return (
     <>
@@ -232,11 +319,17 @@ function LoadingGrid() {
 export function InstancesPage() {
   const instancesHook = useInstances();
   const launchPlan = useLaunchPlan();
+  const downloadJobs = useDownloadQueueStore((state) => state.jobs);
+  const refreshedModpackJobsRef = useRef<Set<string>>(new Set());
   const [dialogOpen, setDialogOpen] = useState(false);
   const [query, setQuery] = useState("");
 
   const instances = instancesHook.data ?? [];
-  const loading = instancesHook.loading;
+  const loading = instancesHook.loading && instancesHook.data === null;
+  const activeModpackJobs = useMemo(
+    () => downloadJobs.filter(isActiveCurseForgeModpackJob),
+    [downloadJobs],
+  );
 
   const filteredInstances = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -254,6 +347,18 @@ export function InstancesPage() {
     );
   }, [instances, query]);
 
+  const filteredActiveModpackJobs = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return activeModpackJobs;
+
+    return activeModpackJobs.filter((job) =>
+      [job.title, job.subtitle, job.activeLabel ?? ""]
+        .join(" ")
+        .toLowerCase()
+        .includes(needle),
+    );
+  }, [activeModpackJobs, query]);
+
   const featuredInstance = useMemo(() => {
     return (
       [...instances]
@@ -267,6 +372,26 @@ export function InstancesPage() {
       null
     );
   }, [instances]);
+
+  useEffect(() => {
+    let shouldRefresh = false;
+
+    for (const job of downloadJobs) {
+      if (
+        !isCompletedCurseForgeModpackJob(job) ||
+        refreshedModpackJobsRef.current.has(job.id)
+      ) {
+        continue;
+      }
+
+      refreshedModpackJobsRef.current.add(job.id);
+      shouldRefresh = true;
+    }
+
+    if (shouldRefresh) {
+      instancesHook.refresh();
+    }
+  }, [downloadJobs, instancesHook.refresh]);
 
   return (
     <div className="mx-auto flex max-w-[90rem] flex-col gap-5 p-4 sm:p-6">
@@ -336,11 +461,12 @@ export function InstancesPage() {
       )}
 
       {/* Grid */}
-      {(loading || instances.length > 0) && (
+      {(loading || instances.length > 0 || activeModpackJobs.length > 0) && (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(17rem,1fr))] gap-3">
           {loading ? (
             <LoadingGrid />
-          ) : filteredInstances.length === 0 ? (
+          ) : filteredInstances.length === 0 &&
+            filteredActiveModpackJobs.length === 0 ? (
             <Empty className="col-span-full rounded-lg border border-dashed py-12">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
@@ -353,15 +479,20 @@ export function InstancesPage() {
               </EmptyHeader>
             </Empty>
           ) : (
-            filteredInstances.map((instance) => (
-              <InstanceCard
-                key={instance.id}
-                instance={instance}
-                launchDisabled={launchPlan.loadingInstanceId !== null}
-                launchLoading={launchPlan.loadingInstanceId === instance.id}
-                onPlay={() => void launchPlan.createLaunchPlan(instance.id)}
-              />
-            ))
+            <>
+              {filteredActiveModpackJobs.map((job) => (
+                <InstallingModpackCard job={job} key={job.id} />
+              ))}
+              {filteredInstances.map((instance) => (
+                <InstanceCard
+                  key={instance.id}
+                  instance={instance}
+                  launchDisabled={launchPlan.loadingInstanceId !== null}
+                  launchLoading={launchPlan.loadingInstanceId === instance.id}
+                  onPlay={() => void launchPlan.createLaunchPlan(instance.id)}
+                />
+              ))}
+            </>
           )}
         </div>
       )}

@@ -135,7 +135,9 @@ export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
     );
   };
 
-  if (instancesHook.loading) return <InstanceDetailsLoadingState />;
+  if (instancesHook.loading && instancesHook.data === null) {
+    return <InstanceDetailsLoadingState />;
+  }
   if (!instance) return <InstanceDetailsNotFoundState />;
 
   const planLoading = launchPlan.loadingInstanceId === instance.id;

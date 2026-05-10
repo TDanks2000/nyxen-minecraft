@@ -6,7 +6,9 @@ import type {
   DownloadArtifactsInput,
   DownloadArtifactsResult,
   DownloadQueueItem,
+  DownloadQueueItemStatus,
   DownloadQueueJob,
+  DownloadQueueJobMetadata,
   DownloadQueueJobResult,
   DownloadQueueJobStatus,
   EnqueueDownloadJobInput,
@@ -15,7 +17,11 @@ import type {
   LaunchPlanMissingArtifact,
 } from "../../shared/types";
 import { downloadArtifacts } from "./download";
-import { downloadCurseForgeFile } from "./instance-content";
+import {
+  type CurseForgeDownloadProgressEvent,
+  type CurseForgeDownloadProgressItem,
+  downloadCurseForgeFile,
+} from "./instance-content";
 import { createLaunchPlan } from "./launch-plan";
 import { refreshMinecraftVersionManifest } from "./versions";
 
@@ -26,6 +32,111 @@ let processing = false;
 
 const runners = new Map<string, DownloadQueueRunner>();
 const maxJobs = 40;
+
+type QueueItemInput = {
+  downloadedBytes?: number;
+  error?: string | null;
+  id: string;
+  kind: string;
+  label: string;
+  progress?: number | null;
+  status?: DownloadQueueItemStatus;
+  totalBytes?: number | null;
+};
+
+const clampPercent = (value: number | null | undefined): number | null => {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return null;
+  }
+
+  return Math.max(0, Math.min(100, value));
+};
+
+const normalizeByteCount = (
+  value: number | null | undefined,
+  fallback: number,
+): number => {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return fallback;
+  }
+
+  return Math.max(0, Math.trunc(value));
+};
+
+const normalizeTotalBytes = (
+  value: number | null | undefined,
+): number | null => {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return null;
+  }
+
+  return Math.max(0, Math.trunc(value));
+};
+
+const getByteProgress = (
+  downloadedBytes: number,
+  totalBytes: number | null,
+): number | null => {
+  if (!totalBytes || totalBytes <= 0) return null;
+
+  return clampPercent((downloadedBytes / totalBytes) * 100);
+};
+
+const createQueueItem = ({
+  downloadedBytes = 0,
+  error = null,
+  id,
+  kind,
+  label,
+  progress,
+  status = "queued",
+  totalBytes = null,
+}: QueueItemInput): DownloadQueueItem => {
+  const normalizedDownloaded = normalizeByteCount(downloadedBytes, 0);
+  const normalizedTotal = normalizeTotalBytes(totalBytes);
+
+  return {
+    downloadedBytes: normalizedDownloaded,
+    error,
+    id,
+    kind,
+    label,
+    progress: clampPercent(
+      progress ?? getByteProgress(normalizedDownloaded, normalizedTotal),
+    ),
+    status,
+    totalBytes: normalizedTotal,
+  };
+};
+
+const getRunningItemLabel = (job: DownloadQueueJob): string | null =>
+  job.items.find((item) => item.status === "running")?.label ?? null;
+
+const deriveJobProgress = (job: DownloadQueueJob): number | null => {
+  if (job.status === "completed") return 100;
+  if (job.status === "queued") return 0;
+
+  const totalItems = Math.max(1, job.totalItems, job.items.length);
+  const completedUnits = job.items.reduce((total, item) => {
+    if (item.status === "completed" || item.status === "skipped") {
+      return total + 1;
+    }
+
+    if (item.progress === null) {
+      return total;
+    }
+
+    return total + item.progress / 100;
+  }, 0);
+
+  return clampPercent((completedUnits / totalItems) * 100);
+};
+
+const withDerivedJobProgress = (job: DownloadQueueJob): DownloadQueueJob => ({
+  ...job,
+  activeLabel: job.activeLabel ?? getRunningItemLabel(job),
+  progress: deriveJobProgress(job),
+});
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
@@ -40,6 +151,7 @@ const createJobId = (): string => crypto.randomUUID();
 const snapshotJob = (job: DownloadQueueJob): DownloadQueueJob => ({
   ...job,
   items: job.items.map((item) => ({ ...item })),
+  metadata: { ...job.metadata } as DownloadQueueJobMetadata,
   result: job.result,
 });
 
@@ -132,24 +244,26 @@ const getArtifactLabel = (artifact: LaunchPlanMissingArtifact): string => {
 
 const createArtifactItem = (
   artifact: LaunchPlanMissingArtifact,
-): DownloadQueueItem => ({
-  error: null,
-  id: artifact.id,
-  kind: artifactKindLabels[artifact.kind] ?? artifact.kind,
-  label: getArtifactLabel(artifact),
-  status: "queued",
-});
+): DownloadQueueItem =>
+  createQueueItem({
+    id: artifact.id,
+    kind: artifactKindLabels[artifact.kind] ?? artifact.kind,
+    label: getArtifactLabel(artifact),
+  });
 
 const createLaunchArtifactsJob = (
   plan: LaunchPlan,
 ): { job: DownloadQueueJob; runner: DownloadQueueRunner } => {
   const timestamp = nowIso();
   const job: DownloadQueueJob = {
+    activeLabel: null,
     completedAt: null,
     createdAt: timestamp,
     error: null,
     id: createJobId(),
     items: plan.missingArtifacts.map(createArtifactItem),
+    metadata: { kind: "launchArtifacts" },
+    progress: 0,
     result: null,
     source: "launch",
     startedAt: null,
@@ -177,6 +291,89 @@ const getCurseForgeCategoryLabel = (category: CurseForgeCategory): string => {
   return "World";
 };
 
+const hasOwn = (
+  value: CurseForgeDownloadProgressItem,
+  key: keyof CurseForgeDownloadProgressItem,
+): boolean => Object.hasOwn(value, key);
+
+const applyProgressItemUpdate = (
+  items: Array<DownloadQueueItem>,
+  update: CurseForgeDownloadProgressItem,
+): Array<DownloadQueueItem> => {
+  const existingIndex = items.findIndex((item) => item.id === update.id);
+  const existing = existingIndex >= 0 ? items[existingIndex] : null;
+  const totalBytes = hasOwn(update, "totalBytes")
+    ? normalizeTotalBytes(update.totalBytes)
+    : (existing?.totalBytes ?? null);
+  const downloadedBytes = hasOwn(update, "downloadedBytes")
+    ? normalizeByteCount(update.downloadedBytes, existing?.downloadedBytes ?? 0)
+    : (existing?.downloadedBytes ?? 0);
+  const status = update.status ?? existing?.status ?? "queued";
+  const progress =
+    status === "completed" || status === "skipped"
+      ? 100
+      : hasOwn(update, "progress")
+        ? clampPercent(update.progress)
+        : (getByteProgress(downloadedBytes, totalBytes) ??
+          existing?.progress ??
+          null);
+  const nextItem = createQueueItem({
+    downloadedBytes,
+    error: hasOwn(update, "error")
+      ? (update.error ?? null)
+      : (existing?.error ?? null),
+    id: update.id,
+    kind: update.kind ?? existing?.kind ?? "CurseForge",
+    label: update.label ?? existing?.label ?? update.id,
+    progress,
+    status,
+    totalBytes,
+  });
+
+  if (existingIndex === -1) {
+    return [...items, nextItem];
+  }
+
+  return items.map((item, index) =>
+    index === existingIndex ? nextItem : item,
+  );
+};
+
+const applyCurseForgeProgress = (
+  jobId: string,
+  event: CurseForgeDownloadProgressEvent,
+): void => {
+  const timestamp = nowIso();
+
+  updateJob(jobId, (job) => {
+    const updates = [
+      ...(event.items ?? []),
+      ...(event.item ? [event.item] : []),
+    ];
+    const nextItems = updates.reduce(
+      (items, update) => applyProgressItemUpdate(items, update),
+      job.items,
+    );
+    const nextJob: DownloadQueueJob = {
+      ...job,
+      activeLabel:
+        event.activeLabel !== undefined
+          ? event.activeLabel
+          : (getRunningItemLabel({ ...job, items: nextItems }) ??
+            job.activeLabel),
+      items: nextItems,
+      totalItems: Math.max(
+        1,
+        event.totalItems ?? job.totalItems,
+        nextItems.length,
+      ),
+      updatedAt: timestamp,
+    };
+
+    return withDerivedJobProgress(nextJob);
+  });
+};
+
 const createCurseForgeFileJob = (
   input: Extract<EnqueueDownloadJobInput, { kind: "curseForgeFile" }>["input"],
 ): { job: DownloadQueueJob; runner: DownloadQueueRunner } => {
@@ -184,19 +381,28 @@ const createCurseForgeFileJob = (
   const fileName =
     input.file.fileName || input.file.displayName || `${input.projectName}.jar`;
   const job: DownloadQueueJob = {
+    activeLabel: null,
     completedAt: null,
     createdAt: timestamp,
     error: null,
     id: createJobId(),
     items: [
-      {
-        error: null,
+      createQueueItem({
         id: `curseforge:${input.projectId}:${input.file.id}`,
         kind: getCurseForgeCategoryLabel(input.category),
         label: basename(fileName.replaceAll("\\", "/")),
-        status: "queued",
-      },
+      }),
     ],
+    metadata: {
+      category: input.category,
+      fileId: input.file.id,
+      imageUrl:
+        input.projectLogoUrl ?? input.projectScreenshotUrls?.[0] ?? null,
+      kind: "curseForgeFile",
+      projectId: input.projectId,
+      targetInstanceId: input.instanceId ?? null,
+    },
+    progress: 0,
     result: null,
     source: "curseforge",
     startedAt: null,
@@ -212,7 +418,9 @@ const createCurseForgeFileJob = (
     job,
     runner: async () => ({
       kind: "curseForgeFile",
-      result: await downloadCurseForgeFile(input),
+      result: await downloadCurseForgeFile(input, {
+        onProgress: (event) => applyCurseForgeProgress(job.id, event),
+      }),
     }),
   };
 };
@@ -223,19 +431,20 @@ const createMinecraftVersionManifestJob = (): {
 } => {
   const timestamp = nowIso();
   const job: DownloadQueueJob = {
+    activeLabel: null,
     completedAt: null,
     createdAt: timestamp,
     error: null,
     id: createJobId(),
     items: [
-      {
-        error: null,
+      createQueueItem({
         id: "minecraft-version-manifest",
         kind: "Version metadata",
         label: "Minecraft version manifest",
-        status: "queued",
-      },
+      }),
     ],
+    metadata: { kind: "minecraftVersionManifest" },
+    progress: 0,
     result: null,
     source: "launch",
     startedAt: null,
@@ -270,13 +479,20 @@ const getNextQueuedJob = (): DownloadQueueJob | null => {
 const markJobStarted = (jobId: string): void => {
   const timestamp = nowIso();
 
-  updateJob(jobId, (job) => ({
-    ...job,
-    items: job.items.map((item) => ({ ...item, status: "running" })),
-    startedAt: timestamp,
-    status: "running",
-    updatedAt: timestamp,
-  }));
+  updateJob(jobId, (job) => {
+    const nextJob: DownloadQueueJob = {
+      ...job,
+      items: job.items.map((item) => ({ ...item, status: "running" })),
+      startedAt: timestamp,
+      status: "running",
+      updatedAt: timestamp,
+    };
+
+    return withDerivedJobProgress({
+      ...nextJob,
+      activeLabel: getRunningItemLabel(nextJob),
+    });
+  });
 };
 
 const failureMessage = (result: DownloadArtifactsResult): string | null =>
@@ -296,9 +512,9 @@ const completeJob = (jobId: string, result: DownloadQueueJobResult): void => {
       );
       const status: DownloadQueueJobStatus =
         result.result.failed.length > 0 ? "failed" : "completed";
-
-      return {
+      const nextJob: DownloadQueueJob = {
         ...job,
+        activeLabel: null,
         completedAt: timestamp,
         error: failureMessage(result.result),
         items: job.items.map((item) => {
@@ -307,9 +523,11 @@ const completeJob = (jobId: string, result: DownloadQueueJobResult): void => {
           return {
             ...item,
             error,
+            progress: error ? item.progress : 100,
             status: error ? "failed" : "completed",
           };
         }),
+        progress: job.progress,
         result,
         status,
         totalItems: Math.max(
@@ -318,18 +536,26 @@ const completeJob = (jobId: string, result: DownloadQueueJobResult): void => {
         ),
         updatedAt: timestamp,
       };
+
+      return {
+        ...nextJob,
+        progress: deriveJobProgress(nextJob),
+      };
     }
 
     if (result.kind === "minecraftVersionManifest") {
       return {
         ...job,
+        activeLabel: null,
         completedAt: timestamp,
         error: null,
         items: job.items.map((item) => ({
           ...item,
           error: null,
+          progress: 100,
           status: "completed",
         })),
+        progress: 100,
         result,
         status: "completed",
         updatedAt: timestamp,
@@ -338,13 +564,19 @@ const completeJob = (jobId: string, result: DownloadQueueJobResult): void => {
 
     return {
       ...job,
+      activeLabel: null,
       completedAt: timestamp,
       error: null,
       items: job.items.map((item) => ({
         ...item,
         error: null,
-        status: "completed",
+        progress: item.status === "failed" ? item.progress : 100,
+        status:
+          item.status === "skipped" || item.status === "failed"
+            ? item.status
+            : "completed",
       })),
+      progress: 100,
       result,
       status: "completed",
       updatedAt: timestamp,
@@ -356,18 +588,31 @@ const failJob = (jobId: string, error: unknown): void => {
   const timestamp = nowIso();
   const message = error instanceof Error ? error.message : "Download failed.";
 
-  updateJob(jobId, (job) => ({
-    ...job,
-    completedAt: timestamp,
-    error: message,
-    items: job.items.map((item) => ({
-      ...item,
-      error: item.status === "completed" ? item.error : message,
-      status: item.status === "completed" ? item.status : "failed",
-    })),
-    status: "failed",
-    updatedAt: timestamp,
-  }));
+  updateJob(jobId, (job) => {
+    const nextJob: DownloadQueueJob = {
+      ...job,
+      activeLabel: null,
+      completedAt: timestamp,
+      error: message,
+      items: job.items.map((item) => {
+        const finished =
+          item.status === "completed" || item.status === "skipped";
+
+        return {
+          ...item,
+          error: finished ? item.error : message,
+          status: finished ? item.status : "failed",
+        };
+      }),
+      status: "failed",
+      updatedAt: timestamp,
+    };
+
+    return {
+      ...nextJob,
+      progress: deriveJobProgress(nextJob),
+    };
+  });
 };
 
 const processQueue = async (): Promise<void> => {

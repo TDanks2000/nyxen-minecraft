@@ -82,6 +82,8 @@ export function AppSidebar() {
       .slice(0, 3);
   }, [instancesHook.data]);
   const activeInstance = quickPlayInstances[0] ?? null;
+  const initialInstancesLoading =
+    instancesHook.loading && instancesHook.data === null;
 
   return (
     <aside className="hidden w-52 shrink-0 flex-col overflow-y-auto border-r border-sidebar-border bg-sidebar md:flex">
@@ -122,7 +124,7 @@ export function AppSidebar() {
       </div>
 
       <div className="flex flex-col gap-0.5 px-2">
-        {instancesHook.loading ? (
+        {initialInstancesLoading ? (
           ["quick-play-a", "quick-play-b", "quick-play-c"].map((key) => (
             <div
               key={key}
