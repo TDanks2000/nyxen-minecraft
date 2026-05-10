@@ -1,15 +1,20 @@
 import {
   AlertTriangleIcon,
+  CheckCircle2Icon,
   FolderOpenIcon,
+  GaugeIcon,
   InfoIcon,
+  PuzzleIcon,
   RotateCcwIcon,
   SaveIcon,
   Trash2Icon,
   UserRoundIcon,
+  WrenchIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import type {
+  InstanceFileEntry,
   LauncherInstance,
   LauncherProfile,
   ModLoader,
@@ -73,11 +78,14 @@ import { useProfiles } from "@/views/main/hooks/use-profiles";
 import { useSettings } from "@/views/main/hooks/use-settings";
 import { useVersions } from "@/views/main/hooks/use-versions";
 import { rpc } from "@/views/main/lib/rpc";
+import { cn } from "@/views/main/lib/utils";
 
 type InstanceSettingsPanelProps = {
   instance: LauncherInstance;
+  mods: Array<InstanceFileEntry>;
   onInstanceDeleted: (instanceId: string) => void;
   onInstanceUpdated: (instance: LauncherInstance) => void;
+  onReviewMods: () => void;
 };
 
 const LOADERS: Array<{ value: ModLoader; label: string }> = [
@@ -93,6 +101,13 @@ const ALL_RAM_STOPS = [
 ];
 
 const AUTO_PROFILE_VALUE = "__auto_profile__";
+
+const SETTINGS_FLOW = [
+  { icon: UserRoundIcon, label: "Details" },
+  { icon: PuzzleIcon, label: "Version" },
+  { icon: GaugeIcon, label: "Performance" },
+  { icon: WrenchIcon, label: "Advanced" },
+];
 
 const formatRam = (mb: number): string => {
   if (mb < 1024) return `${mb} MB`;
@@ -131,10 +146,50 @@ const openExternalPath = (path: string) => {
   void rpc.requestProxy.openExternal({ url: `file://${path}` });
 };
 
+function SettingsFlowStrip({ blocked }: { blocked: boolean }) {
+  return (
+    <div className="mb-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+      {SETTINGS_FLOW.map((step, index) => {
+        const Icon = step.icon;
+        const guarded = blocked && step.label === "Version";
+
+        return (
+          <div
+            className={cn(
+              "flex min-w-0 items-center gap-2 rounded-lg border border-border bg-card/70 px-3 py-2",
+              guarded && "border-destructive/40 bg-destructive/10",
+            )}
+            key={step.label}
+          >
+            <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+              <Icon />
+            </span>
+            <div className="min-w-0">
+              <div className="text-muted-foreground text-xs">
+                {String(index + 1).padStart(2, "0")}
+              </div>
+              <div className="truncate font-heading font-semibold text-sm">
+                {step.label}
+              </div>
+            </div>
+            {guarded ? (
+              <AlertTriangleIcon className="ml-auto text-destructive" />
+            ) : (
+              <CheckCircle2Icon className="ml-auto text-primary" />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function InstanceSettingsPanel({
   instance,
+  mods,
   onInstanceDeleted,
   onInstanceUpdated,
+  onReviewMods,
 }: InstanceSettingsPanelProps) {
   const profiles = useProfiles();
   const settings = useSettings();
@@ -174,6 +229,7 @@ export function InstanceSettingsPanel({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteFiles, setDeleteFiles] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [compatibilityConfirmed, setCompatibilityConfirmed] = useState(false);
 
   const loaderVersions = useLoaderVersions(loader, versionId);
   const verifiedProfiles = useMemo(
@@ -207,20 +263,50 @@ export function InstanceSettingsPanel({
   const loaderLabel =
     LOADERS.find((loaderOption) => loaderOption.value === loader)?.label ??
     loader;
+  const nextLoaderVersion =
+    loader === "vanilla" ? null : loaderVersion.trim() || null;
+  const runtimeChanged =
+    versionId !== instance.versionId ||
+    loader !== instance.loader ||
+    nextLoaderVersion !== instance.loaderVersion;
+  const localModCount = mods.length;
+  const requiresCompatibilityConfirmation = runtimeChanged && localModCount > 0;
+  const versionsEmpty =
+    !versions.loading && !versions.error && versions.data?.length === 0;
+  const versionLookupReady =
+    !versions.loading && !versions.error && !versionsEmpty;
   const loaderNeedsVersion = loader !== "vanilla" && versionId.length > 0;
   const loaderVersionOptions = loaderVersions.data ?? [];
+  const loaderSelectionPending = loaderNeedsVersion && loaderVersions.loading;
+  const loaderVersionsEmpty =
+    loaderNeedsVersion &&
+    !loaderSelectionPending &&
+    !loaderVersions.error &&
+    loaderVersionOptions.length === 0;
+  const loaderSelectionUnavailable =
+    loaderNeedsVersion &&
+    !loaderSelectionPending &&
+    (!!loaderVersions.error || loaderVersionsEmpty);
+  const needsLoaderVersion =
+    loaderNeedsVersion &&
+    !loaderSelectionUnavailable &&
+    loaderVersionOptions.length > 0;
   const loaderVersionComplete =
-    !loaderNeedsVersion ||
-    loaderVersions.error !== null ||
-    loaderVersionOptions.length === 0 ||
-    loaderVersion.length > 0;
+    !needsLoaderVersion ||
+    (loaderVersion.length > 0 &&
+      loaderVersionOptions.some((version) => version.id === loaderVersion));
+  const versionComplete =
+    versionId.length > 0 &&
+    versionLookupReady &&
+    loaderVersionComplete &&
+    !loaderSelectionPending &&
+    !loaderSelectionUnavailable;
   const canSave =
     !saving &&
     nameValid &&
     memoryMinValid &&
-    versionValid &&
-    !loaderVersions.loading &&
-    loaderVersionComplete;
+    versionComplete &&
+    (!requiresCompatibilityConfirmation || compatibilityConfirmed);
   const profileCopy = selectedProfile
     ? `${selectedProfile.displayName} will be used for launch authentication.`
     : profiles.loading
@@ -275,6 +361,12 @@ export function InstanceSettingsPanel({
     }
   }, [loaderVersion, loaderVersionOptions]);
 
+  useEffect(() => {
+    if (!requiresCompatibilityConfirmation && compatibilityConfirmed) {
+      setCompatibilityConfirmed(false);
+    }
+  }, [compatibilityConfirmed, requiresCompatibilityConfirmation]);
+
   const resetForm = () => {
     setName(instance.name);
     setVersionId(instance.versionId);
@@ -286,6 +378,14 @@ export function InstanceSettingsPanel({
     setJavaExecutable(instance.javaExecutable ?? "");
     setJavaArgsText(instance.javaArgs.join("\n"));
     setGameArgsText(instance.gameArgs.join("\n"));
+    setCompatibilityConfirmed(false);
+  };
+
+  const keepCurrentRuntime = () => {
+    setVersionId(instance.versionId);
+    setLoader(instance.loader);
+    setLoaderVersion(instance.loaderVersion ?? "");
+    setCompatibilityConfirmed(false);
   };
 
   async function handleSave() {
@@ -296,11 +396,11 @@ export function InstanceSettingsPanel({
       const updated = await rpc.requestProxy.updateLauncherInstance({
         gameArgs: parseArgLines(gameArgsText),
         instanceId: instance.id,
+        confirmRuntimeCompatibility: compatibilityConfirmed,
         javaArgs: parseArgLines(javaArgsText),
         javaExecutable: javaExecutable.trim() || null,
         loader,
-        loaderVersion:
-          loader === "vanilla" ? null : loaderVersion.trim() || null,
+        loaderVersion: nextLoaderVersion,
         memoryMaxMb,
         memoryMinMb: minMemoryValue,
         name: name.trim(),
@@ -308,7 +408,11 @@ export function InstanceSettingsPanel({
           profileValue === AUTO_PROFILE_VALUE ? null : profileValue.trim(),
         versionId,
       });
-      toast.success("Instance settings saved");
+      toast.success(
+        requiresCompatibilityConfirmation
+          ? "Settings saved. Review mods before launching."
+          : "Instance settings saved",
+      );
       onInstanceUpdated(updated);
     } catch (error) {
       toast.error(
@@ -342,6 +446,8 @@ export function InstanceSettingsPanel({
 
   return (
     <>
+      <SettingsFlowStrip blocked={requiresCompatibilityConfirmation} />
+
       <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="flex min-w-0 flex-col gap-4">
           <Card>
@@ -441,12 +547,17 @@ export function InstanceSettingsPanel({
                 </Field>
 
                 <FieldGroup className="grid gap-4 lg:grid-cols-2">
-                  <Field data-invalid={!versionValid}>
+                  <Field data-invalid={!!versions.error || versionsEmpty}>
                     <FieldLabel htmlFor="instance-version">
                       Minecraft Version
                     </FieldLabel>
                     {versions.loading ? (
                       <LoadingBox label="Loading versions" />
+                    ) : versionsEmpty ? (
+                      <RetryBox
+                        label="No versions available"
+                        onRetry={versions.refreshManifest}
+                      />
                     ) : versions.error ? (
                       <RetryBox
                         label="Failed to load versions"
@@ -512,7 +623,9 @@ export function InstanceSettingsPanel({
                 </FieldGroup>
 
                 <Field
-                  data-invalid={loaderNeedsVersion && !loaderVersionComplete}
+                  data-invalid={
+                    loaderNeedsVersion && loaderSelectionUnavailable
+                  }
                 >
                   <FieldLabel htmlFor="instance-loader-version">
                     {loader !== "vanilla"
@@ -573,6 +686,71 @@ export function InstanceSettingsPanel({
               </FieldGroup>
             </CardContent>
           </Card>
+
+          {requiresCompatibilityConfirmation ? (
+            <Alert variant="destructive">
+              <AlertTriangleIcon />
+              <AlertTitle>Compatibility Review Required</AlertTitle>
+              <AlertDescription className="flex flex-col gap-3">
+                <p>
+                  This instance has {localModCount} local mod
+                  {localModCount === 1 ? "" : "s"}. Changing Minecraft or the
+                  mod loader keeps those files in place, so incompatible jars
+                  must be updated, replaced, or removed before launch.
+                </p>
+                <div className="grid gap-2 text-xs sm:grid-cols-2">
+                  <div className="rounded-md border border-border bg-background/65 px-3 py-2">
+                    <div className="text-muted-foreground">Current runtime</div>
+                    <div className="mt-1 font-semibold">
+                      {instance.versionId} · {instance.loader}
+                      {instance.loaderVersion
+                        ? ` ${instance.loaderVersion}`
+                        : ""}
+                    </div>
+                  </div>
+                  <div className="rounded-md border border-border bg-background/65 px-3 py-2">
+                    <div className="text-muted-foreground">Next runtime</div>
+                    <div className="mt-1 font-semibold">
+                      {versionId} · {loader}
+                      {nextLoaderVersion ? ` ${nextLoaderVersion}` : ""}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3 rounded-md border border-border bg-background/65 p-3">
+                  <Switch
+                    aria-label="Confirm mod compatibility review"
+                    checked={compatibilityConfirmed}
+                    onCheckedChange={setCompatibilityConfirmed}
+                    size="sm"
+                  />
+                  <span>
+                    I understand the runtime change may break local mods and
+                    will review compatibility before launching.
+                  </span>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Button
+                    onClick={onReviewMods}
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
+                    <PuzzleIcon data-icon="inline-start" />
+                    Review Mods
+                  </Button>
+                  <Button
+                    onClick={keepCurrentRuntime}
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
+                    <RotateCcwIcon data-icon="inline-start" />
+                    Keep Current Runtime
+                  </Button>
+                </div>
+              </AlertDescription>
+            </Alert>
+          ) : null}
 
           <Card>
             <CardHeader>

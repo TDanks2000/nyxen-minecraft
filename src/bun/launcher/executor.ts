@@ -1,6 +1,11 @@
-import { spawn } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import { release } from "node:os";
-import type { LaunchInstanceResult, LaunchPlan } from "../../shared/types";
+import type {
+  LaunchInstanceResult,
+  LaunchPlan,
+  RunningLaunch,
+  StopLaunchInstanceResult,
+} from "../../shared/types";
 import { getLauncherDirectories } from "./paths";
 import {
   assertJavaExecutable,
@@ -101,6 +106,73 @@ const substituteVars = (
 
 export type LaunchOptions = {
   accessToken?: string;
+};
+
+type RunningLaunchEntry = RunningLaunch & {
+  child: ChildProcess;
+};
+
+const runningLaunches = new Map<string, RunningLaunchEntry>();
+
+const isProcessAlive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      (error as { code?: string }).code === "EPERM"
+    );
+  }
+};
+
+const pruneStoppedLaunches = (): void => {
+  for (const [instanceId, launch] of runningLaunches) {
+    if (!isProcessAlive(launch.pid)) {
+      runningLaunches.delete(instanceId);
+    }
+  }
+};
+
+export const listRunningLaunches = (): Array<RunningLaunch> => {
+  pruneStoppedLaunches();
+
+  return Array.from(runningLaunches.values()).map(
+    ({ child: _child, ...launch }) => launch,
+  );
+};
+
+export const stopMinecraftLaunch = (
+  instanceId: string,
+): StopLaunchInstanceResult => {
+  const normalizedInstanceId = instanceId.trim();
+
+  if (!normalizedInstanceId) {
+    throw new Error("Launcher instance id is required.");
+  }
+
+  pruneStoppedLaunches();
+
+  const launch = runningLaunches.get(normalizedInstanceId);
+
+  if (!launch) {
+    return {
+      instanceId: normalizedInstanceId,
+      pid: null,
+      stopped: false,
+    };
+  }
+
+  const stopped = launch.child.kill("SIGTERM");
+  runningLaunches.delete(normalizedInstanceId);
+
+  return {
+    instanceId: normalizedInstanceId,
+    pid: launch.pid,
+    stopped,
+  };
 };
 
 const buildCommand = (
@@ -205,6 +277,17 @@ export const launchMinecraft = (
   options: LaunchOptions = {},
 ): LaunchInstanceResult => {
   assertLaunchPlanStorage(plan);
+  pruneStoppedLaunches();
+
+  const existingLaunch = runningLaunches.get(plan.instance.id);
+
+  if (existingLaunch) {
+    return {
+      instanceId: existingLaunch.instanceId,
+      pid: existingLaunch.pid,
+      startedAt: existingLaunch.startedAt,
+    };
+  }
 
   const { executable, args } = buildCommand(plan, options);
 
@@ -222,5 +305,23 @@ export const launchMinecraft = (
     );
   }
 
-  return { pid: child.pid };
+  const launch: RunningLaunchEntry = {
+    child,
+    instanceId: plan.instance.id,
+    pid: child.pid,
+    startedAt: new Date().toISOString(),
+  };
+
+  runningLaunches.set(plan.instance.id, launch);
+  child.once("exit", () => {
+    if (runningLaunches.get(plan.instance.id)?.child === child) {
+      runningLaunches.delete(plan.instance.id);
+    }
+  });
+
+  return {
+    instanceId: launch.instanceId,
+    pid: launch.pid,
+    startedAt: launch.startedAt,
+  };
 };

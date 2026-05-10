@@ -1,7 +1,7 @@
 import { count } from "drizzle-orm";
 import { db } from "./db/client";
 import * as schema from "./db/schema";
-import { refreshMinecraftVersionManifest } from "./launcher/versions";
+import { enqueueDownloadJob } from "./launcher/download-queue";
 import { createMainWindow } from "./window";
 
 createMainWindow();
@@ -11,5 +11,7 @@ const versionCount =
   0;
 
 if (versionCount === 0) {
-  refreshMinecraftVersionManifest().catch(() => {});
+  enqueueDownloadJob({ input: null, kind: "minecraftVersionManifest" }).catch(
+    () => {},
+  );
 }

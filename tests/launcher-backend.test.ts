@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { gzipSync } from "node:zlib";
 import type {
   CurseForgeProjectSection,
   LauncherDirectories,
@@ -89,6 +90,17 @@ const versionDetailsDocument = {
   ],
   mainClass: "net.minecraft.client.main.Main",
   type: "release",
+};
+
+const assetObjectContents = "asset-object";
+const assetObjectHash = "f47d05104830672da359af5552897d84f1b7e8d6";
+const assetIndexDocument = {
+  objects: {
+    "minecraft/textures/gui/title/background/panorama_1.png": {
+      hash: assetObjectHash,
+      size: assetObjectContents.length,
+    },
+  },
 };
 
 const minecraftProfileDocument = {
@@ -784,6 +796,57 @@ describe("launcher backend", () => {
     });
   });
 
+  test("adds missing asset objects from cached asset indexes", async () => {
+    const { createLauncherInstance } = await import(
+      "../src/bun/launcher/instances"
+    );
+    const { createLaunchPlan } = await import(
+      "../src/bun/launcher/launch-plan"
+    );
+    const { getLauncherDirectories } = await import(
+      "../src/bun/launcher/paths"
+    );
+    const { refreshMinecraftVersionManifest } = await import(
+      "../src/bun/launcher/versions"
+    );
+
+    await refreshMinecraftVersionManifest({ fetcher: fakeFetch });
+
+    const directories = getLauncherDirectories();
+    const assetIndexPath = join(directories.assets, "indexes", "12.json");
+
+    mkdirSync(dirname(assetIndexPath), { recursive: true });
+    writeFileSync(assetIndexPath, JSON.stringify(assetIndexDocument));
+
+    try {
+      const instance = createLauncherInstance({
+        name: "Asset Check",
+        versionId: "1.20.4",
+      });
+      const plan = await createLaunchPlan({ instanceId: instance.id });
+      const assetObject = plan.missingArtifacts.find(
+        (artifact) => artifact.kind === "assetObject",
+      );
+
+      expect(assetObject).toMatchObject({
+        id: `asset:${assetObjectHash}`,
+        path: join(
+          directories.assets,
+          "objects",
+          assetObjectHash.slice(0, 2),
+          assetObjectHash,
+        ),
+        sha1: assetObjectHash,
+        url: `https://resources.download.minecraft.net/${assetObjectHash.slice(
+          0,
+          2,
+        )}/${assetObjectHash}`,
+      });
+    } finally {
+      rmSync(assetIndexPath, { force: true });
+    }
+  });
+
   test("rejects Microsoft profiles when the account does not own Minecraft", async () => {
     const { completeMicrosoftProfileLogin } = await import(
       "../src/bun/launcher/microsoft-auth"
@@ -877,6 +940,45 @@ describe("launcher backend", () => {
     });
     expect(getLauncherInstance(instance.id)).toBeNull();
     expect(existsSync(instance.instanceDirectory)).toBe(false);
+  });
+
+  test("guards runtime changes when local mods are installed", async () => {
+    const { createLauncherInstance, updateLauncherInstance } = await import(
+      "../src/bun/launcher/instances"
+    );
+    const { refreshMinecraftVersionManifest } = await import(
+      "../src/bun/launcher/versions"
+    );
+
+    await refreshMinecraftVersionManifest({ fetcher: fakeFetch });
+
+    const instance = createLauncherInstance({
+      name: "Guarded Mods",
+      versionId: "1.20.4",
+    });
+
+    mkdirSync(instance.folders.mods, { recursive: true });
+    writeFileSync(join(instance.folders.mods, "example-mod.jar"), "");
+
+    expect(() =>
+      updateLauncherInstance({
+        instanceId: instance.id,
+        loader: "fabric",
+        loaderVersion: "0.15.7",
+        versionId: "1.20.4",
+      }),
+    ).toThrow("Confirm mod compatibility");
+
+    const updated = updateLauncherInstance({
+      confirmRuntimeCompatibility: true,
+      instanceId: instance.id,
+      loader: "fabric",
+      loaderVersion: "0.15.7",
+      versionId: "1.20.4",
+    });
+
+    expect(updated.loader).toBe("fabric");
+    expect(updated.loaderVersion).toBe("0.15.7");
   });
 
   test("returns pending while Minecraft ownership checks run in the background", async () => {
@@ -1156,9 +1258,8 @@ describe("launcher backend", () => {
   });
 
   test("inventories instance content and toggles local mod files", async () => {
-    const { getInstanceContent, setInstanceModEnabled } = await import(
-      "../src/bun/launcher/instance-content"
-    );
+    const { getInstanceContent, getInstanceLogFile, setInstanceModEnabled } =
+      await import("../src/bun/launcher/instance-content");
     const { createLauncherInstance } = await import(
       "../src/bun/launcher/instances"
     );
@@ -1186,7 +1287,32 @@ describe("launcher backend", () => {
     writeFileSync(join(instance.folders.shaderPacks, "shader-pack.zip"), "");
     mkdirSync(join(instance.folders.saves, "Survival World"));
     writeFileSync(join(instance.folders.screenshots, "screen.png"), "");
-    writeFileSync(join(instance.folders.logs, "latest.log"), "");
+    writeFileSync(
+      join(instance.folders.logs, "latest.log"),
+      [
+        "[12:00:00] [Render thread/INFO]: Started Minecraft",
+        "",
+        "[12:00:01] [Render thread/WARN]: Missing optional resource",
+        "[12:00:02] [Render thread/ERROR] [mixin/]: Mixin apply failed for BrokenMod",
+        "java.lang.RuntimeException: Broken mixin target",
+        "\tat com.example.BrokenMod.fail(BrokenMod.java:42)",
+        "[12:00:03] [Render thread/ERROR] [net.minecraft.client.renderer.RenderSystem/]: Failed to load shader",
+        "Caused by: java.io.FileNotFoundException: missing_shader.json",
+      ].join("\n"),
+    );
+    writeFileSync(
+      join(instance.folders.logs, "2026-05-10-1.log.gz"),
+      gzipSync("[12:00:03] [main/INFO]: Archived session\n"),
+    );
+    mkdirSync(join(instance.gameDirectory, "crash-reports"));
+    writeFileSync(
+      join(
+        instance.gameDirectory,
+        "crash-reports",
+        "crash-2026-05-10_12.30.00-client.txt",
+      ),
+      "---- Minecraft Crash Report ----",
+    );
     writeFileSync(join(instance.gameDirectory, "servers.dat"), "servers");
 
     const content = getInstanceContent({ instanceId: instance.id });
@@ -1195,7 +1321,7 @@ describe("launcher backend", () => {
     expect(content.counts).toMatchObject({
       disabledMods: 1,
       enabledMods: 1,
-      logs: 1,
+      logs: 3,
       mods: 2,
       resourcePacks: 1,
       screenshots: 1,
@@ -1209,9 +1335,77 @@ describe("launcher backend", () => {
     expect(content.resourcePacks[0]?.fileName).toBe("resource-pack.zip");
     expect(content.shaderPacks[0]?.fileName).toBe("shader-pack.zip");
     expect(content.screenshots[0]?.fileName).toBe("screen.png");
-    expect(content.logs[0]?.fileName).toBe("latest.log");
+    expect(content.logs.map((log) => log.fileName).sort()).toEqual([
+      "2026-05-10-1.log.gz",
+      "crash-2026-05-10_12.30.00-client.txt",
+      "latest.log",
+    ]);
+    expect(content.logFolders.map((folder) => folder.id).sort()).toEqual([
+      "crash-reports",
+      "logs",
+    ]);
+    expect(
+      content.logFolders
+        .flatMap((folder) => folder.files)
+        .map((log) => [log.fileName, log.displayName]),
+    ).toEqual(
+      expect.arrayContaining([
+        ["latest.log", "Live Session"],
+        ["2026-05-10-1.log.gz", "May 10, 2026 Run 1"],
+        [
+          "crash-2026-05-10_12.30.00-client.txt",
+          "Client Crash May 10, 2026 12:30:00",
+        ],
+      ]),
+    );
     expect(content.worlds[0]?.fileName).toBe("Survival World");
     expect(content.serverList?.fileName).toBe("servers.dat");
+
+    const latestLog = content.logs.find((log) => log.fileName === "latest.log");
+    expect(latestLog).toBeDefined();
+
+    const preview = getInstanceLogFile({
+      fileId: latestLog?.id ?? "",
+      instanceId: instance.id,
+    });
+
+    expect(preview.summary).toMatchObject({
+      errors: 2,
+      totalLines: 4,
+      warnings: 1,
+    });
+    expect(
+      preview.lines.map((line) => [
+        line.level,
+        line.type,
+        line.source,
+        line.groupLabel,
+        line.message,
+        line.details,
+      ]),
+    ).toEqual([
+      ["info", "game", null, null, "Started Minecraft", []],
+      ["warn", "resource", null, "Resource", "Missing optional resource", []],
+      [
+        "error",
+        "mixin",
+        "mixin",
+        "Mixin",
+        "Mixin apply failed for BrokenMod",
+        [
+          "java.lang.RuntimeException: Broken mixin target",
+          "\tat com.example.BrokenMod.fail(BrokenMod.java:42)",
+        ],
+      ],
+      [
+        "error",
+        "graphics",
+        "net.minecraft.client.renderer.RenderSystem",
+        "Graphics",
+        "Failed to load shader",
+        ["Caused by: java.io.FileNotFoundException: missing_shader.json"],
+      ],
+    ]);
 
     const afterDisable = setInstanceModEnabled({
       enabled: false,
@@ -1322,6 +1516,247 @@ describe("launcher backend", () => {
       projectId: "123",
       slug: "example-mod",
     });
+  });
+
+  test("queues CurseForge downloads in backend-owned download state", async () => {
+    const { clearFinishedDownloadJobs, enqueueDownloadJob, listDownloadJobs } =
+      await import("../src/bun/launcher/download-queue");
+    const { createLauncherInstance } = await import(
+      "../src/bun/launcher/instances"
+    );
+    const { refreshMinecraftVersionManifest } = await import(
+      "../src/bun/launcher/versions"
+    );
+
+    await refreshMinecraftVersionManifest({ fetcher: fakeFetch });
+
+    const instance = createLauncherInstance({
+      name: "Queued CurseForge Install",
+      versionId: "1.20.4",
+    });
+    const originalFetch = globalThis.fetch;
+    const requests: Array<string> = [];
+
+    globalThis.fetch = (async (input) => {
+      requests.push(input.toString());
+      return new Response("queued-mod-data", {
+        headers: { "content-length": "15" },
+      });
+    }) as typeof fetch;
+
+    try {
+      const queued = await enqueueDownloadJob({
+        input: {
+          category: "mods",
+          file: {
+            displayName: "Queued Mod 1.0",
+            downloadUrl: "https://downloads.example.test/queued-mod.jar",
+            fileDate: "2024-02-01T00:00:00Z",
+            fileName: "queued-mod.jar",
+            gameVersions: ["1.20.4"],
+            id: 654,
+            modLoaders: ["fabric"],
+            releaseType: "release",
+          },
+          instanceId: instance.id,
+          projectId: 321,
+          projectName: "Queued Mod",
+          projectSlug: "queued-mod",
+        },
+        kind: "curseForgeFile",
+      });
+      let finalJob = listDownloadJobs().find((job) => job.id === queued.id);
+
+      for (
+        let attempt = 0;
+        attempt < 50 && finalJob?.status !== "completed";
+        attempt++
+      ) {
+        await wait(10);
+        finalJob = listDownloadJobs().find((job) => job.id === queued.id);
+      }
+
+      expect(requests).toEqual([
+        "https://downloads.example.test/queued-mod.jar",
+      ]);
+      expect(finalJob).toMatchObject({
+        error: null,
+        source: "curseforge",
+        status: "completed",
+        title: "Queued Mod",
+        totalItems: 1,
+      });
+      expect(finalJob?.items[0]).toMatchObject({
+        label: "queued-mod.jar",
+        status: "completed",
+      });
+      expect(finalJob?.result?.kind).toBe("curseForgeFile");
+      expect(
+        readFileSync(join(instance.folders.mods, "queued-mod.jar"), "utf8"),
+      ).toBe("queued-mod-data");
+    } finally {
+      globalThis.fetch = originalFetch;
+      clearFinishedDownloadJobs();
+    }
+  });
+
+  test("queues launch artifact preparation in backend-owned download state", async () => {
+    const { clearFinishedDownloadJobs, enqueueDownloadJob, listDownloadJobs } =
+      await import("../src/bun/launcher/download-queue");
+    const { createLauncherInstance } = await import(
+      "../src/bun/launcher/instances"
+    );
+    const { createLaunchPlan } = await import(
+      "../src/bun/launcher/launch-plan"
+    );
+    const { refreshMinecraftVersionManifest } = await import(
+      "../src/bun/launcher/versions"
+    );
+
+    await refreshMinecraftVersionManifest({ fetcher: fakeFetch });
+
+    const instance = createLauncherInstance({
+      name: "Queued Launch Prep",
+      versionId: "1.20.4",
+    });
+    const plan = await createLaunchPlan({ instanceId: instance.id });
+    const artifactPaths = plan.missingArtifacts.map(
+      (artifact) => artifact.path,
+    );
+
+    for (const artifact of plan.missingArtifacts) {
+      mkdirSync(dirname(artifact.path), { recursive: true });
+      writeFileSync(
+        artifact.path,
+        artifact.kind === "assetIndex" ? JSON.stringify({ objects: {} }) : "",
+      );
+    }
+
+    try {
+      const queued = await enqueueDownloadJob({
+        input: { instanceId: instance.id },
+        kind: "launchArtifacts",
+      });
+      let finalJob = listDownloadJobs().find((job) => job.id === queued.id);
+
+      for (
+        let attempt = 0;
+        attempt < 50 && finalJob?.status !== "completed";
+        attempt++
+      ) {
+        await wait(10);
+        finalJob = listDownloadJobs().find((job) => job.id === queued.id);
+      }
+
+      expect(finalJob).toMatchObject({
+        error: null,
+        source: "launch",
+        status: "completed",
+        title: "Prepare Queued Launch Prep",
+      });
+      expect(finalJob?.result).toEqual({
+        kind: "launchArtifacts",
+        result: { failed: [], succeeded: 0 },
+      });
+    } finally {
+      clearFinishedDownloadJobs();
+      for (const path of artifactPaths) {
+        rmSync(path, { force: true });
+      }
+    }
+  });
+
+  test("legacy download RPC handlers also publish backend queue state", async () => {
+    const { downloadCurseForgeFile } = await import(
+      "../src/bun/rpc/handlers/launcher"
+    );
+    const { clearFinishedDownloadJobs, listDownloadJobs } = await import(
+      "../src/bun/launcher/download-queue"
+    );
+    const { createLauncherInstance } = await import(
+      "../src/bun/launcher/instances"
+    );
+    const { refreshMinecraftVersionManifest } = await import(
+      "../src/bun/launcher/versions"
+    );
+
+    await refreshMinecraftVersionManifest({ fetcher: fakeFetch });
+
+    const instance = createLauncherInstance({
+      name: "Legacy Queue Caller",
+      versionId: "1.20.4",
+    });
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = (async (_input: string | URL | Request) =>
+      new Response("legacy-mod-data", {
+        headers: { "content-length": "15" },
+      })) as unknown as typeof fetch;
+
+    try {
+      const result = await downloadCurseForgeFile({
+        category: "mods",
+        file: {
+          displayName: "Legacy Queued Mod 1.0",
+          downloadUrl: "https://downloads.example.test/legacy-queued-mod.jar",
+          fileDate: "2024-02-01T00:00:00Z",
+          fileName: "legacy-queued-mod.jar",
+          gameVersions: ["1.20.4"],
+          id: 655,
+          modLoaders: ["fabric"],
+          releaseType: "release",
+        },
+        instanceId: instance.id,
+        projectId: 322,
+        projectName: "Legacy Queued Mod",
+        projectSlug: "legacy-queued-mod",
+      });
+      const job = listDownloadJobs().find(
+        (item) =>
+          item.source === "curseforge" && item.title === "Legacy Queued Mod",
+      );
+
+      expect(result.fileName).toBe("legacy-queued-mod.jar");
+      expect(job).toMatchObject({
+        error: null,
+        status: "completed",
+        totalItems: 1,
+      });
+      expect(job?.result?.kind).toBe("curseForgeFile");
+    } finally {
+      globalThis.fetch = originalFetch;
+      clearFinishedDownloadJobs();
+    }
+  });
+
+  test("Minecraft version refresh RPC publishes backend queue state", async () => {
+    const { refreshMinecraftVersionManifest } = await import(
+      "../src/bun/rpc/handlers/launcher"
+    );
+    const { clearFinishedDownloadJobs, listDownloadJobs } = await import(
+      "../src/bun/launcher/download-queue"
+    );
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = fakeFetch as typeof fetch;
+
+    try {
+      const manifest = await refreshMinecraftVersionManifest();
+      const job = listDownloadJobs().find(
+        (item) => item.title === "Refresh Minecraft Versions",
+      );
+
+      expect(manifest.latest.release).toBe("1.20.4");
+      expect(job).toMatchObject({
+        error: null,
+        status: "completed",
+        totalItems: 1,
+      });
+      expect(job?.result?.kind).toBe("minecraftVersionManifest");
+    } finally {
+      globalThis.fetch = originalFetch;
+      clearFinishedDownloadJobs();
+    }
   });
 
   test("installs manually downloaded CurseForge files from Downloads", async () => {
@@ -1826,6 +2261,60 @@ describe("launcher backend", () => {
 
     expect(result).toEqual({ failed: [], succeeded: 1 });
     expect(existsSync(generatedPath)).toBe(true);
+  });
+
+  test("downloads asset objects after fetching an asset index", async () => {
+    const { downloadArtifacts } = await import("../src/bun/launcher/download");
+    const { getLauncherDirectories } = await import(
+      "../src/bun/launcher/paths"
+    );
+    const directories = getLauncherDirectories();
+    const assetIndexPath = join(directories.assets, "indexes", "12.json");
+    const assetObjectPath = join(
+      directories.assets,
+      "objects",
+      assetObjectHash.slice(0, 2),
+      assetObjectHash,
+    );
+    const plan = createTestLaunchPlan(directories, {
+      missingArtifacts: [
+        {
+          id: "12",
+          kind: "assetIndex",
+          path: assetIndexPath,
+          url: "https://resources.download.minecraft.net/indexes/12.json",
+        },
+      ],
+    });
+
+    try {
+      const result = await downloadArtifacts(plan, {
+        fetcher: async (input) => {
+          const url = input instanceof Request ? input.url : input.toString();
+
+          if (url.endsWith("/indexes/12.json")) {
+            return jsonResponse(assetIndexDocument);
+          }
+
+          if (
+            url.endsWith(`/${assetObjectHash.slice(0, 2)}/${assetObjectHash}`)
+          ) {
+            return new Response(assetObjectContents);
+          }
+
+          return new Response("not found", { status: 404 });
+        },
+      });
+
+      expect(result).toEqual({ failed: [], succeeded: 2 });
+      expect(JSON.parse(readFileSync(assetIndexPath, "utf8"))).toEqual(
+        assetIndexDocument,
+      );
+      expect(readFileSync(assetObjectPath, "utf8")).toBe(assetObjectContents);
+    } finally {
+      rmSync(assetIndexPath, { force: true });
+      rmSync(assetObjectPath, { force: true });
+    }
   });
 
   test("resolves managed Java runtime link targets relative to the link directory", async () => {

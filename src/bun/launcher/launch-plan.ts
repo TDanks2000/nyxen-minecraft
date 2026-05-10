@@ -11,6 +11,7 @@ import type {
   MinecraftVersionDetails,
 } from "../../shared/types";
 import { getJavaManagementMode } from "../settings/store";
+import { collectMissingAssetObjectArtifacts } from "./assets";
 import { getLauncherInstance } from "./instances";
 import {
   getRequiredJavaVersion,
@@ -392,14 +393,37 @@ export const createLaunchPlan = async (
       versionDetails.assetIndex.id,
       "Asset index id",
     );
+    const assetIndexPath = join(
+      directories.assets,
+      "indexes",
+      `${assetIndexId}.json`,
+    );
 
     addMissingArtifact(missingArtifacts, {
       id: assetIndexId,
       kind: "assetIndex",
-      path: join(directories.assets, "indexes", `${assetIndexId}.json`),
+      path: assetIndexPath,
       sha1: versionDetails.assetIndex.sha1,
       url: versionDetails.assetIndex.url,
     });
+
+    if (existsSync(assetIndexPath)) {
+      try {
+        missingArtifacts.push(
+          ...collectMissingAssetObjectArtifacts({
+            assetsRoot: directories.assets,
+            indexId: assetIndexId,
+            indexPath: assetIndexPath,
+          }),
+        );
+      } catch (error) {
+        warnings.push(
+          error instanceof Error
+            ? error.message
+            : "Asset index could not be read.",
+        );
+      }
+    }
   }
 
   const classpathLibraries: Array<string> = [];

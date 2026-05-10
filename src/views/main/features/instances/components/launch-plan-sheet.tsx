@@ -11,9 +11,13 @@ import {
   TriangleAlertIcon,
   UserIcon,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import type { LaunchPlan } from "@/shared/types";
+import type {
+  LaunchInstanceResult,
+  LaunchPlan,
+  LaunchPlanMissingArtifact,
+} from "@/shared/types";
 import { Button } from "@/views/main/components/ui/button";
 import {
   Sheet,
@@ -23,10 +27,11 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/views/main/components/ui/sheet";
+import { useDownloadQueueStore } from "@/views/main/features/downloads/download-queue-store";
 import { rpc } from "@/views/main/lib/rpc";
 
 type Props = {
-  onLaunched?: () => void;
+  onLaunched?: (launch: LaunchInstanceResult) => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   plan: LaunchPlan | null;
@@ -39,6 +44,81 @@ type LaunchState =
   | "launching"
   | "launched";
 
+type LaunchArtifactGroup = {
+  count: number;
+  kind: LaunchPlanMissingArtifact["kind"];
+  label: string;
+};
+
+const artifactKindLabels: Record<LaunchPlanMissingArtifact["kind"], string> = {
+  assetIndex: "Asset indexes",
+  assetObject: "Minecraft assets",
+  clientJar: "Minecraft client",
+  javaRuntime: "Java runtime",
+  library: "Libraries",
+  modLoaderInstaller: "Mod loader installer",
+  nativeLibrary: "Native libraries",
+  versionMetadata: "Version metadata",
+};
+
+const artifactKindOrder: Array<LaunchPlanMissingArtifact["kind"]> = [
+  "versionMetadata",
+  "javaRuntime",
+  "clientJar",
+  "modLoaderInstaller",
+  "library",
+  "nativeLibrary",
+  "assetIndex",
+  "assetObject",
+];
+
+const getLaunchArtifactDisplayName = (
+  artifact: LaunchPlanMissingArtifact,
+): string => {
+  if (artifact.kind === "assetObject") {
+    return `Asset ${artifact.id.replace(/^asset:/, "").slice(0, 12)}`;
+  }
+
+  if (artifact.kind === "clientJar") {
+    return "Minecraft client jar";
+  }
+
+  if (artifact.kind === "assetIndex") {
+    return `Asset index ${artifact.id}`;
+  }
+
+  return artifact.id;
+};
+
+const groupLaunchArtifacts = (
+  artifacts: Array<LaunchPlanMissingArtifact>,
+): Array<LaunchArtifactGroup> => {
+  const groups = new Map<
+    LaunchPlanMissingArtifact["kind"],
+    LaunchArtifactGroup
+  >();
+
+  for (const artifact of artifacts) {
+    const existing = groups.get(artifact.kind);
+
+    if (existing) {
+      existing.count += 1;
+      continue;
+    }
+
+    groups.set(artifact.kind, {
+      count: 1,
+      kind: artifact.kind,
+      label: artifactKindLabels[artifact.kind] ?? artifact.kind,
+    });
+  }
+
+  return Array.from(groups.values()).sort(
+    (a, b) =>
+      artifactKindOrder.indexOf(a.kind) - artifactKindOrder.indexOf(b.kind),
+  );
+};
+
 export function LaunchPlanSheet({
   onLaunched,
   open,
@@ -49,18 +129,47 @@ export function LaunchPlanSheet({
   const [failedArtifacts, setFailedArtifacts] = useState<
     Array<{ error: string; id: string }>
   >([]);
+  const enqueueDownloadJob = useDownloadQueueStore(
+    (state) => state.enqueueDownloadJob,
+  );
+  const waitForDownloadJob = useDownloadQueueStore(
+    (state) => state.waitForDownloadJob,
+  );
+  const planInstanceId = plan?.instance.id ?? null;
 
+  const hasVerifiedProfile = plan?.profile?.kind === "microsoft";
   const readyToLaunch =
-    plan?.missingArtifacts.length === 0 ||
-    launchState === "downloaded" ||
-    launchState === "launched";
+    hasVerifiedProfile &&
+    (plan?.missingArtifacts.length === 0 ||
+      launchState === "downloaded" ||
+      launchState === "launched");
   const javaRuntimeArtifactCount =
     plan?.missingArtifacts.filter((artifact) => artifact.kind === "javaRuntime")
       .length ?? 0;
+  const missingArtifactGroups = useMemo(
+    () => groupLaunchArtifacts(plan?.missingArtifacts ?? []),
+    [plan?.missingArtifacts],
+  );
+  const visibleArtifactPreview = plan?.missingArtifacts.slice(0, 6) ?? [];
+  const hiddenArtifactPreviewCount = Math.max(
+    0,
+    (plan?.missingArtifacts.length ?? 0) - visibleArtifactPreview.length,
+  );
+
+  useEffect(() => {
+    if (planInstanceId === null) {
+      setLaunchState("idle");
+      setFailedArtifacts([]);
+      return;
+    }
+
+    setLaunchState("idle");
+    setFailedArtifacts([]);
+  }, [planInstanceId]);
 
   const handleOpenChange = (next: boolean) => {
     onOpenChange(next);
-    if (!next) {
+    if (!next && launchState !== "downloading") {
       setLaunchState("idle");
       setFailedArtifacts([]);
     }
@@ -68,24 +177,42 @@ export function LaunchPlanSheet({
 
   async function handleDownload() {
     if (!plan) return;
+
     setLaunchState("downloading");
     setFailedArtifacts([]);
 
     try {
-      const result = await rpc.requestProxy.downloadArtifacts({ plan });
+      const job = await enqueueDownloadJob({
+        input: { plan },
+        kind: "launchArtifacts",
+      });
+      const finishedJob = await waitForDownloadJob(job.id);
+      const result =
+        finishedJob.result?.kind === "launchArtifacts"
+          ? finishedJob.result.result
+          : null;
+      const failed =
+        result?.failed ??
+        finishedJob.items
+          .filter((item) => item.status === "failed")
+          .map((item) => ({
+            error: item.error ?? "Download failed",
+            id: item.id,
+          }));
 
-      if (result.failed.length > 0) {
-        setFailedArtifacts(result.failed);
+      if (finishedJob.status === "failed" || failed.length > 0) {
+        setFailedArtifacts(failed);
         toast.error(
-          `${result.failed.length} artifact${result.failed.length === 1 ? "" : "s"} failed to download`,
+          `${Math.max(1, failed.length)} artifact${failed.length === 1 ? "" : "s"} failed to download`,
         );
         setLaunchState("idle");
       } else {
-        toast.success("All artifacts downloaded");
+        toast.success("All required files downloaded");
         setLaunchState("downloaded");
       }
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Download failed");
+      const message = e instanceof Error ? e.message : "Download failed";
+      toast.error(message);
       setLaunchState("idle");
     }
   }
@@ -98,7 +225,7 @@ export function LaunchPlanSheet({
       const result = await rpc.requestProxy.launchInstance({ plan });
       setLaunchState("launched");
       toast.success(`Minecraft started (PID ${result.pid})`);
-      onLaunched?.();
+      onLaunched?.(result);
       handleOpenChange(false);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Launch failed");
@@ -296,13 +423,32 @@ export function LaunchPlanSheet({
                     </p>
                   ) : (
                     <>
-                      <p className="text-xs text-muted-foreground mb-1.5">
+                      <p className="font-medium text-sm text-foreground">
+                        Download required files before launch
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
                         {plan.missingArtifacts.length} artifact
                         {plan.missingArtifacts.length !== 1 ? "s" : ""} to
-                        download
+                        download. The right sidebar shows the active download
+                        set while Nyxen prepares this instance.
                       </p>
-                      <ul className="flex flex-col gap-1 max-h-36 overflow-y-auto">
-                        {plan.missingArtifacts.map((a) => (
+                      <div className="mt-2 grid gap-1.5">
+                        {missingArtifactGroups.map((group) => (
+                          <div
+                            className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/35 px-2.5 py-1.5 text-xs"
+                            key={group.kind}
+                          >
+                            <span className="truncate font-medium">
+                              {group.label}
+                            </span>
+                            <span className="shrink-0 rounded bg-background px-1.5 py-0.5 font-semibold text-muted-foreground tabular-nums">
+                              {group.count}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                      <ul className="mt-2 flex max-h-32 flex-col gap-1 overflow-y-auto">
+                        {visibleArtifactPreview.map((a) => (
                           <li
                             key={a.id}
                             className="text-xs text-muted-foreground flex items-center gap-2"
@@ -310,9 +456,17 @@ export function LaunchPlanSheet({
                             <span className="shrink-0 rounded px-1 py-0.5 bg-muted text-[0.6rem] uppercase font-bold">
                               {a.kind}
                             </span>
-                            <span className="truncate font-mono">{a.id}</span>
+                            <span className="truncate font-mono">
+                              {getLaunchArtifactDisplayName(a)}
+                            </span>
                           </li>
                         ))}
+                        {hiddenArtifactPreviewCount > 0 ? (
+                          <li className="text-muted-foreground text-xs">
+                            +{hiddenArtifactPreviewCount} more file
+                            {hiddenArtifactPreviewCount === 1 ? "" : "s"}
+                          </li>
+                        ) : null}
                       </ul>
                     </>
                   )}
@@ -383,7 +537,7 @@ export function LaunchPlanSheet({
                 ? "Downloading…"
                 : launchState === "downloaded"
                   ? "Re-download"
-                  : "Download Artifacts"}
+                  : "Download Required Files"}
             </Button>
           )}
 
@@ -397,7 +551,13 @@ export function LaunchPlanSheet({
             ) : (
               <PlayIcon data-icon="inline-start" />
             )}
-            {launchState === "launching" ? "Launching…" : "Launch"}
+            {!plan
+              ? "Launch"
+              : !hasVerifiedProfile
+                ? "Profile Required"
+                : launchState === "launching"
+                  ? "Launching…"
+                  : "Launch"}
           </Button>
 
           <Button

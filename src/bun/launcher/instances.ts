@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   existsSync,
+  readdirSync,
   renameSync,
   rmSync,
   unlinkSync,
@@ -161,6 +162,16 @@ const parseStringArray = (value: string): Array<string> => {
   }
 
   return [];
+};
+
+const countLocalModFiles = (instanceId: string): number => {
+  const modsFolder = ensureInstanceFolders(instanceId).mods;
+
+  return readdirSync(modsFolder, { withFileTypes: true }).filter(
+    (entry) =>
+      entry.isFile() &&
+      (entry.name.endsWith(".jar") || entry.name.endsWith(".jar.disabled")),
+  ).length;
 };
 
 const getLauncherInstanceRowOrThrow = (instanceId: string): InstanceRow => {
@@ -414,6 +425,21 @@ export const updateLauncherInstance = (
     updatedAt: now,
     versionId,
   };
+  const runtimeChanged =
+    values.versionId !== existing.versionId ||
+    values.loader !== existing.loader ||
+    values.loaderVersion !== existing.loaderVersion;
+
+  if (
+    runtimeChanged &&
+    input.confirmRuntimeCompatibility !== true &&
+    countLocalModFiles(existing.id) > 0
+  ) {
+    throw new Error(
+      "Confirm mod compatibility before changing Minecraft version or mod loader.",
+    );
+  }
+
   const updated = {
     ...existing,
     ...values,

@@ -1,5 +1,18 @@
-import { CloudIcon, PauseIcon, PlayIcon } from "lucide-react";
+import {
+  AlertCircleIcon,
+  CheckCircle2Icon,
+  CloudIcon,
+  DownloadCloudIcon,
+  FilesIcon,
+  Loader2Icon,
+  XIcon,
+} from "lucide-react";
+import { useEffect } from "react";
 import { Area, AreaChart, ResponsiveContainer } from "recharts";
+import type { DownloadQueueJob } from "@/shared/types";
+import { Button } from "@/views/main/components/ui/button";
+import { useDownloadQueueStore } from "@/views/main/features/downloads/download-queue-store";
+import { cn } from "@/views/main/lib/utils";
 
 const mkSpark = (values: Array<number>) => values.map((v, i) => ({ i, v }));
 
@@ -30,7 +43,238 @@ function SparkLine({ data }: { data: Array<{ i: number; v: number }> }) {
   );
 }
 
+const formatSidebarTime = (value: string): string =>
+  new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
+
+function DownloadJobIcon({ status }: { status: DownloadQueueJob["status"] }) {
+  if (status === "completed") {
+    return <CheckCircle2Icon className="size-4 text-primary" />;
+  }
+
+  if (status === "failed") {
+    return <AlertCircleIcon className="size-4 text-destructive" />;
+  }
+
+  if (status === "running") {
+    return <Loader2Icon className="size-4 animate-spin text-primary" />;
+  }
+
+  return <DownloadCloudIcon className="size-4 text-muted-foreground" />;
+}
+
+const groupDownloadItems = (
+  job: DownloadQueueJob,
+): Array<{ count: number; label: string }> => {
+  const groups = new Map<string, number>();
+
+  for (const item of job.items) {
+    groups.set(item.kind, (groups.get(item.kind) ?? 0) + 1);
+  }
+
+  return Array.from(groups.entries()).map(([label, count]) => ({
+    count,
+    label,
+  }));
+};
+
+function DownloadJobCard({
+  job,
+  onClear,
+}: {
+  job: DownloadQueueJob;
+  onClear: (jobId: string) => void;
+}) {
+  const groups = groupDownloadItems(job);
+  const visibleItems = job.items.slice(0, 3);
+  const hiddenArtifactCount = Math.max(
+    0,
+    job.items.length - visibleItems.length,
+  );
+  const failedCount = job.items.filter(
+    (item) => item.status === "failed",
+  ).length;
+  const completedCount = job.items.filter(
+    (item) => item.status === "completed",
+  ).length;
+  const totalItems = Math.max(1, job.totalItems);
+  const completedRatio = completedCount / totalItems;
+  const statusLabel =
+    job.status === "queued"
+      ? "Queued"
+      : job.status === "running"
+        ? "Downloading"
+        : job.status === "completed"
+          ? "Ready"
+          : "Needs attention";
+  const detailLabel =
+    job.status === "queued"
+      ? `${job.totalItems} file${job.totalItems === 1 ? "" : "s"} waiting`
+      : job.status === "running"
+        ? `${job.totalItems} file${job.totalItems === 1 ? "" : "s"} in progress`
+        : job.status === "completed"
+          ? `${job.totalItems} file${job.totalItems === 1 ? "" : "s"} ready`
+          : failedCount > 0
+            ? `${failedCount} failed file${failedCount === 1 ? "" : "s"}`
+            : "Download failed";
+
+  return (
+    <div
+      className={cn(
+        "rounded-lg border bg-background/60 p-3 shadow-sm",
+        job.status === "failed"
+          ? "border-destructive/30"
+          : "border-sidebar-border",
+      )}
+    >
+      <div className="flex items-start gap-2.5">
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-md border border-border bg-muted/55">
+          <DownloadJobIcon status={job.status} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="truncate font-semibold text-foreground text-xs leading-none">
+                {job.title}
+              </div>
+              <div className="mt-1 flex items-center gap-1.5 text-[0.62rem] text-muted-foreground">
+                <span
+                  className={cn(
+                    "size-1.5 rounded-full",
+                    job.status === "failed"
+                      ? "bg-destructive"
+                      : job.status === "completed"
+                        ? "bg-primary"
+                        : job.status === "running"
+                          ? "bg-primary animate-pulse"
+                          : "bg-muted-foreground/60",
+                  )}
+                />
+                <span>{statusLabel}</span>
+                <span className="text-muted-foreground/45">at</span>
+                <span>{formatSidebarTime(job.updatedAt)}</span>
+              </div>
+            </div>
+            {job.status !== "running" ? (
+              <Button
+                aria-label={`Clear download for ${job.title}`}
+                onClick={() => onClear(job.id)}
+                size="icon-xs"
+                type="button"
+                variant="ghost"
+              >
+                <XIcon />
+              </Button>
+            ) : null}
+          </div>
+
+          <div className="mt-2">
+            <div className="flex items-center justify-between gap-2 text-[0.65rem]">
+              <span className="font-medium text-foreground">{detailLabel}</span>
+              <span className="shrink-0 text-muted-foreground tabular-nums">
+                {job.status === "queued"
+                  ? "Waiting"
+                  : job.status === "running"
+                    ? "In progress"
+                    : `${completedCount}/${job.totalItems}`}
+              </span>
+            </div>
+            <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
+              <div
+                className={cn(
+                  "h-full rounded-full bg-primary transition-all",
+                  job.status === "running" && "w-1/2 animate-pulse opacity-80",
+                  job.status === "completed" && "w-full",
+                  job.status === "failed" && "bg-destructive",
+                )}
+                style={
+                  job.status === "failed"
+                    ? {
+                        width: `${Math.max(
+                          8,
+                          Math.min(100, completedRatio * 100),
+                        )}%`,
+                      }
+                    : undefined
+                }
+              />
+            </div>
+          </div>
+
+          <div className="mt-2 flex flex-wrap gap-1">
+            {groups.map((group) => (
+              <span
+                className="rounded border border-border bg-muted/45 px-1.5 py-0.5 text-[0.58rem] text-muted-foreground"
+                key={group.label}
+              >
+                {group.label} {group.count}
+              </span>
+            ))}
+          </div>
+
+          <ul className="mt-2 grid gap-1">
+            {visibleItems.map((item) => (
+              <li
+                className="flex min-w-0 items-center gap-1.5 text-[0.6rem] text-muted-foreground"
+                key={item.id}
+              >
+                <FilesIcon className="size-3 shrink-0" />
+                <span className="truncate font-mono">{item.label}</span>
+              </li>
+            ))}
+            {hiddenArtifactCount > 0 ? (
+              <li className="text-[0.6rem] text-muted-foreground/75">
+                +{hiddenArtifactCount} more file
+                {hiddenArtifactCount === 1 ? "" : "s"}
+              </li>
+            ) : null}
+          </ul>
+
+          {job.status === "failed" ? (
+            <div className="mt-2 rounded-md border border-destructive/25 bg-destructive/10 px-2 py-1.5 text-[0.6rem] text-destructive">
+              {job.error ??
+                job.items.find((item) => item.error)?.error ??
+                "One or more files could not be downloaded."}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function RightSidebar() {
+  const jobs = useDownloadQueueStore((state) => state.jobs);
+  const clearDownloadJob = useDownloadQueueStore(
+    (state) => state.clearDownloadJob,
+  );
+  const clearFinishedDownloadJobs = useDownloadQueueStore(
+    (state) => state.clearFinishedDownloadJobs,
+  );
+  const refreshDownloadJobs = useDownloadQueueStore(
+    (state) => state.refreshDownloadJobs,
+  );
+  const hasActiveJobs = jobs.some(
+    (job) => job.status === "queued" || job.status === "running",
+  );
+  const activeJobCount = jobs.filter(
+    (job) => job.status === "queued" || job.status === "running",
+  ).length;
+  const finishedJobCount = jobs.length - activeJobCount;
+
+  useEffect(() => {
+    void refreshDownloadJobs().catch(() => undefined);
+
+    const interval = setInterval(
+      () => void refreshDownloadJobs().catch(() => undefined),
+      hasActiveJobs ? 1_000 : 4_000,
+    );
+
+    return () => clearInterval(interval);
+  }, [hasActiveJobs, refreshDownloadJobs]);
+
   return (
     <aside className="hidden w-72 shrink-0 flex-col overflow-y-auto border-l border-sidebar-border bg-sidebar 2xl:flex">
       {/* Download Queue */}
@@ -39,89 +283,47 @@ export function RightSidebar() {
           <span className="text-sm font-semibold text-foreground">
             Download Queue
           </span>
-          <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[0.6rem] font-bold text-primary-foreground">
-            2
-          </span>
+          {jobs.length > 0 ? (
+            <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[0.6rem] font-bold text-primary-foreground">
+              {activeJobCount || jobs.length}
+            </span>
+          ) : null}
         </div>
 
-        <div className="flex flex-col gap-3">
-          {/* Active download */}
-          <div className="flex items-start gap-2.5">
-            <div className="relative size-9 rounded shrink-0 bg-yellow-900 flex flex-col items-center justify-center overflow-hidden">
-              <span className="text-[0.48rem] font-black text-yellow-300 leading-tight text-center uppercase tracking-tight">
-                All the
-                <br />
-                Mods
-              </span>
-              <span className="absolute bottom-0.5 right-1 text-[0.55rem] font-black text-yellow-400 leading-none">
-                9
-              </span>
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between gap-1">
-                <span className="text-xs font-semibold text-foreground truncate leading-none">
-                  All the Mods 9 Update
-                </span>
-                <button
-                  type="button"
-                  className="size-5 flex items-center justify-center text-muted-foreground hover:text-foreground shrink-0 transition-colors"
-                >
-                  <PauseIcon className="size-3 fill-current" />
-                </button>
-              </div>
-              <span className="text-[0.62rem] text-muted-foreground mt-0.5 block">
-                Downloading...
-              </span>
-              <div className="flex items-center gap-2 mt-1.5">
-                <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
-                  <div
-                    className="h-full bg-primary rounded-full transition-all"
-                    style={{ width: "21%" }}
-                  />
-                </div>
-                <span className="text-[0.6rem] text-primary font-semibold shrink-0 tabular-nums">
-                  21%
-                </span>
-              </div>
-              <span className="text-[0.58rem] text-muted-foreground/60 mt-0.5 block tabular-nums">
-                256.8 MB / 1.2 GB
-              </span>
-            </div>
+        {jobs.length > 0 ? (
+          <div className="flex flex-col gap-3">
+            {jobs.map((job) => (
+              <DownloadJobCard
+                job={job}
+                key={job.id}
+                onClear={(jobId) => void clearDownloadJob({ jobId })}
+              />
+            ))}
           </div>
-
-          {/* Queued */}
-          <div className="flex items-start gap-2.5">
-            <div className="size-9 rounded shrink-0 bg-stone-700 flex items-center justify-center">
-              <div className="size-5 rounded-sm bg-stone-500/60" />
+        ) : (
+          <div className="rounded-lg border border-dashed border-sidebar-border bg-background/35 px-3 py-4 text-center">
+            <DownloadCloudIcon className="mx-auto size-5 text-muted-foreground" />
+            <div className="mt-2 font-semibold text-foreground text-xs">
+              No downloads running
             </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between gap-1">
-                <span className="text-xs font-semibold text-foreground truncate leading-none">
-                  Immersive Engineering
-                </span>
-                <button
-                  type="button"
-                  className="size-5 flex items-center justify-center text-muted-foreground hover:text-foreground shrink-0 transition-colors"
-                >
-                  <PlayIcon className="size-3 fill-current" />
-                </button>
-              </div>
-              <span className="text-[0.62rem] text-muted-foreground mt-0.5 block">
-                Queued
-              </span>
-              <span className="text-[0.58rem] text-muted-foreground/60 mt-0.5 block tabular-nums">
-                0 B / 128.4 MB
-              </span>
-            </div>
+            <p className="mt-1 text-[0.62rem] text-muted-foreground">
+              Downloads appear here when Nyxen is preparing launch files or
+              installing catalog content.
+            </p>
           </div>
-        </div>
+        )}
 
-        <button
-          type="button"
-          className="mt-3 text-[0.7rem] text-primary hover:text-primary/80 transition-colors"
-        >
-          View full queue →
-        </button>
+        {finishedJobCount > 0 ? (
+          <Button
+            className="mt-3 w-full"
+            onClick={() => void clearFinishedDownloadJobs()}
+            size="xs"
+            type="button"
+            variant="ghost"
+          >
+            Clear Finished
+          </Button>
+        ) : null}
       </section>
 
       {/* Recent Activity */}

@@ -107,7 +107,7 @@ export const assertArtifactStoragePath = (
 ): void => {
   const directories = getLauncherDirectories();
   const root =
-    artifact.kind === "assetIndex"
+    artifact.kind === "assetIndex" || artifact.kind === "assetObject"
       ? directories.assets
       : artifact.kind === "javaRuntime"
         ? directories.runtimes

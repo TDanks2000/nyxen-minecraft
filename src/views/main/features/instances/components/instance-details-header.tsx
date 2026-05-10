@@ -4,15 +4,25 @@ import {
   ArrowLeftIcon,
   ChevronDownIcon,
   DownloadIcon,
+  FileTextIcon,
   FolderOpenIcon,
   HammerIcon,
+  Loader2Icon,
   MoreHorizontalIcon,
   PlayIcon,
   Settings2Icon,
+  SquareIcon,
 } from "lucide-react";
 import type { LauncherInstance, ModLoader } from "@/shared/types";
 import { Badge } from "@/views/main/components/ui/badge";
 import { Button } from "@/views/main/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/views/main/components/ui/dropdown-menu";
 import {
   InstanceArtwork,
   InstanceIcon,
@@ -22,14 +32,25 @@ import { rpc } from "@/views/main/lib/rpc";
 type InstanceDetailsHeaderProps = {
   enabledModsCount: number;
   instance: LauncherInstance;
+  isRunning: boolean;
+  launchActionState: LaunchActionState;
   onBrowseCurseForge: () => void;
   onOpenSettings: () => void;
   onPlay: () => void;
+  onStop: () => void;
+  onViewLaunchPlan: () => void;
   planLoading: boolean;
   resourcePackCount: number;
   shaderPackCount: number;
   warningCount: number;
 };
+
+type LaunchActionState =
+  | "idle"
+  | "preparing"
+  | "downloading"
+  | "launching"
+  | "stopping";
 
 type LoaderColors = {
   accent: string;
@@ -75,9 +96,13 @@ const formatRelative = (value: string | null): string =>
 export function InstanceDetailsHeader({
   enabledModsCount,
   instance,
+  isRunning,
+  launchActionState,
   onBrowseCurseForge,
   onOpenSettings,
   onPlay,
+  onStop,
+  onViewLaunchPlan,
   planLoading,
   resourcePackCount,
   shaderPackCount,
@@ -86,6 +111,26 @@ export function InstanceDetailsHeader({
   const colors = LOADER_COLORS[instance.loader];
   const loaderLabel = LOADER_LABELS[instance.loader];
   const lastPlayed = formatRelative(instance.lastLaunchedAt);
+  const busy = planLoading || launchActionState !== "idle";
+  const primaryDisabled = isRunning ? launchActionState === "stopping" : busy;
+  const dropdownDisabled = busy;
+  const primaryLabel = isRunning
+    ? launchActionState === "stopping"
+      ? "Stopping..."
+      : "Stop"
+    : planLoading || launchActionState === "preparing"
+      ? "Preparing..."
+      : launchActionState === "downloading"
+        ? "Downloading..."
+        : launchActionState === "launching"
+          ? "Launching..."
+          : "Play";
+  const showBusyIcon =
+    planLoading ||
+    launchActionState === "preparing" ||
+    launchActionState === "downloading" ||
+    launchActionState === "launching" ||
+    launchActionState === "stopping";
 
   const openFolder = () => {
     void rpc.requestProxy.openExternal({
@@ -155,21 +200,50 @@ export function InstanceDetailsHeader({
             <div className="flex w-full overflow-hidden rounded-md shadow-[0_18px_50px_-32px_var(--primary)] sm:w-auto">
               <Button
                 className="flex-1 rounded-r-none sm:flex-none"
-                disabled={planLoading}
-                onClick={onPlay}
+                disabled={primaryDisabled}
+                onClick={isRunning ? onStop : onPlay}
                 size="lg"
+                variant={isRunning ? "destructive" : "default"}
               >
-                <PlayIcon data-icon="inline-start" className="fill-current" />
-                {planLoading ? "Preparing..." : "Play"}
+                {showBusyIcon ? (
+                  <Loader2Icon
+                    data-icon="inline-start"
+                    className="animate-spin"
+                  />
+                ) : isRunning ? (
+                  <SquareIcon
+                    data-icon="inline-start"
+                    className="fill-current"
+                  />
+                ) : (
+                  <PlayIcon data-icon="inline-start" className="fill-current" />
+                )}
+                {primaryLabel}
               </Button>
-              <Button
-                aria-label="Choose launch option"
-                disabled={planLoading}
-                size="icon-lg"
-                className="rounded-l-none border-l border-primary-foreground/20 px-0"
-              >
-                <ChevronDownIcon />
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  disabled={dropdownDisabled}
+                  render={
+                    <Button
+                      aria-label="Choose launch option"
+                      className="rounded-l-none border-l border-primary-foreground/20 px-0"
+                      disabled={dropdownDisabled}
+                      size="icon-lg"
+                      variant={isRunning ? "destructive" : "default"}
+                    />
+                  }
+                >
+                  <ChevronDownIcon />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-44">
+                  <DropdownMenuGroup>
+                    <DropdownMenuItem onClick={onViewLaunchPlan}>
+                      <FileTextIcon />
+                      View launch plan
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
 
             <Button

@@ -346,7 +346,68 @@ export type InstanceFileEntry = {
   kind: InstanceFileKind;
   modifiedAt: string;
   path: string;
+  relativePath?: string;
   sizeBytes: number;
+};
+
+export type InstanceLogFolder = {
+  displayName: string;
+  files: Array<InstanceFileEntry>;
+  id: string;
+  path: string;
+};
+
+export type InstanceLogLineLevel =
+  | "debug"
+  | "error"
+  | "fatal"
+  | "info"
+  | "trace"
+  | "unknown"
+  | "warn";
+
+export type InstanceLogLineType =
+  | "auth"
+  | "crash"
+  | "exception"
+  | "game"
+  | "graphics"
+  | "io"
+  | "loader"
+  | "mixin"
+  | "mod"
+  | "network"
+  | "resource"
+  | "stackTrace"
+  | "unknown";
+
+export type InstanceLogLine = {
+  details: Array<string>;
+  groupKey: string | null;
+  groupLabel: string | null;
+  id: string;
+  level: InstanceLogLineLevel;
+  lineNumber: number;
+  message: string;
+  raw: string;
+  source: string | null;
+  thread: string | null;
+  timestamp: string | null;
+  type: InstanceLogLineType;
+};
+
+export type InstanceLogFilePreview = {
+  entry: InstanceFileEntry;
+  lines: Array<InstanceLogLine>;
+  readBytes: number;
+  refreshedAt: string;
+  summary: {
+    errors: number;
+    totalLines: number;
+    warnings: number;
+  };
+  totalBytes: number;
+  truncated: boolean;
 };
 
 export type InstanceContent = {
@@ -364,6 +425,7 @@ export type InstanceContent = {
     Record<CurseForgeCategory, Array<InstalledCurseForgeFile>>
   >;
   instanceId: string;
+  logFolders: Array<InstanceLogFolder>;
   logs: Array<InstanceFileEntry>;
   mods: Array<InstanceFileEntry>;
   refreshedAt: string;
@@ -376,6 +438,13 @@ export type InstanceContent = {
 
 export type GetInstanceContentInput = {
   instanceId: string;
+};
+
+export type GetInstanceLogFileInput = {
+  fileId: string;
+  instanceId: string;
+  maxBytes?: number;
+  maxLines?: number;
 };
 
 export type SetInstanceModEnabledInput = {
@@ -437,6 +506,7 @@ export type CreateLauncherInstanceInput = {
 };
 
 export type UpdateLauncherInstanceInput = {
+  confirmRuntimeCompatibility?: boolean;
   gameArgs?: Array<string>;
   iconUrl?: string | null;
   instanceId: string;
@@ -466,6 +536,7 @@ export type LaunchPlanMissingArtifact = {
   id: string;
   kind:
     | "assetIndex"
+    | "assetObject"
     | "clientJar"
     | "javaRuntime"
     | "library"
@@ -546,10 +617,92 @@ export type DownloadArtifactsResult = {
   succeeded: number;
 };
 
+export type DownloadQueueJobStatus =
+  | "queued"
+  | "running"
+  | "completed"
+  | "failed";
+
+export type DownloadQueueItemStatus =
+  | "queued"
+  | "running"
+  | "completed"
+  | "failed";
+
+export type DownloadQueueItem = {
+  error: string | null;
+  id: string;
+  kind: string;
+  label: string;
+  status: DownloadQueueItemStatus;
+};
+
+export type DownloadQueueJobResult =
+  | {
+      kind: "launchArtifacts";
+      result: DownloadArtifactsResult;
+    }
+  | {
+      kind: "curseForgeFile";
+      result: DownloadCurseForgeFileResult;
+    }
+  | {
+      kind: "minecraftVersionManifest";
+      result: MinecraftVersionManifest;
+    };
+
+export type DownloadQueueJob = {
+  completedAt: string | null;
+  createdAt: string;
+  error: string | null;
+  id: string;
+  items: Array<DownloadQueueItem>;
+  result: DownloadQueueJobResult | null;
+  source: "launch" | "curseforge";
+  startedAt: string | null;
+  status: DownloadQueueJobStatus;
+  subtitle: string;
+  title: string;
+  totalItems: number;
+  updatedAt: string;
+};
+
+export type EnqueueDownloadJobInput =
+  | {
+      input: DownloadArtifactsInput;
+      kind: "launchArtifacts";
+    }
+  | {
+      input: DownloadCurseForgeFileInput;
+      kind: "curseForgeFile";
+    }
+  | {
+      input: null;
+      kind: "minecraftVersionManifest";
+    };
+
+export type ClearDownloadJobInput = {
+  jobId: string;
+};
+
 export type LaunchInstanceInput = CreateLaunchPlanInput | { plan: LaunchPlan };
 
-export type LaunchInstanceResult = {
+export type RunningLaunch = {
+  instanceId: string;
   pid: number;
+  startedAt: string;
+};
+
+export type LaunchInstanceResult = RunningLaunch;
+
+export type StopLaunchInstanceInput = {
+  instanceId: string;
+};
+
+export type StopLaunchInstanceResult = {
+  instanceId: string;
+  pid: number | null;
+  stopped: boolean;
 };
 
 export type LoaderVersionSummary = {

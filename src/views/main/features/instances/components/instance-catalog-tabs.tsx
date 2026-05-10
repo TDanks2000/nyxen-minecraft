@@ -55,6 +55,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/views/main/components/ui/tabs";
+import { InstanceLogsPanel } from "@/views/main/features/instances/components/instance-logs-panel";
 import { InstanceSettingsPanel } from "@/views/main/features/instances/components/instance-settings-panel";
 import { rpc } from "@/views/main/lib/rpc";
 import { cn } from "@/views/main/lib/utils";
@@ -590,7 +591,10 @@ export function InstanceCatalogTabs({
   shaderPacks,
   worlds,
 }: InstanceCatalogTabsProps) {
-  const latestLog = logs[0] ?? null;
+  const latestLog =
+    logs.find((entry) => entry.fileName.toLowerCase() === "latest.log") ??
+    logs[0] ??
+    null;
   const [modQuery, setModQuery] = useState("");
   const [modStatusFilter, setModStatusFilter] =
     useState<ModStatusFilter>("all");
@@ -961,21 +965,22 @@ export function InstanceCatalogTabs({
       </TabsContent>
 
       <TabsContent value="logs" className="w-full min-w-0">
-        <FileListPanel
-          emptyIcon={FileTextIcon}
-          emptyText="Minecraft logs for this instance will appear here after the game runs."
-          emptyTitle="No logs found"
-          entries={logs}
-          folderPath={instance.folders.logs}
-          title="Logs"
+        <InstanceLogsPanel
+          active={activeTab === "logs"}
+          instance={instance}
+          logFolders={content?.logFolders ?? []}
+          logs={logs}
+          onRefreshContent={onRefreshContent}
         />
       </TabsContent>
 
       <TabsContent value="settings" className="w-full min-w-0">
         <InstanceSettingsPanel
           instance={instance}
+          mods={mods}
           onInstanceDeleted={onInstanceDeleted}
           onInstanceUpdated={onInstanceUpdated}
+          onReviewMods={() => onSetActiveTab("mods")}
         />
       </TabsContent>
     </Tabs>

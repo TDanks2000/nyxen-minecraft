@@ -13,6 +13,7 @@ import type {
   CurseForgeUpdateParams,
   SelectedInstance,
 } from "@/views/main/features/curseforge/curseforge-browser-types";
+import { useDownloadQueueStore } from "@/views/main/features/downloads/download-queue-store";
 import { rpc } from "@/views/main/lib/rpc";
 
 type UseCurseForgeInstallOptions = {
@@ -73,6 +74,13 @@ const createInstallInput = ({
 export function useCurseForgeInstall({
   onContentUpdated,
 }: UseCurseForgeInstallOptions = {}) {
+  const enqueueDownloadJob = useDownloadQueueStore(
+    (state) => state.enqueueDownloadJob,
+  );
+  const waitForDownloadJob = useDownloadQueueStore(
+    (state) => state.waitForDownloadJob,
+  );
+
   const applyContentUpdate = async (content: InstanceContent | null) => {
     if (content && onContentUpdated) {
       await onContentUpdated(content);
@@ -89,9 +97,21 @@ export function useCurseForgeInstall({
     item: CurseForgeProjectSummary;
   }) => {
     try {
-      const result = await rpc.requestProxy.downloadCurseForgeFile(
-        createInstallInput({ category, instance, item }),
-      );
+      const job = await enqueueDownloadJob({
+        input: createInstallInput({ category, instance, item }),
+        kind: "curseForgeFile",
+      });
+      const finishedJob = await waitForDownloadJob(job.id);
+      const result =
+        finishedJob.result?.kind === "curseForgeFile"
+          ? finishedJob.result.result
+          : null;
+
+      if (finishedJob.status === "failed" || !result) {
+        throw new Error(
+          finishedJob.error ?? "Failed to install CurseForge item.",
+        );
+      }
 
       await applyContentUpdate(result.content);
       toast.success(

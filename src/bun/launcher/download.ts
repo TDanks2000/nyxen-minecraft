@@ -14,6 +14,7 @@ import type {
   LaunchPlan,
   LaunchPlanMissingArtifact,
 } from "../../shared/types";
+import { collectMissingAssetObjectArtifacts } from "./assets";
 import {
   assertArtifactStoragePath,
   assertNativeJarPath,
@@ -299,6 +300,29 @@ export const downloadArtifacts = async (
   const failed: Array<{ error: string; id: string }> = [];
   let succeeded = 0;
   const artifacts = uniqueArtifacts(plan.missingArtifacts);
+  const downloadArtifact = async (
+    artifact: LaunchPlanMissingArtifact,
+  ): Promise<void> => {
+    try {
+      assertArtifactStoragePath(artifact);
+
+      if (existsSync(artifact.path)) {
+        if (artifact.executable) {
+          makeExecutable(artifact.path);
+        }
+        succeeded++;
+        return;
+      }
+
+      await downloadOne(artifact, options);
+      succeeded++;
+    } catch (error) {
+      failed.push({
+        error: error instanceof Error ? error.message : "Download failed",
+        id: artifact.id,
+      });
+    }
+  };
   const immediatelyDownloadable = artifacts.filter(
     (artifact) => artifact.url || existsSync(artifact.path),
   );
@@ -309,27 +333,38 @@ export const downloadArtifacts = async (
   await runWithConcurrency(
     immediatelyDownloadable,
     getDownloadConcurrency(options),
-    async (artifact) => {
-      try {
-        assertArtifactStoragePath(artifact);
+    downloadArtifact,
+  );
 
-        if (existsSync(artifact.path)) {
-          if (artifact.executable) {
-            makeExecutable(artifact.path);
-          }
-          succeeded++;
-          return;
+  const assetObjectArtifacts = uniqueArtifacts(
+    artifacts
+      .filter((artifact) => artifact.kind === "assetIndex")
+      .flatMap((artifact) => {
+        if (!existsSync(artifact.path)) return [];
+
+        try {
+          return collectMissingAssetObjectArtifacts({
+            assetsRoot: plan.directories.assets,
+            indexId: artifact.id,
+            indexPath: artifact.path,
+          });
+        } catch (error) {
+          failed.push({
+            error:
+              error instanceof Error
+                ? error.message
+                : "Asset index could not be read",
+            id: artifact.id,
+          });
+          return [];
         }
+      }),
+  );
 
-        await downloadOne(artifact, options);
-        succeeded++;
-      } catch (error) {
-        failed.push({
-          error: error instanceof Error ? error.message : "Download failed",
-          id: artifact.id,
-        });
-      }
-    },
+  await runWithConcurrency(
+    assetObjectArtifacts,
+    getDownloadConcurrency(options),
+    downloadArtifact,
   );
 
   if (installerGenerated.length > 0) {

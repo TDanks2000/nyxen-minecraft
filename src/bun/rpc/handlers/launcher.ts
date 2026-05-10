@@ -2,16 +2,28 @@ import type {
   CreateLaunchPlanInput,
   DownloadArtifactsInput,
   DownloadArtifactsResult,
+  DownloadCurseForgeFileInput,
+  DownloadCurseForgeFileResult,
   LaunchInstanceInput,
   LaunchInstanceResult,
   LaunchPlan,
+  MinecraftVersionManifest,
+  RunningLaunch,
+  StopLaunchInstanceInput,
+  StopLaunchInstanceResult,
 } from "../../../shared/types";
-import { downloadArtifacts as downloadArtifactsFn } from "../../launcher/download";
-import { launchMinecraft } from "../../launcher/executor";
+import {
+  enqueueDownloadJob,
+  waitForDownloadJob,
+} from "../../launcher/download-queue";
+import {
+  launchMinecraft,
+  listRunningLaunches as listTrackedRunningLaunches,
+  stopMinecraftLaunch,
+} from "../../launcher/executor";
 import { markLauncherInstanceLaunched } from "../../launcher/instances";
 import { createLaunchPlan } from "../../launcher/launch-plan";
 import { getLauncherProfileAuthSecrets } from "../../launcher/profiles";
-import { refreshMinecraftVersionManifest as refreshManifest } from "../../launcher/versions";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
@@ -52,12 +64,52 @@ const getLaunchPlanRequest = (
   return { instanceId: plannedInstanceId };
 };
 
-export const refreshMinecraftVersionManifest = () => refreshManifest();
+export const refreshMinecraftVersionManifest =
+  async (): Promise<MinecraftVersionManifest> => {
+    const job = await enqueueDownloadJob({
+      input: null,
+      kind: "minecraftVersionManifest",
+    });
+    const finished = await waitForDownloadJob(job.id);
 
-export const downloadArtifacts = (
+    if (finished.result?.kind === "minecraftVersionManifest") {
+      return finished.result.result;
+    }
+
+    throw new Error(finished.error ?? "Failed to refresh Minecraft versions.");
+  };
+
+export const downloadArtifacts = async (
   input: DownloadArtifactsInput,
-): Promise<DownloadArtifactsResult> =>
-  createLaunchPlan(getLaunchPlanRequest(input)).then(downloadArtifactsFn);
+): Promise<DownloadArtifactsResult> => {
+  const job = await enqueueDownloadJob({
+    input,
+    kind: "launchArtifacts",
+  });
+  const finished = await waitForDownloadJob(job.id);
+
+  if (finished.result?.kind === "launchArtifacts") {
+    return finished.result.result;
+  }
+
+  throw new Error(finished.error ?? "Failed to download launch files.");
+};
+
+export const downloadCurseForgeFile = async (
+  input: DownloadCurseForgeFileInput,
+): Promise<DownloadCurseForgeFileResult> => {
+  const job = await enqueueDownloadJob({
+    input,
+    kind: "curseForgeFile",
+  });
+  const finished = await waitForDownloadJob(job.id);
+
+  if (finished.result?.kind === "curseForgeFile") {
+    return finished.result.result;
+  }
+
+  throw new Error(finished.error ?? "Failed to download CurseForge file.");
+};
 
 export const launchInstance = async (
   input: LaunchInstanceInput,
@@ -67,6 +119,12 @@ export const launchInstance = async (
 
   if (plan.missingArtifacts.length > 0) {
     throw new Error("Download missing artifacts before launching Minecraft.");
+  }
+
+  if (!plan.profile || plan.profile.kind !== "microsoft") {
+    throw new Error(
+      "A verified Microsoft profile is required to launch Minecraft.",
+    );
   }
 
   if (plan.profile?.id && plan.profile.kind === "microsoft") {
@@ -80,13 +138,26 @@ export const launchInstance = async (
   return result;
 };
 
+export const listRunningLaunches = (): Array<RunningLaunch> =>
+  listTrackedRunningLaunches();
+
+export const stopLaunchInstance = (
+  input: StopLaunchInstanceInput,
+): StopLaunchInstanceResult => stopMinecraftLaunch(input.instanceId);
+
 export {
   getCurseForgeStatus,
   searchCurseForgeProjects,
 } from "../../launcher/curseforge";
 export {
-  downloadCurseForgeFile,
+  clearDownloadJob,
+  clearFinishedDownloadJobs,
+  enqueueDownloadJob,
+  listDownloadJobs,
+} from "../../launcher/download-queue";
+export {
   getInstanceContent,
+  getInstanceLogFile,
   installDownloadedCurseForgeFile,
   setInstanceModEnabled,
 } from "../../launcher/instance-content";

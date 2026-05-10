@@ -1,6 +1,7 @@
 import type { RPCSchema } from "electrobun";
 import type {
   AppEnvironment,
+  ClearDownloadJobInput,
   CompleteMicrosoftProfileLoginInput,
   CreateLauncherInstanceInput,
   CreateLauncherProfileInput,
@@ -14,11 +15,15 @@ import type {
   DownloadArtifactsResult,
   DownloadCurseForgeFileInput,
   DownloadCurseForgeFileResult,
+  DownloadQueueJob,
+  EnqueueDownloadJobInput,
   GetInstanceContentInput,
+  GetInstanceLogFileInput,
   GetMinecraftVersionDetailsInput,
   InstallDownloadedCurseForgeFileInput,
   InstallDownloadedCurseForgeFileResult,
   InstanceContent,
+  InstanceLogFilePreview,
   LauncherInstance,
   LauncherProfile,
   LauncherStatus,
@@ -34,10 +39,13 @@ import type {
   MinecraftVersionDetails,
   MinecraftVersionManifest,
   MinecraftVersionSummary,
+  RunningLaunch,
   SearchCurseForgeProjectsInput,
   SetInstanceModEnabledInput,
   SettingsStatus,
   SettingValue,
+  StopLaunchInstanceInput,
+  StopLaunchInstanceResult,
   UpdateLauncherInstanceInput,
 } from "../types";
 
@@ -129,6 +137,10 @@ export type MainViewRPC = {
         params: GetInstanceContentInput;
         response: InstanceContent;
       };
+      getInstanceLogFile: {
+        params: GetInstanceLogFileInput;
+        response: InstanceLogFilePreview;
+      };
       setInstanceModEnabled: {
         params: SetInstanceModEnabledInput;
         response: InstanceContent;
@@ -136,6 +148,22 @@ export type MainViewRPC = {
       createLaunchPlan: {
         params: CreateLaunchPlanInput;
         response: LaunchPlan;
+      };
+      enqueueDownloadJob: {
+        params: EnqueueDownloadJobInput;
+        response: DownloadQueueJob;
+      };
+      listDownloadJobs: {
+        params: null;
+        response: Array<DownloadQueueJob>;
+      };
+      clearDownloadJob: {
+        params: ClearDownloadJobInput;
+        response: Array<DownloadQueueJob>;
+      };
+      clearFinishedDownloadJobs: {
+        params: null;
+        response: Array<DownloadQueueJob>;
       };
       downloadArtifacts: {
         params: DownloadArtifactsInput;
@@ -152,6 +180,14 @@ export type MainViewRPC = {
       launchInstance: {
         params: LaunchInstanceInput;
         response: LaunchInstanceResult;
+      };
+      listRunningLaunches: {
+        params: null;
+        response: Array<RunningLaunch>;
+      };
+      stopLaunchInstance: {
+        params: StopLaunchInstanceInput;
+        response: StopLaunchInstanceResult;
       };
       listLoaderVersions: {
         params: ListLoaderVersionsInput;

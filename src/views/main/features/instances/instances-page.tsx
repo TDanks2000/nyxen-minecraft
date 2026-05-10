@@ -5,6 +5,7 @@ import {
   BoxesIcon,
   InfoIcon,
   Loader2Icon,
+  MoreHorizontalIcon,
   PlayIcon,
   PlusIcon,
   SearchIcon,
@@ -180,10 +181,11 @@ function InstanceCard({
           <Link
             to="/instances/$instanceId"
             params={{ instanceId: instance.id }}
-            className={buttonVariants({ size: "sm", variant: "ghost" })}
+            aria-label={`View details for ${instance.name}`}
+            title={`View details for ${instance.name}`}
+            className={buttonVariants({ size: "icon-sm", variant: "ghost" })}
           >
-            <InfoIcon data-icon="inline-start" />
-            Details
+            <MoreHorizontalIcon />
           </Link>
           <Button
             size="icon-sm"
