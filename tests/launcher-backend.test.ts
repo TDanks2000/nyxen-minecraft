@@ -1648,6 +1648,11 @@ describe("launcher backend", () => {
               projectID: 223,
               required: true,
             },
+            {
+              fileID: 336,
+              projectID: 224,
+              required: true,
+            },
           ],
           manifestType: "minecraftModpack",
           manifestVersion: 1,
@@ -1785,6 +1790,20 @@ describe("launcher backend", () => {
         });
       }
 
+      if (url === "https://curseforge.test/v1/mods/224/files/336") {
+        return jsonResponse({
+          data: {
+            displayName: "Fallback Dependency 1.0",
+            downloadUrl: null,
+            fileDate: "2024-02-01T00:00:00Z",
+            fileName: "fallback-dependency.jar",
+            gameVersions: ["1.20.4", "Fabric"],
+            id: 336,
+            releaseType: 1,
+          },
+        });
+      }
+
       if (url === "https://downloads.example.test/dependency.jar") {
         return new Response("dependency-v1");
       }
@@ -1797,6 +1816,14 @@ describe("launcher backend", () => {
         return new Response(Buffer.from(resourcePackArchive), {
           headers: { "content-length": String(resourcePackArchive.byteLength) },
         });
+      }
+
+      if (
+        url.startsWith(
+          "https://www.curseforge.com/api/v1/mods/224/files/336/download",
+        )
+      ) {
+        return new Response("fallback-dependency");
       }
 
       if (
@@ -1866,7 +1893,7 @@ describe("launcher backend", () => {
     expect(instance.bannerUrl?.startsWith("file:")).toBe(true);
     expect(instance.modpack).toMatchObject({
       fileId: "444",
-      installedFiles: 2,
+      installedFiles: 3,
       locked: true,
       projectId: "111",
       skippedFiles: 0,
@@ -1886,6 +1913,12 @@ describe("launcher backend", () => {
     expect(
       readFileSync(join(instance.folders.resourcePacks, "resource-pack.zip")),
     ).toEqual(Buffer.from(resourcePackArchive));
+    expect(
+      readFileSync(
+        join(instance.folders.mods, "fallback-dependency.jar"),
+        "utf8",
+      ),
+    ).toBe("fallback-dependency");
     expect(getMissingRequiredModpackDependencies(instance)).toEqual([]);
     const metadataPath = join(
       instance.folders.metadata,

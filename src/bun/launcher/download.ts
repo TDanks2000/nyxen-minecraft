@@ -8,7 +8,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import type {
   DownloadArtifactsResult,
   LaunchPlan,
@@ -269,6 +269,29 @@ const runModLoaderInstaller = async (
       launcherRoot: plan.directories.root,
     });
     return;
+  }
+
+  const launcherProfilesPath = join(
+    plan.directories.root,
+    "launcher_profiles.json",
+  );
+
+  if (!existsSync(launcherProfilesPath)) {
+    writeArtifactFile(
+      launcherProfilesPath,
+      new TextEncoder().encode(
+        `${JSON.stringify(
+          {
+            authenticationDatabase: {},
+            clientToken: "nyxen",
+            profiles: {},
+            selectedProfile: "nyxen",
+          },
+          null,
+          2,
+        )}\n`,
+      ),
+    );
   }
 
   const result = spawnSync(

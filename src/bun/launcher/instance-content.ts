@@ -1568,11 +1568,9 @@ const fetchCurseForgeDownload = async (
   input: DownloadCurseForgeFileInput,
   options: DownloadCurseForgeFileOptions,
 ): Promise<Uint8Array> => {
-  const downloadUrl = input.file.downloadUrl?.trim();
-
-  if (!downloadUrl) {
-    throw new Error("CurseForge did not provide a download URL for this file.");
-  }
+  const downloadUrl =
+    input.file.downloadUrl?.trim() ||
+    `https://www.curseforge.com/api/v1/mods/${input.projectId}/files/${input.file.id}/download`;
 
   const url = new URL(downloadUrl);
 
@@ -1975,21 +1973,6 @@ const installModpackDependencies = async (
         options,
       );
       dependencyLabel = file.fileName || file.displayName || dependencyLabel;
-
-      if (!file.downloadUrl) {
-        skippedFiles += 1;
-        emitCurseForgeProgress(options, {
-          item: {
-            error: null,
-            id: dependencyItemId,
-            kind: "Mod",
-            label: dependencyLabel,
-            progress: 100,
-            status: "skipped",
-          },
-        });
-        continue;
-      }
 
       const installInput = await createModpackDependencyInstallInput({
         dependency,
