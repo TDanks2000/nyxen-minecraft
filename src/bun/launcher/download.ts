@@ -161,7 +161,10 @@ const downloadOne = async (
 const quotePowerShellString = (value: string): string =>
   `'${value.replaceAll("'", "''")}'`;
 
-const extractNatives = (jarPaths: Array<string>, nativesDir: string): void => {
+export const extractNatives = (
+  jarPaths: Array<string>,
+  nativesDir: string,
+): void => {
   if (jarPaths.length === 0) {
     return;
   }

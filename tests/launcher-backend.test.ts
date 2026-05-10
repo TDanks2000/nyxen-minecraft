@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
+  chmodSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -46,6 +47,11 @@ const manifestDocument = {
 };
 
 const authPlayerNamePlaceholder = "$" + "{auth_player_name}";
+const authXuidPlaceholder = "$" + "{auth_xuid}";
+const classpathPlaceholder = "$" + "{classpath}";
+const classpathSeparatorPlaceholder = "$" + "{classpath_separator}";
+const clientIdPlaceholder = "$" + "{clientid}";
+const libraryDirectoryPlaceholder = "$" + "{library_directory}";
 const nativesDirectoryPlaceholder = "$" + "{natives_directory}";
 const versionNamePlaceholder = "$" + "{version_name}";
 
@@ -3001,6 +3007,80 @@ describe("launcher backend", () => {
     );
     expect(generatedArtifact?.url).toBe("");
     expect(generatedArtifact?.path).toContain("neoforge-20.4.237-client.jar");
+  });
+
+  test("tracks platform native libraries listed as ordinary artifacts", async () => {
+    const { createLauncherInstance } = await import(
+      "../src/bun/launcher/instances"
+    );
+    const { createLaunchPlan } = await import(
+      "../src/bun/launcher/launch-plan"
+    );
+    const { refreshMinecraftVersionManifest } = await import(
+      "../src/bun/launcher/versions"
+    );
+    const osName =
+      process.platform === "darwin"
+        ? "osx"
+        : process.platform === "win32"
+          ? "windows"
+          : "linux";
+    const nativeClassifier =
+      process.platform === "win32"
+        ? "natives-windows"
+        : process.platform === "darwin"
+          ? "natives-macos"
+          : "natives-linux";
+    const nativeArtifactPath = `org/lwjgl/lwjgl/3.3.3/lwjgl-3.3.3-${nativeClassifier}.jar`;
+    const nativePathSuffix = join(...nativeArtifactPath.split("/"));
+    const fetcher = async (
+      input: string | URL | Request,
+    ): Promise<Response> => {
+      const url = input instanceof Request ? input.url : input.toString();
+
+      if (url.endsWith("/1.20.4.json")) {
+        return jsonResponse({
+          ...versionDetailsDocument,
+          libraries: [
+            ...versionDetailsDocument.libraries,
+            {
+              downloads: {
+                artifact: {
+                  path: nativeArtifactPath,
+                  url: `https://libraries.minecraft.net/${nativeArtifactPath}`,
+                },
+              },
+              name: `org.lwjgl:lwjgl:3.3.3:${nativeClassifier}`,
+              rules: [{ action: "allow", os: { name: osName } }],
+            },
+          ],
+        });
+      }
+
+      return fakeFetch(input);
+    };
+
+    await refreshMinecraftVersionManifest({ fetcher: fakeFetch });
+
+    const instance = createLauncherInstance({
+      name: "Native Artifact Metadata",
+      versionId: "1.20.4",
+    });
+    const plan = await createLaunchPlan(
+      { instanceId: instance.id, refreshVersionDetails: true },
+      { fetcher },
+    );
+    const nativeArtifact = plan.missingArtifacts.find((artifact) =>
+      artifact.path.endsWith(nativePathSuffix),
+    );
+
+    expect(
+      plan.nativeArtifactPaths.some((path) => path.endsWith(nativePathSuffix)),
+    ).toBe(true);
+    expect(nativeArtifact).toMatchObject({
+      id: `org.lwjgl:lwjgl:3.3.3:${nativeClassifier}`,
+      kind: "nativeLibrary",
+    });
   });
 
   test("runs mod loader installers for generated artifacts without URLs", async () => {

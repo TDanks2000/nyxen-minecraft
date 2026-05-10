@@ -181,6 +181,17 @@ const nativeClassifierKey = (library: MinecraftLibrary): string | null => {
   );
 };
 
+const isNativeLibraryArtifact = (
+  library: MinecraftLibrary,
+  artifactPath: string,
+): boolean => {
+  if (library.natives) {
+    return false;
+  }
+
+  return /(^|[-:])natives[-:]/.test(library.name) || /(^|-)natives-/.test(artifactPath);
+};
+
 const addMissingArtifact = (
   missingArtifacts: Array<LaunchPlanMissingArtifact>,
   artifact: LaunchPlanMissingArtifact,
@@ -441,14 +452,20 @@ export const createLaunchPlan = async (
         artifactPath,
         `Library ${library.name}`,
       );
+      const isNativeArtifact = isNativeLibraryArtifact(library, artifactPath);
+
       addMissingArtifact(missingArtifacts, {
         id: library.name,
-        kind: "library",
+        kind: isNativeArtifact ? "nativeLibrary" : "library",
         path: fullPath,
         sha1: artifact?.sha1,
         url: artifact?.url,
       });
       classpathLibraries.push(fullPath);
+
+      if (isNativeArtifact) {
+        nativeArtifactPaths.push(fullPath);
+      }
     }
 
     const classifierKey = nativeClassifierKey(library);

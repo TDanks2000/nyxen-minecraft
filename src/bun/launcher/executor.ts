@@ -6,6 +6,7 @@ import type {
   RunningLaunch,
   StopLaunchInstanceResult,
 } from "../../shared/types";
+import { extractNatives } from "./download";
 import { getLauncherDirectories } from "./paths";
 import {
   assertJavaExecutable,
@@ -189,11 +190,19 @@ const buildCommand = (
     auth_player_name: plan.profile?.displayName ?? "Player",
     auth_uuid:
       plan.profile?.accountId ?? "00000000-0000-0000-0000-000000000000",
+    auth_xuid: "",
     classpath: plan.classpath.join(sep),
+    classpath_separator: sep,
+    clientid: "",
     game_directory: plan.directories.game,
     launcher_name: "nyxen",
     launcher_version: "1.0",
+    library_directory: plan.directories.libraries,
     natives_directory: plan.directories.natives,
+    quickPlayMultiplayer: "",
+    quickPlayPath: "",
+    quickPlayRealms: "",
+    quickPlaySingleplayer: "",
     resolution_height: "480",
     resolution_width: "854",
     user_type: plan.profile?.kind === "microsoft" ? "msa" : "legacy",
@@ -292,6 +301,8 @@ export const launchMinecraft = (
   const { executable, args } = buildCommand(plan, options);
 
   let child: ChildProcess;
+
+  extractNatives(plan.nativeArtifactPaths, plan.directories.natives);
 
   try {
     child = spawn(executable, args, {
