@@ -6,13 +6,14 @@ import {
   MinusIcon,
   PlusIcon,
   RefreshCwIcon,
+  SearchIcon,
   SettingsIcon,
   SquareIcon,
   UserPlusIcon,
   UserRoundIcon,
   XIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { APP_NAME } from "@/shared/constants";
 import type { LauncherProfile } from "@/shared/types";
@@ -25,9 +26,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/views/main/components/ui/dropdown-menu";
+import { CurseForgeBrowserDialog } from "@/views/main/features/curseforge/components/curseforge-browser-dialog";
+import { toSelectedInstance } from "@/views/main/features/curseforge/curseforge-browser-model";
+import type { SelectedInstance } from "@/views/main/features/curseforge/curseforge-browser-types";
 import { NewInstanceDialog } from "@/views/main/features/instances/components/new-instance-dialog";
 import { AddProfileDialog } from "@/views/main/features/profiles/components/add-profile-dialog";
 import { MinecraftSkinHead } from "@/views/main/features/profiles/components/minecraft-skin";
+import { useInstances } from "@/views/main/hooks/use-instances";
 import { useProfiles } from "@/views/main/hooks/use-profiles";
 import { rpc } from "@/views/main/lib/rpc";
 import { cn } from "@/views/main/lib/utils";
@@ -130,9 +135,17 @@ function ProfileFace({
 export function Titlebar() {
   const [isMaximized, setIsMaximized] = useState(false);
   const [addProfileOpen, setAddProfileOpen] = useState(false);
+  const [curseForgeOpen, setCurseForgeOpen] = useState(false);
+  const [curseForgeInstance, setCurseForgeInstance] =
+    useState<SelectedInstance | null>(null);
   const [newInstanceOpen, setNewInstanceOpen] = useState(false);
   const navigate = useNavigate();
+  const instances = useInstances();
   const profiles = useProfiles();
+  const curseForgeInstances = useMemo(
+    () => (instances.data ?? []).map(toSelectedInstance),
+    [instances.data],
+  );
 
   const activeProfile =
     profiles.data?.find(isVerifiedMinecraftProfile) ??
@@ -213,6 +226,15 @@ export function Titlebar() {
           >
             <PlusIcon className="size-3.5" />
             Add Instance
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setCurseForgeOpen(true)}
+            className="flex h-9 items-center gap-1.5 rounded-md border border-sidebar-border bg-background/55 px-3 font-semibold text-foreground text-xs transition-colors hover:bg-muted"
+          >
+            <SearchIcon className="size-3.5" />
+            CurseForge
           </button>
 
           <button
@@ -353,6 +375,13 @@ export function Titlebar() {
         open={newInstanceOpen}
         onOpenChange={setNewInstanceOpen}
         onCreated={() => {}}
+      />
+      <CurseForgeBrowserDialog
+        availableInstances={curseForgeInstances}
+        open={curseForgeOpen}
+        onOpenChange={setCurseForgeOpen}
+        onSelectInstance={setCurseForgeInstance}
+        selectedInstance={curseForgeInstance}
       />
       <AddProfileDialog
         open={addProfileOpen}

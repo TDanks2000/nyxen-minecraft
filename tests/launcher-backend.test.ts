@@ -11,7 +11,11 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import type { LauncherDirectories, LaunchPlan } from "../src/shared/types";
+import type {
+  CurseForgeProjectSection,
+  LauncherDirectories,
+  LaunchPlan,
+} from "../src/shared/types";
 
 const manifestDocument = {
   latest: {
@@ -1317,6 +1321,66 @@ describe("launcher backend", () => {
       modLoaders: ["fabric"],
       releaseType: "release",
     });
+  });
+
+  test("searches broader CurseForge Minecraft content sections", async () => {
+    const { searchCurseForgeProjects } = await import(
+      "../src/bun/launcher/curseforge"
+    );
+    const cases: Array<{
+      classId: number;
+      section: CurseForgeProjectSection;
+    }> = [
+      { classId: 6, section: "mods" },
+      { classId: 4471, section: "modpacks" },
+      { classId: 12, section: "resource-packs" },
+      { classId: 6552, section: "shaders" },
+      { classId: 17, section: "worlds" },
+    ];
+
+    for (const entry of cases) {
+      const fetcher = async (
+        input: string | URL | Request,
+      ): Promise<Response> => {
+        const url = input instanceof Request ? input.url : input.toString();
+        const requestUrl = new URL(url);
+
+        expect(requestUrl.searchParams.get("classId")).toBe(
+          String(entry.classId),
+        );
+
+        return jsonResponse({
+          data: [
+            {
+              classId: entry.classId,
+              downloadCount: 10,
+              id: entry.classId + 1000,
+              name: `${entry.section} project`,
+              slug: `${entry.section}-project`,
+            },
+          ],
+        });
+      };
+
+      const result = await searchCurseForgeProjects(
+        {
+          pageSize: 1,
+          section: entry.section,
+        },
+        {
+          apiKey: "test-curseforge-key",
+          baseUrl: "https://curseforge.test",
+          fetcher,
+        },
+      );
+
+      expect(result.source).toEqual({
+        classId: entry.classId,
+        gameId: 432,
+        section: entry.section,
+      });
+      expect(result.data[0]?.section).toBe(entry.section);
+    }
   });
 
   test("explains missing CurseForge API key configuration", async () => {

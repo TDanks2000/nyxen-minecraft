@@ -70,7 +70,14 @@ export type LauncherStatus = {
   };
 };
 
-export type CurseForgeProjectSection = "modpacks" | "mods";
+export type CurseForgeCategory =
+  | "mods"
+  | "modpacks"
+  | "resource-packs"
+  | "shaders"
+  | "worlds";
+
+export type CurseForgeProjectSection = CurseForgeCategory;
 
 export type CurseForgeSortField =
   | "downloads"
@@ -83,11 +90,15 @@ export type CurseForgeSortField =
 
 export type CurseForgeStatus = {
   baseUrl: string;
+  classIds: Record<CurseForgeCategory, number>;
   configured: boolean;
   gameId: number;
   keySource: "CURSEFORGE_API_KEY" | "NYXEN_CURSEFORGE_API_KEY" | null;
   modClassId: number;
   modpackClassId: number;
+  resourcePackClassId: number;
+  shaderClassId: number;
+  worldClassId: number;
 };
 
 export type SearchCurseForgeProjectsInput = {

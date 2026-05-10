@@ -14,6 +14,17 @@ export const CURSEFORGE_API_BASE_URL = "https://api.curseforge.com";
 export const CURSEFORGE_MINECRAFT_GAME_ID = 432;
 export const CURSEFORGE_MOD_CLASS_ID = 6;
 export const CURSEFORGE_MODPACK_CLASS_ID = 4471;
+export const CURSEFORGE_RESOURCE_PACK_CLASS_ID = 12;
+export const CURSEFORGE_SHADER_CLASS_ID = 6552;
+export const CURSEFORGE_WORLD_CLASS_ID = 17;
+
+const curseForgeClassIdBySection: Record<CurseForgeProjectSection, number> = {
+  mods: CURSEFORGE_MOD_CLASS_ID,
+  modpacks: CURSEFORGE_MODPACK_CLASS_ID,
+  "resource-packs": CURSEFORGE_RESOURCE_PACK_CLASS_ID,
+  shaders: CURSEFORGE_SHADER_CLASS_ID,
+  worlds: CURSEFORGE_WORLD_CLASS_ID,
+};
 
 type Fetcher = (
   input: string | URL | Request,
@@ -159,13 +170,13 @@ const searchResponseSchema = z.object({
 });
 
 export const getCurseForgeApiKeyInfo = (): ApiKeyInfo => {
-  const nyxenKey = process.env.NYXEN_CURSEFORGE_API_KEY?.trim();
+  const nyxenKey = Bun.env.NYXEN_CURSEFORGE_API_KEY?.trim();
 
   if (nyxenKey) {
     return { key: nyxenKey, source: "NYXEN_CURSEFORGE_API_KEY" };
   }
 
-  const genericKey = process.env.CURSEFORGE_API_KEY?.trim();
+  const genericKey = Bun.env.CURSEFORGE_API_KEY?.trim();
 
   if (genericKey) {
     return { key: genericKey, source: "CURSEFORGE_API_KEY" };
@@ -179,11 +190,15 @@ export const getCurseForgeStatus = (): CurseForgeStatus => {
 
   return {
     baseUrl: CURSEFORGE_API_BASE_URL,
+    classIds: curseForgeClassIdBySection,
     configured: !!apiKey.key,
     gameId: CURSEFORGE_MINECRAFT_GAME_ID,
     keySource: apiKey.source,
     modClassId: CURSEFORGE_MOD_CLASS_ID,
     modpackClassId: CURSEFORGE_MODPACK_CLASS_ID,
+    resourcePackClassId: CURSEFORGE_RESOURCE_PACK_CLASS_ID,
+    shaderClassId: CURSEFORGE_SHADER_CLASS_ID,
+    worldClassId: CURSEFORGE_WORLD_CLASS_ID,
   };
 };
 
@@ -252,8 +267,8 @@ const normalizeSearchInput = (
 ): NormalizedSearchInput => {
   const section = input?.section ?? "modpacks";
 
-  if (section !== "modpacks" && section !== "mods") {
-    throw new Error("CurseForge section must be mods or modpacks.");
+  if (!Object.hasOwn(curseForgeClassIdBySection, section)) {
+    throw new Error("CurseForge section is not supported.");
   }
 
   const pageSize = Math.max(1, Math.min(50, clampInt(input?.pageSize, 24)));
@@ -286,10 +301,7 @@ const normalizeSearchInput = (
   }
 
   return {
-    classId:
-      section === "mods"
-        ? CURSEFORGE_MOD_CLASS_ID
-        : CURSEFORGE_MODPACK_CLASS_ID,
+    classId: curseForgeClassIdBySection[section],
     gameVersion,
     index,
     loader,
@@ -397,9 +409,11 @@ const fetchCurseForgeJson = async (
 const sectionFromClassId = (
   classId: number | null | undefined,
 ): CurseForgeProjectSummary["section"] => {
-  if (classId === CURSEFORGE_MOD_CLASS_ID) return "mods";
-  if (classId === CURSEFORGE_MODPACK_CLASS_ID) return "modpacks";
-  return "unknown";
+  const entry = Object.entries(curseForgeClassIdBySection).find(
+    ([, sectionClassId]) => sectionClassId === classId,
+  );
+
+  return entry?.[0] ? (entry[0] as CurseForgeProjectSection) : "unknown";
 };
 
 const loaderFromText = (value: string): ModLoader | null => {

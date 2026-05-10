@@ -26,6 +26,7 @@ import { rpc } from "@/views/main/lib/rpc";
 type InstanceDetailsHeaderProps = {
   enabledModsCount: number;
   instance: LauncherInstance;
+  onBrowseCurseForge: () => void;
   onOpenSettings: () => void;
   onPlay: () => void;
   planLoading: boolean;
@@ -78,6 +79,7 @@ const formatRelative = (value: string | null): string =>
 export function InstanceDetailsHeader({
   enabledModsCount,
   instance,
+  onBrowseCurseForge,
   onOpenSettings,
   onPlay,
   planLoading,
@@ -169,6 +171,15 @@ export function InstanceDetailsHeader({
               </Button>
             </div>
 
+            <Button
+              className="w-full sm:w-auto"
+              onClick={onBrowseCurseForge}
+              size="lg"
+              variant="outline"
+            >
+              <DownloadIcon data-icon="inline-start" />
+              Browse CurseForge
+            </Button>
             <Button
               className="w-full sm:w-auto"
               onClick={openFolder}

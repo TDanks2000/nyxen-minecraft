@@ -5,8 +5,10 @@
   "private": true,
   "packageManager": "bun@1.3.0",
   "scripts": {
-    "dev": "vite build && concurrently -k -n vite,electrobun \"vite build --watch\" \"cross-env CES_DEV_RELOAD=1 electrobun dev\"",
-    "build": "vite build && electrobun build --env=dev --targets=all",
+    "dev": "bun --env-file=.env run dev:app",
+    "dev:app": "vite build && concurrently -k -n vite,electrobun \"vite build --watch\" \"cross-env CES_DEV_RELOAD=1 electrobun dev\"",
+    "build": "bun --env-file=.env run build:app",
+    "build:app": "vite build && electrobun build --env=dev --targets=all",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",

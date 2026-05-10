@@ -191,16 +191,14 @@ To create the client id:
     the app to be a public/mobile client.
 11. On the app registration `Overview` page, copy `Application (client) ID`.
     Do not copy `Object ID` or `Directory (tenant) ID`.
-12. Set it before starting the app:
+12. Add it to `.env` before starting the app:
 
-```bash
-export NYXEN_MICROSOFT_CLIENT_ID="paste-application-client-id-here"
-bun run dev
+```dotenv
+NYXEN_MICROSOFT_CLIENT_ID=paste-application-client-id-here
 ```
 
-For a persistent local setup, put the export in your shell profile or the script
-you use to launch the app. Keep using only the client id for this desktop app;
-do not create or ship a client secret.
+Then start the app with `bun run dev`. Keep using only the client id for this
+desktop app; do not create or ship a client secret.
 
 ## CurseForge Catalog Setup
 
@@ -208,8 +206,18 @@ Nyxen can refresh the Modpacks catalog from CurseForge when a local API key is
 configured. The key stays on the user's machine and is sent only from the Bun
 backend to the CurseForge API.
 
+Set the key in `.env`:
+
+```dotenv
+NYXEN_CURSEFORGE_API_KEY=paste-curseforge-api-key-here
+```
+
+CurseForge keys often contain `$`. Bun expands `$` references in `.env` files,
+so escape each dollar sign as `\$` when pasting the key.
+
+Then start the app:
+
 ```bash
-export NYXEN_CURSEFORGE_API_KEY="paste-curseforge-api-key-here"
 bun run dev
 ```
 

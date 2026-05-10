@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { CurseForgeBrowserDialog } from "@/views/main/features/curseforge/components/curseforge-browser-dialog";
+import { toSelectedInstance } from "@/views/main/features/curseforge/curseforge-browser-model";
 import { InstanceCatalogTabs } from "@/views/main/features/instances/components/instance-catalog-tabs";
 import { InstanceDetailsHeader } from "@/views/main/features/instances/components/instance-details-header";
 import {
@@ -13,6 +15,7 @@ import { useInstances } from "@/views/main/hooks/use-instances";
 
 export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
   const [activeTab, setActiveTab] = useState("mods");
+  const [curseForgeOpen, setCurseForgeOpen] = useState(false);
   const instancesHook = useInstances();
   const launchPlan = useLaunchPlan();
   const instance =
@@ -27,12 +30,14 @@ export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
     void launchPlan.createLaunchPlan(instance.id);
   };
   const openSettings = () => setActiveTab("settings");
+  const selectedCurseForgeInstance = toSelectedInstance(instance);
 
   return (
     <div className="min-h-full bg-background">
       <InstanceDetailsHeader
         enabledModsCount={catalog.enabledMods.length}
         instance={instance}
+        onBrowseCurseForge={() => setCurseForgeOpen(true)}
         onOpenSettings={openSettings}
         onPlay={playInstance}
         planLoading={planLoading}
@@ -83,6 +88,13 @@ export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
         onOpenChange={launchPlan.setSheetOpen}
         onLaunched={instancesHook.refresh}
         plan={launchPlan.activePlan}
+      />
+      <CurseForgeBrowserDialog
+        availableInstances={[selectedCurseForgeInstance]}
+        initialCategory="mods"
+        open={curseForgeOpen}
+        onOpenChange={setCurseForgeOpen}
+        selectedInstance={selectedCurseForgeInstance}
       />
     </div>
   );
