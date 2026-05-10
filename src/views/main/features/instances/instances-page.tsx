@@ -46,11 +46,11 @@ import {
   InstanceArtwork,
   InstanceIcon,
 } from "@/views/main/features/instances/components/instance-artwork";
+import { InstanceCard } from "@/views/main/features/instances/components/instance-card";
 import {
   formatInstanceLastPlayed,
-  InstanceCard,
   LOADER_LABELS,
-} from "@/views/main/features/instances/components/instance-card";
+} from "@/views/main/features/instances/components/instance-format";
 import { LaunchPlanSheet } from "@/views/main/features/instances/components/launch-plan-sheet";
 import { NewInstanceDialog } from "@/views/main/features/instances/components/new-instance-dialog";
 import { useLaunchPlan } from "@/views/main/features/instances/hooks/use-launch-plan";

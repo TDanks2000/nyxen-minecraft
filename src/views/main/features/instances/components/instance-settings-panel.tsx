@@ -73,6 +73,7 @@ import {
   ToggleGroup,
   ToggleGroupItem,
 } from "@/views/main/components/ui/toggle-group";
+import { LOADER_LABELS } from "@/views/main/features/instances/components/instance-format";
 import { useLoaderVersions } from "@/views/main/hooks/use-loader-versions";
 import { useProfiles } from "@/views/main/hooks/use-profiles";
 import { useSettings } from "@/views/main/hooks/use-settings";
@@ -741,7 +742,7 @@ export function InstanceSettingsPanel({
                   <div className="rounded-md border border-border bg-background/65 px-3 py-2">
                     <div className="text-muted-foreground">Current runtime</div>
                     <div className="mt-1 font-semibold">
-                      {instance.versionId} · {instance.loader}
+                      {instance.versionId} · {LOADER_LABELS[instance.loader]}
                       {instance.loaderVersion
                         ? ` ${instance.loaderVersion}`
                         : ""}
@@ -750,7 +751,7 @@ export function InstanceSettingsPanel({
                   <div className="rounded-md border border-border bg-background/65 px-3 py-2">
                     <div className="text-muted-foreground">Next runtime</div>
                     <div className="mt-1 font-semibold">
-                      {versionId} · {loader}
+                      {versionId} · {LOADER_LABELS[loader]}
                       {nextLoaderVersion ? ` ${nextLoaderVersion}` : ""}
                     </div>
                   </div>

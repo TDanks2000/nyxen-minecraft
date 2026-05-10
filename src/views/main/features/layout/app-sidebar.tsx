@@ -11,10 +11,8 @@ import {
 } from "lucide-react";
 import { type ComponentType, type SVGProps, useMemo } from "react";
 import { InstanceIcon } from "@/views/main/features/instances/components/instance-artwork";
-import {
-  InstanceQuickPlayItem,
-  LOADER_LABELS,
-} from "@/views/main/features/instances/components/instance-card";
+import { InstanceQuickPlayItem } from "@/views/main/features/instances/components/instance-card";
+import { LOADER_LABELS } from "@/views/main/features/instances/components/instance-format";
 import { LaunchPlanSheet } from "@/views/main/features/instances/components/launch-plan-sheet";
 import { useLaunchPlan } from "@/views/main/features/instances/hooks/use-launch-plan";
 import { useInstances } from "@/views/main/hooks/use-instances";

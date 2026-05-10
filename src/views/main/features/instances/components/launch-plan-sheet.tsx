@@ -28,6 +28,7 @@ import {
   SheetTitle,
 } from "@/views/main/components/ui/sheet";
 import { useDownloadQueueStore } from "@/views/main/features/downloads/download-queue-store";
+import { LOADER_LABELS } from "@/views/main/features/instances/components/instance-format";
 import { rpc } from "@/views/main/lib/rpc";
 
 type Props = {
@@ -276,7 +277,7 @@ export function LaunchPlanSheet({
                   <p className="text-xs text-muted-foreground">
                     {plan.instance.versionId}
                     <span className="mx-1.5 opacity-40">·</span>
-                    {plan.instance.loader}
+                    {LOADER_LABELS[plan.instance.loader]}
                   </p>
                 </div>
               </div>

@@ -1,14 +1,13 @@
 import { Link } from "@tanstack/react-router";
-import { formatDistanceToNow } from "date-fns";
 import {
   InfoIcon,
   Loader2Icon,
   MoreHorizontalIcon,
   PlayIcon,
 } from "lucide-react";
-import type { LauncherInstance, ModLoader } from "@/shared/types";
+import type { LauncherInstance } from "@/shared/types";
 import { Badge } from "@/views/main/components/ui/badge";
-import { Button, buttonVariants } from "@/views/main/components/ui/button";
+import { Button } from "@/views/main/components/ui/button";
 import {
   Card,
   CardContent,
@@ -29,24 +28,10 @@ import {
   InstanceArtwork,
   InstanceIcon,
 } from "./instance-artwork";
-
-export const LOADER_LABELS: Record<ModLoader, string> = {
-  fabric: "Fabric",
-  forge: "Forge",
-  neoforge: "NeoForge",
-  quilt: "Quilt",
-  vanilla: "Vanilla",
-};
-
-export function formatInstanceLastPlayed(
-  value: string | null,
-  options: { prefix?: boolean } = {},
-): string {
-  if (!value) return "Never played";
-
-  const relative = formatDistanceToNow(new Date(value), { addSuffix: true });
-  return options.prefix ? `Played ${relative}` : relative;
-}
+import {
+  formatInstanceLastPlayed,
+  LOADER_LABELS,
+} from "./instance-format";
 
 type InstanceActionProps = {
   instance: LauncherInstance;
@@ -310,8 +295,4 @@ export function InstanceQuickPlayItem({
       />
     </div>
   );
-}
-
-export function instanceDetailsLinkClassName() {
-  return buttonVariants({ variant: "outline" });
 }

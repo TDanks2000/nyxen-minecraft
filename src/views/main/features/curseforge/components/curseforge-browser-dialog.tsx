@@ -94,6 +94,7 @@ import type {
   SelectedInstance,
 } from "@/views/main/features/curseforge/curseforge-browser-types";
 import { useCurseForgeBrowserSearch } from "@/views/main/features/curseforge/use-curseforge-browser-search";
+import { LOADER_LABELS } from "@/views/main/features/instances/components/instance-format";
 import { cn } from "@/views/main/lib/utils";
 
 type LoaderFilter = Exclude<ModLoader, "vanilla"> | "all";
@@ -159,7 +160,7 @@ function InstanceBadge({ instance }: { instance: SelectedInstance | null }) {
               ? `Managed by ${instance.modpackName}`
               : "Managed modpack instance"
             : `Minecraft ${instance.minecraftVersion}${
-                instance.loader ? ` · ${instance.loader}` : ""
+                instance.loader ? ` · ${LOADER_LABELS[instance.loader]}` : ""
               }`}
         </div>
       </div>

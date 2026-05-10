@@ -1,6 +1,7 @@
 import type { LauncherInstance } from "@/shared/types";
 import { Badge } from "@/views/main/components/ui/badge";
 import { cn } from "@/views/main/lib/utils";
+import { LOADER_LABELS } from "./instance-format";
 
 type InstanceArtworkProps = {
   className?: string;
@@ -196,7 +197,7 @@ export function InstanceArtwork({
       {showBadge && !isIcon ? (
         <div className="absolute bottom-3 left-3 flex max-w-[calc(100%-1.5rem)] items-center gap-2">
           <Badge variant="secondary" className="capitalize">
-            {instance.loader}
+            {LOADER_LABELS[instance.loader]}
           </Badge>
           <span className="truncate text-xs font-semibold text-white/78">
             {instance.versionId}

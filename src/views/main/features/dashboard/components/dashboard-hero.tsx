@@ -7,7 +7,7 @@ import { HeroBackground } from "@/views/main/features/dashboard/components/hero-
 import {
   formatInstanceLastPlayed,
   LOADER_LABELS,
-} from "@/views/main/features/instances/components/instance-card";
+} from "@/views/main/features/instances/components/instance-format";
 import { rpc } from "@/views/main/lib/rpc";
 
 type DashboardHeroProps = {
