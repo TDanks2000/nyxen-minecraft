@@ -5,6 +5,7 @@ import type {
   CurseForgeCategory,
   DownloadArtifactsInput,
   DownloadArtifactsResult,
+  DownloadModrinthFileInput,
   DownloadQueueItem,
   DownloadQueueItemStatus,
   DownloadQueueJob,
@@ -21,6 +22,7 @@ import {
   type CurseForgeDownloadProgressEvent,
   type CurseForgeDownloadProgressItem,
   downloadCurseForgeFile,
+  downloadModrinthFile,
 } from "./instance-content";
 import { createLaunchPlan } from "./launch-plan";
 import { refreshMinecraftVersionManifest } from "./versions";
@@ -291,6 +293,15 @@ const getCurseForgeCategoryLabel = (category: CurseForgeCategory): string => {
   return "World";
 };
 
+const getModrinthCategoryLabel = (
+  category: DownloadModrinthFileInput["category"],
+): string => {
+  if (category === "mods") return "Mod";
+  if (category === "modpacks") return "Modpack";
+  if (category === "resource-packs") return "Resource pack";
+  return "Shader";
+};
+
 const hasOwn = (
   value: CurseForgeDownloadProgressItem,
   key: keyof CurseForgeDownloadProgressItem,
@@ -419,6 +430,59 @@ const createCurseForgeFileJob = (
     runner: async () => ({
       kind: "curseForgeFile",
       result: await downloadCurseForgeFile(input, {
+        onProgress: (event) => applyCurseForgeProgress(job.id, event),
+      }),
+    }),
+  };
+};
+
+const createModrinthFileJob = (
+  input: Extract<EnqueueDownloadJobInput, { kind: "modrinthFile" }>["input"],
+): { job: DownloadQueueJob; runner: DownloadQueueRunner } => {
+  const timestamp = nowIso();
+  const fileName =
+    input.file.fileName ||
+    input.file.displayName ||
+    `${input.projectName}.mrpack`;
+  const job: DownloadQueueJob = {
+    activeLabel: null,
+    completedAt: null,
+    createdAt: timestamp,
+    error: null,
+    id: createJobId(),
+    items: [
+      createQueueItem({
+        id: `modrinth:${input.projectId}:${input.file.id}`,
+        kind: getModrinthCategoryLabel(input.category),
+        label: basename(fileName.replaceAll("\\", "/")),
+      }),
+    ],
+    metadata: {
+      category: input.category,
+      fileId: input.file.id,
+      imageUrl:
+        input.projectLogoUrl ?? input.projectScreenshotUrls?.[0] ?? null,
+      kind: "modrinthFile",
+      projectId: input.projectId,
+      targetInstanceId: input.instanceId ?? null,
+    },
+    progress: 0,
+    result: null,
+    source: "modrinth",
+    startedAt: null,
+    status: "queued",
+    subtitle:
+      input.file.displayName || basename(fileName.replaceAll("\\", "/")),
+    title: input.projectName,
+    totalItems: 1,
+    updatedAt: timestamp,
+  };
+
+  return {
+    job,
+    runner: async () => ({
+      kind: "modrinthFile",
+      result: await downloadModrinthFile(input, {
         onProgress: (event) => applyCurseForgeProgress(job.id, event),
       }),
     }),
@@ -658,7 +722,9 @@ export const enqueueDownloadJob = async (
         )
       : input.kind === "curseForgeFile"
         ? createCurseForgeFileJob(input.input)
-        : createMinecraftVersionManifestJob();
+        : input.kind === "modrinthFile"
+          ? createModrinthFileJob(input.input)
+          : createMinecraftVersionManifestJob();
 
   runners.set(job.id, runner);
   jobs = trimJobs([job, ...jobs]);

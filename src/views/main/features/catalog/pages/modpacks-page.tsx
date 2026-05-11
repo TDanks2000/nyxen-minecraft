@@ -2,7 +2,6 @@ import { Link } from "@tanstack/react-router";
 import {
   BoxesIcon,
   DownloadIcon,
-  ExternalLinkIcon,
   FilterIcon,
   Globe2Icon,
   HardDriveDownloadIcon,
@@ -19,10 +18,7 @@ import {
   useState,
 } from "react";
 import { toast } from "sonner";
-import type {
-  CurseForgeProjectSummary,
-  CurseForgeStatus,
-} from "@/shared/types";
+import type { ModrinthProjectSummary, ModrinthStatus } from "@/shared/types";
 import { Badge } from "@/views/main/components/ui/badge";
 import { Button, buttonVariants } from "@/views/main/components/ui/button";
 import {
@@ -55,12 +51,10 @@ import {
 import {
   formatCurseForgeDate,
   formatCurseForgeDownloads,
-  getVisibleMinecraftVersions,
   MINECRAFT_VERSION_PATTERN,
-  requiresManualCurseForgeDownload,
 } from "@/views/main/features/curseforge/curseforge-browser-model";
-import { useCurseForgeInstall } from "@/views/main/features/curseforge/use-curseforge-install";
 import { useRendererMediaUrl } from "@/views/main/features/instances/hooks/use-renderer-media-url";
+import { useModrinthInstall } from "@/views/main/features/modrinth/use-modrinth-install";
 import { useInstances } from "@/views/main/hooks/use-instances";
 import { rpc } from "@/views/main/lib/rpc";
 import { cn } from "@/views/main/lib/utils";
@@ -82,23 +76,23 @@ type InstalledModpackCard = {
   updatedLabel: string;
 };
 
-type CurseForgeModpackCard = {
+type ModrinthModpackCard = {
   downloads: string;
   id: string;
   imageUrl: string | null;
   installed: false;
-  kind: "curseforge";
+  kind: "modrinth";
   loader: string;
   minecraft: string;
   name: string;
-  project: CurseForgeProjectSummary;
+  project: ModrinthProjectSummary;
   searchText: string;
   summary: string;
   tags: Array<string>;
   updatedLabel: string;
 };
 
-type ModpackCardItem = InstalledModpackCard | CurseForgeModpackCard;
+type ModpackCardItem = InstalledModpackCard | ModrinthModpackCard;
 
 function ModpackArtwork({ imageUrl }: { imageUrl: string | null }) {
   const resolvedUrl = useRendererMediaUrl(imageUrl);
@@ -119,16 +113,16 @@ function ModpackArtwork({ imageUrl }: { imageUrl: string | null }) {
   );
 }
 
-const getProjectMinecraftVersion = (
-  project: CurseForgeProjectSummary,
-): string =>
-  getVisibleMinecraftVersions(project, 1)[0] ??
+const getProjectMinecraftVersion = (project: ModrinthProjectSummary): string =>
+  [...(project.latestFile?.gameVersions ?? []), ...project.gameVersions].find(
+    (version) => MINECRAFT_VERSION_PATTERN.test(version),
+  ) ??
   project.gameVersions.find((version) =>
     MINECRAFT_VERSION_PATTERN.test(version),
   ) ??
   "Version varies";
 
-const getProjectLoader = (project: CurseForgeProjectSummary): string =>
+const getProjectLoader = (project: ModrinthProjectSummary): string =>
   project.modLoaders[0]
     ? (LOADER_LABELS[project.modLoaders[0]] ?? "Loader varies")
     : "Loader varies";
@@ -164,22 +158,22 @@ const createInstalledCard = (
   };
 };
 
-const createCurseForgeCard = (
-  project: CurseForgeProjectSummary,
-): CurseForgeModpackCard => {
+const createModrinthCard = (
+  project: ModrinthProjectSummary,
+): ModrinthModpackCard => {
   const minecraft = getProjectMinecraftVersion(project);
   const loader = getProjectLoader(project);
   const tags =
     project.categories.length > 0
       ? project.categories.slice(0, 3)
-      : ["CurseForge"];
+      : ["Modrinth"];
 
   return {
     downloads: formatCurseForgeDownloads(project.downloadCount),
-    id: `curseforge:${project.id}`,
+    id: `modrinth:${project.id}`,
     imageUrl: project.screenshotUrls[0] ?? project.logoUrl,
     installed: false,
-    kind: "curseforge",
+    kind: "modrinth",
     loader,
     minecraft,
     name: project.name,
@@ -196,7 +190,7 @@ const createCurseForgeCard = (
     ]
       .join(" ")
       .toLowerCase(),
-    summary: project.summary || "CurseForge modpack.",
+    summary: project.summary || "Modrinth modpack.",
     tags,
     updatedLabel: formatCurseForgeDate(project.dateModified),
   };
@@ -204,19 +198,20 @@ const createCurseForgeCard = (
 
 export function ModpacksPage() {
   const instancesHook = useInstances();
-  const [curseForgeProjects, setCurseForgeProjects] = useState<
-    Array<CurseForgeProjectSummary>
+  const [modrinthProjects, setModrinthProjects] = useState<
+    Array<ModrinthProjectSummary>
   >([]);
-  const [curseForgeStatus, setCurseForgeStatus] =
-    useState<CurseForgeStatus | null>(null);
-  const [curseForgeError, setCurseForgeError] = useState<string | null>(null);
+  const [modrinthStatus, setModrinthStatus] = useState<ModrinthStatus | null>(
+    null,
+  );
+  const [modrinthError, setModrinthError] = useState<string | null>(null);
   const [favorites, setFavorites] = useState<Set<string>>(() => new Set());
   const [filter, setFilter] = useState<ModpackFilter>("all");
-  const [installingProjectIds, setInstallingProjectIds] = useState<Set<number>>(
+  const [installingProjectIds, setInstallingProjectIds] = useState<Set<string>>(
     () => new Set(),
   );
   const [query, setQuery] = useState("");
-  const [refreshingCurseForge, setRefreshingCurseForge] = useState(false);
+  const [refreshingModrinth, setRefreshingModrinth] = useState(false);
   const deferredQuery = useDeferredValue(query);
   const instances = instancesHook.data ?? [];
   const installedModpacks = useMemo(
@@ -227,64 +222,63 @@ export function ModpacksPage() {
     () => new Set(installedModpacks.map((pack) => pack.projectId)),
     [installedModpacks],
   );
-  const curseForgeInstall = useCurseForgeInstall({
+  const modrinthInstall = useModrinthInstall({
     onInstanceCreated: instancesHook.upsertInstance,
   });
 
-  const loadCurseForgeCatalog = useCallback(
+  const loadModrinthCatalog = useCallback(
     async ({ quiet = false }: { quiet?: boolean } = {}) => {
-      setRefreshingCurseForge(true);
-      setCurseForgeError(null);
+      setRefreshingModrinth(true);
+      setModrinthError(null);
 
       try {
-        const status = await rpc.requestProxy.getCurseForgeStatus(null);
-        setCurseForgeStatus(status);
+        const status = await rpc.requestProxy.getModrinthStatus(null);
+        setModrinthStatus(status);
 
         if (!status.configured) {
-          setCurseForgeProjects([]);
+          setModrinthProjects([]);
           if (!quiet) {
-            toast.error("Set NYXEN_CURSEFORGE_API_KEY to load live modpacks.");
+            toast.error("Modrinth catalog search is unavailable.");
           }
           return;
         }
 
-        const result = await rpc.requestProxy.searchCurseForgeProjects({
+        const result = await rpc.requestProxy.searchModrinthProjects({
           pageSize: 24,
           section: "modpacks",
           sortField: "downloads",
-          sortOrder: "desc",
         });
-        setCurseForgeProjects(result.data);
+        setModrinthProjects(result.data);
 
         if (!quiet) {
-          toast.success(`Loaded ${result.data.length} CurseForge modpacks.`);
+          toast.success(`Loaded ${result.data.length} Modrinth modpacks.`);
         }
       } catch (error) {
         const message =
           error instanceof Error
             ? error.message
-            : "Failed to load CurseForge modpacks.";
-        setCurseForgeError(message);
+            : "Failed to load Modrinth modpacks.";
+        setModrinthError(message);
         if (!quiet) toast.error(message);
       } finally {
-        setRefreshingCurseForge(false);
+        setRefreshingModrinth(false);
       }
     },
     [],
   );
 
   useEffect(() => {
-    void loadCurseForgeCatalog({ quiet: true });
-  }, [loadCurseForgeCatalog]);
+    void loadModrinthCatalog({ quiet: true });
+  }, [loadModrinthCatalog]);
 
   const cards = useMemo<Array<ModpackCardItem>>(() => {
     const installedCards = installedModpacks.map(createInstalledCard);
-    const availableCards = curseForgeProjects
+    const availableCards = modrinthProjects
       .filter((project) => !installedProjectIds.has(String(project.id)))
-      .map(createCurseForgeCard);
+      .map(createModrinthCard);
 
     return [...installedCards, ...availableCards];
-  }, [curseForgeProjects, installedModpacks, installedProjectIds]);
+  }, [modrinthProjects, installedModpacks, installedProjectIds]);
 
   const filteredCards = useMemo(() => {
     const needle = deferredQuery.trim().toLowerCase();
@@ -293,7 +287,7 @@ export function ModpacksPage() {
       const matchesFilter =
         filter === "all" ||
         (filter === "installed" && card.kind === "installed") ||
-        (filter === "available" && card.kind === "curseforge");
+        (filter === "available" && card.kind === "modrinth");
       const matchesQuery = !needle || card.searchText.includes(needle);
 
       return matchesFilter && matchesQuery;
@@ -312,20 +306,11 @@ export function ModpacksPage() {
     });
   };
 
-  const installProject = async (project: CurseForgeProjectSummary) => {
+  const installProject = async (project: ModrinthProjectSummary) => {
     setInstallingProjectIds((current) => new Set(current).add(project.id));
 
     try {
-      if (requiresManualCurseForgeDownload(project)) {
-        await curseForgeInstall.openManualDownload({
-          category: "modpacks",
-          instance: null,
-          item: project,
-        });
-        return;
-      }
-
-      await curseForgeInstall.installModpack({
+      await modrinthInstall.installModpack({
         category: "modpacks",
         item: project,
       });
@@ -343,19 +328,19 @@ export function ModpacksPage() {
       <LibraryPageHeader
         eyebrow="Discover"
         title="Modpacks"
-        description="Browse installed modpacks and live CurseForge modpack results."
+        description="Browse installed modpacks and live Modrinth modpack results."
         actions={
           <Button
             variant="outline"
-            onClick={() => void loadCurseForgeCatalog()}
-            disabled={refreshingCurseForge}
+            onClick={() => void loadModrinthCatalog()}
+            disabled={refreshingModrinth}
           >
-            {refreshingCurseForge ? (
+            {refreshingModrinth ? (
               <Loader2Icon data-icon="inline-start" className="animate-spin" />
             ) : (
               <RefreshCcwIcon data-icon="inline-start" />
             )}
-            {refreshingCurseForge ? "Refreshing" : "Refresh"}
+            {refreshingModrinth ? "Refreshing" : "Refresh"}
           </Button>
         }
       />
@@ -364,11 +349,11 @@ export function ModpacksPage() {
         <MetricCard
           icon={BoxesIcon}
           label="Live Catalog"
-          value={`${curseForgeProjects.length} packs`}
+          value={`${modrinthProjects.length} packs`}
           caption={
-            curseForgeStatus?.configured
-              ? "Loaded from CurseForge search."
-              : "CurseForge API key is not configured."
+            modrinthStatus?.configured
+              ? "Loaded from Modrinth search."
+              : "Modrinth search is unavailable."
           }
         />
         <MetricCard
@@ -378,10 +363,10 @@ export function ModpacksPage() {
           caption="Modpacks linked to local launcher instances."
         />
         <MetricCard
-          icon={curseForgeStatus?.configured ? Globe2Icon : FilterIcon}
-          label="CurseForge"
-          value={curseForgeStatus?.configured ? "Connected" : "Not configured"}
-          caption={curseForgeError ?? "Live results are loaded through RPC."}
+          icon={modrinthStatus?.configured ? Globe2Icon : FilterIcon}
+          label="Modrinth"
+          value={modrinthStatus?.configured ? "Connected" : "Unavailable"}
+          caption={modrinthError ?? "Live results are loaded through RPC."}
         />
       </section>
 
@@ -403,7 +388,7 @@ export function ModpacksPage() {
         </div>
 
         <TabsContent value={filter}>
-          {instancesHook.loading || refreshingCurseForge ? (
+          {instancesHook.loading || refreshingModrinth ? (
             <PageEmpty
               icon={RefreshCcwIcon}
               title="Loading modpacks"
@@ -414,9 +399,9 @@ export function ModpacksPage() {
               icon={BoxesIcon}
               title="No modpacks found"
               description={
-                curseForgeStatus?.configured
+                modrinthStatus?.configured
                   ? "Adjust the search or refresh the live catalog."
-                  : "Install a modpack instance or configure CurseForge search."
+                  : "Install a modpack instance or try again later."
               }
             />
           ) : (
@@ -424,11 +409,8 @@ export function ModpacksPage() {
               {filteredCards.map((card) => {
                 const isFavorite = favorites.has(card.id);
                 const installing =
-                  card.kind === "curseforge" &&
+                  card.kind === "modrinth" &&
                   installingProjectIds.has(card.project.id);
-                const needsManualDownload =
-                  card.kind === "curseforge" &&
-                  requiresManualCurseForgeDownload(card.project);
 
                 return (
                   <Card key={card.id} className="pt-0">
@@ -476,7 +458,7 @@ export function ModpacksPage() {
                         <div className="text-xs text-muted-foreground">
                           {card.kind === "installed"
                             ? `Installed ${formatRelativeDate(card.entry.installedAt)}`
-                            : card.project.authors.join(", ") || "CurseForge"}
+                            : card.project.authors.join(", ") || "Modrinth"}
                         </div>
                       </div>
                       {card.kind === "installed" ? (
@@ -496,23 +478,16 @@ export function ModpacksPage() {
                             !card.project.latestFile ||
                             card.project.isAvailable === false
                           }
-                          variant={needsManualDownload ? "outline" : "default"}
                         >
                           {installing ? (
                             <Loader2Icon
                               data-icon="inline-start"
                               className="animate-spin"
                             />
-                          ) : needsManualDownload ? (
-                            <ExternalLinkIcon data-icon="inline-start" />
                           ) : (
                             <DownloadIcon data-icon="inline-start" />
                           )}
-                          {installing
-                            ? "Installing"
-                            : needsManualDownload
-                              ? "Download"
-                              : "Install"}
+                          {installing ? "Installing" : "Install"}
                         </Button>
                       )}
                     </CardFooter>

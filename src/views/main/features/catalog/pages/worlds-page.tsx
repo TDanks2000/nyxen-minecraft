@@ -137,7 +137,16 @@ export function WorldsPage() {
       return;
     }
 
-    await refreshManyInstanceContents(instanceIds);
+    const scanned = await refreshManyInstanceContents(instanceIds);
+    const failedCount = Math.max(0, instanceIds.length - scanned.length);
+
+    if (failedCount > 0) {
+      toast.warning(
+        `${failedCount} instance${failedCount === 1 ? "" : "s"} could not be scanned.`,
+      );
+      return;
+    }
+
     toast.success("Save folders scanned.");
   };
 

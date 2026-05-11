@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   closeSync,
   existsSync,
@@ -29,6 +29,8 @@ import type {
   CurseForgeCategory,
   DownloadCurseForgeFileInput,
   DownloadCurseForgeFileResult,
+  DownloadModrinthFileInput,
+  DownloadModrinthFileResult,
   GetInstanceContentInput,
   GetInstanceLogFileInput,
   GetInstanceModpackUpdateInput,
@@ -46,6 +48,7 @@ import type {
   InstanceModpackUpdate,
   LauncherInstance,
   LauncherInstanceModpack,
+  ModrinthCategory,
   SetInstanceModEnabledInput,
   UpdateInstanceModpackInput,
   UpdateInstanceModpackResult,
@@ -53,11 +56,16 @@ import type {
 import type { CurseForgeOptions } from "./curseforge";
 import { getCurseForgeProject, getCurseForgeProjectFile } from "./curseforge";
 import {
+  getInstanceRecipeSummary,
+  writeModrinthRecipeRevision,
+} from "./instance-recipes";
+import {
   createLauncherInstance,
   getLauncherInstance,
   setLauncherInstanceModpack,
   updateLauncherInstance,
 } from "./instances";
+import type { ModrinthOptions } from "./modrinth";
 import { ensurePrivateDirectory, getLauncherDirectories } from "./paths";
 import { listZipEntries, readZipJson } from "./zip";
 
@@ -84,6 +92,11 @@ const maxLogPreviewLines = 2000;
 const maxCompressedLogBytes = 2 * 1024 * 1024;
 
 type DownloadCurseForgeFileOptions = CurseForgeOptions & {
+  maxBytes?: number;
+  onProgress?: (event: CurseForgeDownloadProgressEvent) => void;
+};
+
+type DownloadModrinthFileOptions = ModrinthOptions & {
   maxBytes?: number;
   onProgress?: (event: CurseForgeDownloadProgressEvent) => void;
 };
@@ -134,6 +147,25 @@ type ParsedCurseForgeModpackManifest = {
   version: string | null;
 };
 
+type ModrinthModpackManifestFile = {
+  downloads: Array<string>;
+  fileSize: number | null;
+  hashes: {
+    sha1?: string;
+    sha512?: string;
+  };
+  path: string;
+};
+
+type ParsedModrinthModpackManifest = {
+  files: Array<ModrinthModpackManifestFile>;
+  minecraftVersion: string;
+  modLoader: LauncherInstance["loader"];
+  modLoaderVersion: string | null;
+  name: string | null;
+  version: string | null;
+};
+
 const curseForgeCategories: Array<CurseForgeCategory> = [
   "mods",
   "modpacks",
@@ -156,6 +188,20 @@ const fallbackExtensionByCategory: Record<CurseForgeCategory, string> = {
   "resource-packs": ".zip",
   shaders: ".zip",
   worlds: ".zip",
+};
+
+const allowedModrinthExtensions: Record<ModrinthCategory, Set<string>> = {
+  mods: new Set([".jar"]),
+  modpacks: new Set([".mrpack"]),
+  "resource-packs": new Set([".jar", ".zip"]),
+  shaders: new Set([".jar", ".zip"]),
+};
+
+const fallbackModrinthExtensionByCategory: Record<ModrinthCategory, string> = {
+  mods: ".jar",
+  modpacks: ".mrpack",
+  "resource-packs": ".zip",
+  shaders: ".zip",
 };
 
 const getInstanceOrThrow = (instanceId: string): LauncherInstance => {
@@ -282,6 +328,91 @@ const parseCurseForgeModpackManifest = (
     overrides: overrides && isSafeZipPath(overrides) ? overrides : null,
     recommendedMemoryMb: optionalNumber(minecraft.recommendedRam) ?? null,
     version: optionalString(parsed.version) ?? null,
+  };
+};
+
+const parseModrinthPackLoader = (
+  dependencies: Record<string, unknown>,
+): Pick<ParsedModrinthModpackManifest, "modLoader" | "modLoaderVersion"> => {
+  const loaderDefinitions: Array<{
+    key: string;
+    loader: Exclude<LauncherInstance["loader"], "vanilla">;
+  }> = [
+    { key: "neoforge", loader: "neoforge" },
+    { key: "fabric-loader", loader: "fabric" },
+    { key: "forge", loader: "forge" },
+    { key: "quilt-loader", loader: "quilt" },
+  ];
+
+  for (const definition of loaderDefinitions) {
+    const version = optionalString(dependencies[definition.key]);
+
+    if (version) {
+      return {
+        modLoader: definition.loader,
+        modLoaderVersion: version,
+      };
+    }
+  }
+
+  return { modLoader: "vanilla", modLoaderVersion: null };
+};
+
+const parseModrinthModpackManifest = (
+  archiveData: Uint8Array,
+): ParsedModrinthModpackManifest => {
+  const parsed = readZipJson(archiveData, "modrinth.index.json");
+
+  if (!isRecord(parsed)) {
+    throw new Error("Modrinth modpack is missing modrinth.index.json.");
+  }
+
+  const dependencies = isRecord(parsed.dependencies) ? parsed.dependencies : {};
+  const minecraftVersion = optionalString(dependencies.minecraft);
+
+  if (!minecraftVersion) {
+    throw new Error("Modrinth modpack manifest is missing Minecraft version.");
+  }
+
+  const files = Array.isArray(parsed.files)
+    ? parsed.files.flatMap((entry) => {
+        if (!isRecord(entry)) return [];
+
+        const path = optionalString(entry.path);
+        const downloads = Array.isArray(entry.downloads)
+          ? entry.downloads.filter(
+              (download): download is string =>
+                typeof download === "string" && download.trim().length > 0,
+            )
+          : [];
+        const hashes = isRecord(entry.hashes) ? entry.hashes : {};
+
+        if (!path || !isSafeZipPath(path) || downloads.length === 0) {
+          return [];
+        }
+
+        return [
+          {
+            downloads,
+            fileSize: optionalNumber(entry.fileSize) ?? null,
+            hashes: {
+              sha1: optionalString(hashes.sha1),
+              sha512: optionalString(hashes.sha512),
+            },
+            path,
+          },
+        ];
+      })
+    : [];
+  const { modLoader, modLoaderVersion } = parseModrinthPackLoader(dependencies);
+
+  return {
+    files,
+    minecraftVersion,
+    modLoader,
+    modLoaderVersion,
+    name: optionalString(parsed.name) ?? null,
+    version: optionalString(parsed.versionId) ?? null,
   };
 };
 
@@ -1398,6 +1529,65 @@ const sanitizeCurseForgeFileName = (
   return assertSafeFileName(fileName);
 };
 
+const getModrinthTargetFolder = (
+  category: ModrinthCategory,
+  instance: LauncherInstance | null,
+): string => {
+  if (category === "modpacks") {
+    const folder = join(
+      getLauncherDirectories().downloads,
+      "modrinth",
+      "modpacks",
+    );
+    ensurePrivateDirectory(folder);
+    return folder;
+  }
+
+  if (!instance) {
+    throw new Error("Select an instance before downloading this content.");
+  }
+
+  switch (category) {
+    case "mods":
+      return instance.folders.mods;
+    case "resource-packs":
+      return instance.folders.resourcePacks;
+    case "shaders":
+      return instance.folders.shaderPacks;
+    default:
+      throw new Error("Modrinth category is not supported.");
+  }
+};
+
+const sanitizeModrinthFileName = (input: DownloadModrinthFileInput): string => {
+  const fallbackName = `${input.projectSlug || input.projectId}-${input.file.id}${
+    fallbackModrinthExtensionByCategory[input.category]
+  }`;
+  const rawName = input.file.fileName || input.file.displayName || fallbackName;
+  const baseName = basename(rawName.replaceAll("\\", "/"));
+  const sanitized = Array.from(baseName, (character) =>
+    character.charCodeAt(0) < 32 || '<>:"|?*'.includes(character)
+      ? "-"
+      : character,
+  )
+    .join("")
+    .replaceAll(/\s+/g, " ")
+    .trim()
+    .replaceAll(/^\.+/g, "");
+  const fileName = sanitized || fallbackName;
+  const extension = extname(fileName).toLowerCase();
+
+  if (!allowedModrinthExtensions[input.category].has(extension)) {
+    throw new Error(
+      `${getModrinthCategoryLabel(input.category)} downloads must use ${[
+        ...allowedModrinthExtensions[input.category],
+      ].join(" or ")} files.`,
+    );
+  }
+
+  return assertSafeFileName(fileName);
+};
+
 const getCurseForgeCategoryLabel = (category: CurseForgeCategory): string => {
   if (category === "mods") return "Mod";
   if (category === "modpacks") return "Modpack";
@@ -1406,9 +1596,19 @@ const getCurseForgeCategoryLabel = (category: CurseForgeCategory): string => {
   return "World";
 };
 
+const getModrinthCategoryLabel = (category: ModrinthCategory): string => {
+  if (category === "mods") return "Mod";
+  if (category === "modpacks") return "Modpack";
+  if (category === "resource-packs") return "Resource pack";
+  return "Shader";
+};
+
 const getCurseForgeProgressItemId = (
   input: DownloadCurseForgeFileInput,
 ): string => `curseforge:${input.projectId}:${input.file.id}`;
+
+const getModrinthProgressItemId = (input: DownloadModrinthFileInput): string =>
+  `modrinth:${input.projectId}:${input.file.id}`;
 
 const getCurseForgeProgressFileLabel = (
   input: DownloadCurseForgeFileInput,
@@ -1421,8 +1621,30 @@ const getCurseForgeProgressFileLabel = (
     ).replaceAll("\\", "/"),
   );
 
+const getModrinthProgressFileLabel = (
+  input: DownloadModrinthFileInput,
+): string =>
+  basename(
+    (
+      input.file.fileName ||
+      input.file.displayName ||
+      `${input.projectName}.mrpack`
+    ).replaceAll("\\", "/"),
+  );
+
 const emitCurseForgeProgress = (
   options: DownloadCurseForgeFileOptions,
+  event: CurseForgeDownloadProgressEvent,
+): void => {
+  try {
+    options.onProgress?.(event);
+  } catch {
+    // Progress updates should never fail the actual install.
+  }
+};
+
+const emitModrinthProgress = (
+  options: DownloadModrinthFileOptions,
   event: CurseForgeDownloadProgressEvent,
 ): void => {
   try {
@@ -1623,6 +1845,125 @@ const fetchCurseForgeDownload = async (
   }
 };
 
+const fetchModrinthDownloadUrl = async ({
+  itemId,
+  itemKind,
+  itemLabel,
+  maxBytes,
+  options,
+  url,
+}: {
+  itemId: string;
+  itemKind: string;
+  itemLabel: string;
+  maxBytes: number;
+  options: DownloadModrinthFileOptions;
+  url: string;
+}): Promise<Uint8Array> => {
+  const downloadUrl = new URL(url);
+
+  if (downloadUrl.protocol !== "https:") {
+    throw new Error("Modrinth download URL must use HTTPS.");
+  }
+
+  const controller = new AbortController();
+  const timeoutMs = Math.max(1, options.requestTimeoutMs ?? 60_000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const fetcher = options.fetcher ?? fetch;
+  let response: Response;
+
+  emitModrinthProgress(options, {
+    activeLabel: itemLabel,
+    item: {
+      downloadedBytes: 0,
+      id: itemId,
+      kind: itemKind,
+      label: itemLabel,
+      status: "running",
+      totalBytes: null,
+    },
+  });
+
+  try {
+    response = await fetcher(downloadUrl, { signal: controller.signal });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(
+        `Modrinth download timed out after ${Math.round(timeoutMs / 1000)} seconds.`,
+      );
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      `Modrinth download failed: ${response.status} ${response.statusText}`,
+    );
+  }
+
+  const declaredBytes = parseContentLength(
+    response.headers.get("content-length"),
+  );
+
+  if (declaredBytes !== null && declaredBytes > maxBytes) {
+    throw new Error("Modrinth file is too large to download.");
+  }
+
+  const data = new Uint8Array(await response.arrayBuffer());
+
+  if (data.byteLength > maxBytes) {
+    throw new Error("Modrinth file is too large to download.");
+  }
+
+  emitModrinthProgress(options, {
+    activeLabel: itemLabel,
+    item: {
+      downloadedBytes: data.byteLength,
+      id: itemId,
+      kind: itemKind,
+      label: itemLabel,
+      progress: 100,
+      status: "completed",
+      totalBytes: declaredBytes ?? data.byteLength,
+    },
+  });
+
+  return data;
+};
+
+const fetchModrinthDownload = async (
+  input: DownloadModrinthFileInput,
+  options: DownloadModrinthFileOptions,
+): Promise<Uint8Array> => {
+  const maxBytes = Math.max(1, options.maxBytes ?? maxCurseForgeDownloadBytes);
+
+  try {
+    return await fetchModrinthDownloadUrl({
+      itemId: getModrinthProgressItemId(input),
+      itemKind: getModrinthCategoryLabel(input.category),
+      itemLabel: getModrinthProgressFileLabel(input),
+      maxBytes,
+      options,
+      url: input.file.downloadUrl,
+    });
+  } catch (error) {
+    emitModrinthProgress(options, {
+      activeLabel: getModrinthProgressFileLabel(input),
+      item: {
+        error: error instanceof Error ? error.message : "Download failed.",
+        id: getModrinthProgressItemId(input),
+        kind: getModrinthCategoryLabel(input.category),
+        label: getModrinthProgressFileLabel(input),
+        status: "failed",
+      },
+    });
+    throw error;
+  }
+};
+
 const writeDownloadedFile = (path: string, data: Uint8Array): void => {
   mkdirSync(dirname(path), { recursive: true });
 
@@ -1739,6 +2080,27 @@ const saveCurseForgeMediaAssets = async (
     instance,
     input.projectScreenshotUrls?.[0],
     "curseforge-banner",
+    options,
+  );
+
+  return { bannerUrl, iconUrl };
+};
+
+const saveModrinthMediaAssets = async (
+  instance: LauncherInstance,
+  input: DownloadModrinthFileInput,
+  options: DownloadModrinthFileOptions,
+): Promise<{ bannerUrl: string | null; iconUrl: string | null }> => {
+  const iconUrl = await saveCurseForgeMediaAsset(
+    instance,
+    input.projectLogoUrl,
+    "modrinth-icon",
+    options,
+  );
+  const bannerUrl = await saveCurseForgeMediaAsset(
+    instance,
+    input.projectScreenshotUrls?.[0],
+    "modrinth-banner",
     options,
   );
 
@@ -2192,6 +2554,251 @@ const installCurseForgeFileData = async (
   };
 };
 
+const getModrinthModpackArchivePath = (
+  instance: LauncherInstance,
+  fileName: string,
+): string => join(instance.folders.cache, "modrinth", fileName);
+
+const getModrinthModpackManifestPath = (instance: LauncherInstance): string =>
+  join(instance.folders.metadata, "modrinth-index.json");
+
+const writeModrinthModpackManifestCopy = (
+  instance: LauncherInstance,
+  archiveData: Uint8Array,
+): string => {
+  const manifest = readZipJson(archiveData, "modrinth.index.json");
+  const path = getModrinthModpackManifestPath(instance);
+
+  writeDownloadedFile(
+    path,
+    new TextEncoder().encode(`${JSON.stringify(manifest, null, 2)}\n`),
+  );
+
+  return path;
+};
+
+const extractModrinthOverrides = (
+  instance: LauncherInstance,
+  archiveData: Uint8Array,
+): string | null => {
+  const prefix = "overrides/";
+  const entries = listZipEntries(archiveData);
+  let extracted = false;
+
+  for (const entry of entries) {
+    if (!entry.name.startsWith(prefix)) continue;
+
+    const relativePath = entry.name.slice(prefix.length);
+    if (!relativePath || !isSafeZipPath(relativePath)) continue;
+
+    const targetPath = join(instance.gameDirectory, ...relativePath.split("/"));
+    if (!isPathInside(instance.gameDirectory, targetPath)) continue;
+
+    writeDownloadedFile(targetPath, entry.data);
+    extracted = true;
+  }
+
+  return extracted ? join(instance.gameDirectory, "overrides") : null;
+};
+
+const verifyModrinthFileHash = (
+  file: ModrinthModpackManifestFile,
+  data: Uint8Array,
+): void => {
+  const algorithm = file.hashes.sha512
+    ? "sha512"
+    : file.hashes.sha1
+      ? "sha1"
+      : null;
+  const expected = algorithm ? file.hashes[algorithm] : null;
+
+  if (!algorithm || !expected) return;
+
+  const actual = createHash(algorithm).update(data).digest("hex");
+
+  if (actual.toLowerCase() !== expected.toLowerCase()) {
+    throw new Error(`${file.path} failed Modrinth hash verification.`);
+  }
+};
+
+const installModrinthModpackFiles = async (
+  instance: LauncherInstance,
+  manifest: ParsedModrinthModpackManifest,
+  options: DownloadModrinthFileOptions,
+): Promise<{
+  installedFiles: number;
+  installedFilePaths: Set<string>;
+  skippedFilePaths: Set<string>;
+}> => {
+  const installedFilePaths = new Set<string>();
+  const skippedFilePaths = new Set<string>();
+
+  emitModrinthProgress(options, {
+    items: manifest.files.map((file) => ({
+      id: `modrinth:${file.path}`,
+      kind: "Modpack file",
+      label: basename(file.path.replaceAll("\\", "/")),
+      status: "queued",
+      totalBytes: file.fileSize,
+    })),
+    totalItems: 1 + manifest.files.length,
+  });
+
+  for (const file of manifest.files) {
+    const itemId = `modrinth:${file.path}`;
+    const itemLabel = basename(file.path.replaceAll("\\", "/"));
+
+    try {
+      const data = await fetchModrinthDownloadUrl({
+        itemId,
+        itemKind: "Modpack file",
+        itemLabel,
+        maxBytes: Math.max(1, options.maxBytes ?? maxCurseForgeDownloadBytes),
+        options,
+        url: file.downloads[0] ?? "",
+      });
+
+      verifyModrinthFileHash(file, data);
+
+      const targetPath = join(instance.gameDirectory, ...file.path.split("/"));
+      if (!isPathInside(instance.gameDirectory, targetPath)) {
+        throw new Error(`${file.path} is outside the instance directory.`);
+      }
+
+      writeDownloadedFile(targetPath, data);
+      installedFilePaths.add(file.path);
+    } catch {
+      skippedFilePaths.add(file.path);
+      emitModrinthProgress(options, {
+        item: {
+          error: null,
+          id: itemId,
+          kind: "Modpack file",
+          label: itemLabel,
+          progress: 100,
+          status: "skipped",
+        },
+      });
+    }
+  }
+
+  return {
+    installedFiles: installedFilePaths.size,
+    installedFilePaths,
+    skippedFilePaths,
+  };
+};
+
+const installModrinthModpackData = async (
+  input: DownloadModrinthFileInput,
+  { data, fileName }: InstallCurseForgeFileDataOptions,
+  options: DownloadModrinthFileOptions,
+): Promise<DownloadModrinthFileResult> => {
+  const manifest = parseModrinthModpackManifest(data);
+  const now = new Date().toISOString();
+  let instance = createLauncherInstance({
+    bannerUrl: input.projectScreenshotUrls?.[0] ?? undefined,
+    iconUrl: input.projectLogoUrl ?? undefined,
+    loader: manifest.modLoader,
+    loaderVersion: manifest.modLoaderVersion ?? undefined,
+    memoryMaxMb: 4096,
+    name: manifest.name ?? input.projectName,
+    versionId: manifest.minecraftVersion,
+  });
+  const artifactPath = getModrinthModpackArchivePath(instance, fileName);
+  writeDownloadedFile(artifactPath, data);
+  const manifestPath = writeModrinthModpackManifestCopy(instance, data);
+  const overridesPath = extractModrinthOverrides(instance, data);
+  const dependencyResult = await installModrinthModpackFiles(
+    instance,
+    manifest,
+    options,
+  );
+  const media = await saveModrinthMediaAssets(instance, input, options);
+  const iconUrl = media.iconUrl ?? input.projectLogoUrl ?? null;
+  const bannerUrl = media.bannerUrl ?? input.projectScreenshotUrls?.[0] ?? null;
+  const modpack: LauncherInstanceModpack = {
+    artifactPath,
+    bannerUrl,
+    fileId: input.file.id,
+    fileName,
+    iconUrl,
+    installedAt: now,
+    installedFiles: dependencyResult.installedFiles,
+    locked: true,
+    manifestPath,
+    name: input.projectName.trim() || manifest.name || fileName,
+    overridesPath,
+    projectId: input.projectId,
+    skippedFiles: dependencyResult.skippedFilePaths.size,
+    slug: input.projectSlug?.trim() || undefined,
+    source: "modrinth",
+    updatedAt: now,
+    version: input.file.versionNumber || manifest.version || undefined,
+    websiteUrl: input.projectWebsiteUrl ?? null,
+  };
+
+  instance = setLauncherInstanceModpack({
+    bannerUrl,
+    iconUrl,
+    instanceId: instance.id,
+    modpack,
+  });
+  writeModrinthRecipeRevision({
+    archiveData: data,
+    fileName,
+    input,
+    instance,
+    manifest,
+    skippedFilePaths: dependencyResult.skippedFilePaths,
+  });
+
+  return {
+    category: "modpacks",
+    content: getInstanceContent({ instanceId: instance.id }),
+    fileName,
+    instance,
+    path: artifactPath,
+  };
+};
+
+const installModrinthFileData = async (
+  input: DownloadModrinthFileInput,
+  options: InstallCurseForgeFileDataOptions,
+  downloadOptions: DownloadModrinthFileOptions,
+): Promise<DownloadModrinthFileResult> => {
+  const category = input.category;
+  const instance =
+    category === "modpacks" ? null : getInstanceOrThrow(input.instanceId ?? "");
+
+  if (category === "modpacks") {
+    return installModrinthModpackData(input, options, downloadOptions);
+  }
+
+  if (!instance) {
+    throw new Error("Select an instance before downloading this content.");
+  }
+
+  if (category === "mods" && instance?.modpack?.locked) {
+    throw new Error(
+      "Mods for this instance are managed by its linked modpack. Update the modpack instead.",
+    );
+  }
+
+  const folder = getModrinthTargetFolder(category, instance);
+  const path = join(folder, options.fileName);
+
+  writeDownloadedFile(path, options.data);
+
+  return {
+    category,
+    content: getInstanceContent({ instanceId: instance.id }),
+    fileName: options.fileName,
+    instance: null,
+    path,
+  };
+};
+
 export const getInstanceContent = ({
   instanceId,
 }: GetInstanceContentInput): InstanceContent => {
@@ -2252,6 +2859,7 @@ export const getInstanceContent = ({
     logs,
     mods,
     refreshedAt: new Date().toISOString(),
+    recipe: getInstanceRecipeSummary(instance),
     resourcePacks,
     screenshots,
     serverList: getServerListEntry(instance.gameDirectory),
@@ -2308,6 +2916,16 @@ export const downloadCurseForgeFile = async (
   const data = await fetchCurseForgeDownload(input, options);
 
   return installCurseForgeFileData(input, { data, fileName }, options);
+};
+
+export const downloadModrinthFile = async (
+  input: DownloadModrinthFileInput,
+  options: DownloadModrinthFileOptions = {},
+): Promise<DownloadModrinthFileResult> => {
+  const fileName = sanitizeModrinthFileName(input);
+  const data = await fetchModrinthDownload(input, options);
+
+  return installModrinthFileData(input, { data, fileName }, options);
 };
 
 export const installDownloadedCurseForgeFile = async (

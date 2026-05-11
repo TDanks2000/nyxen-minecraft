@@ -196,7 +196,12 @@ const parseModpackMetadata = (
     return null;
   }
 
-  if (!isRecord(parsed) || parsed.source !== "curseforge") return null;
+  if (
+    !isRecord(parsed) ||
+    (parsed.source !== "curseforge" && parsed.source !== "modrinth")
+  ) {
+    return null;
+  }
 
   const artifactPath = optionalString(parsed.artifactPath);
   const fileId = optionalString(parsed.fileId);
@@ -237,7 +242,7 @@ const parseModpackMetadata = (
     skippedFiles:
       typeof parsed.skippedFiles === "number" ? parsed.skippedFiles : 0,
     slug: optionalString(parsed.slug),
-    source: "curseforge",
+    source: parsed.source,
     updatedAt,
     version: optionalString(parsed.version),
     websiteUrl: optionalString(parsed.websiteUrl) ?? null,

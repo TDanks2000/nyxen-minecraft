@@ -8,7 +8,7 @@ import {
   formatInstanceLastPlayed,
   LOADER_LABELS,
 } from "@/views/main/features/instances/components/instance-format";
-import { rpc } from "@/views/main/lib/rpc";
+import { openLocalPath } from "@/views/main/lib/open-local-path";
 
 type DashboardHeroProps = {
   instance: LauncherInstance | null;
@@ -89,8 +89,8 @@ export function DashboardHero({
               <Button
                 type="button"
                 onClick={() => {
-                  void rpc.requestProxy.openExternal({
-                    url: `file://${instance.gameDirectory}`,
+                  void openLocalPath(instance.gameDirectory, {
+                    failureMessage: "Could not open the instance folder.",
                   });
                 }}
                 size="lg"

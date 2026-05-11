@@ -4,6 +4,8 @@ import type {
   DownloadArtifactsResult,
   DownloadCurseForgeFileInput,
   DownloadCurseForgeFileResult,
+  DownloadModrinthFileInput,
+  DownloadModrinthFileResult,
   LaunchInstanceInput,
   LaunchInstanceResult,
   LaunchPlan,
@@ -112,6 +114,22 @@ export const downloadCurseForgeFile = async (
   throw new Error(finished.error ?? "Failed to download CurseForge file.");
 };
 
+export const downloadModrinthFile = async (
+  input: DownloadModrinthFileInput,
+): Promise<DownloadModrinthFileResult> => {
+  const job = await enqueueDownloadJob({
+    input,
+    kind: "modrinthFile",
+  });
+  const finished = await waitForDownloadJob(job.id);
+
+  if (finished.result?.kind === "modrinthFile") {
+    return finished.result.result;
+  }
+
+  throw new Error(finished.error ?? "Failed to download Modrinth file.");
+};
+
 export const launchInstance = async (
   input: LaunchInstanceInput,
 ): Promise<LaunchInstanceResult> => {
@@ -184,6 +202,10 @@ export {
 } from "../../launcher/instances";
 export { createLaunchPlan } from "../../launcher/launch-plan";
 export { listLoaderVersions } from "../../launcher/loader-versions";
+export {
+  getModrinthStatus,
+  searchModrinthProjects,
+} from "../../launcher/modrinth";
 export { getLauncherStatus } from "../../launcher/status";
 export {
   clearLauncherCache,

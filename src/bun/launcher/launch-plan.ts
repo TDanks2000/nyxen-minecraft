@@ -28,6 +28,7 @@ import {
 import {
   getFirstVerifiedMicrosoftProfile,
   getLauncherProfile,
+  isProfileVerifiedForMinecraft,
 } from "./profiles";
 import { joinArtifactPath, normalizeArtifactRelativePath } from "./validation";
 import {
@@ -346,7 +347,7 @@ export const createLaunchPlan = async (
   try {
     profile = await ensureMicrosoftProfileLaunchAuth(profile);
   } catch (error) {
-    if (profile && profile.kind !== "microsoft") {
+    if (!profile || !isProfileVerifiedForMinecraft(profile)) {
       throw error;
     }
 

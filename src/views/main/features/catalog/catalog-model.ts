@@ -4,6 +4,7 @@ import type {
   LauncherInstance,
   ModLoader,
 } from "@/shared/types";
+import { toLocalFileUrl } from "@/views/main/lib/file-url";
 
 export type InstalledModpackEntry = {
   fileId: string;
@@ -16,7 +17,7 @@ export type InstalledModpackEntry = {
   minecraft: string;
   name: string;
   projectId: string;
-  source: "curseforge";
+  source: "curseforge" | "modrinth";
   tags: Array<string>;
   updatedAt: string;
   version: string | null;
@@ -107,19 +108,7 @@ export const formatRelativeDate = (value: string): string => {
   return rtf.format(Math.round(deltaMonths / 12), "year");
 };
 
-export const toFileMediaUrl = (path: string): string => {
-  const normalized = path.replaceAll("\\", "/");
-
-  if (/^[A-Za-z]:\//.test(normalized)) {
-    return new URL(`file:///${normalized}`).toString();
-  }
-
-  return new URL(
-    normalized.startsWith("/")
-      ? `file://${normalized}`
-      : `file:///${normalized}`,
-  ).toString();
-};
+export const toFileMediaUrl = toLocalFileUrl;
 
 export const getContentList = (
   instances: Array<LauncherInstance>,

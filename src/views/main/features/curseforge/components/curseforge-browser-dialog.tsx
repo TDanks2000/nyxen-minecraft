@@ -20,6 +20,9 @@ import type {
   CurseForgeProjectSummary,
   CurseForgeSortField,
   ModLoader,
+  ModrinthCategory,
+  ModrinthProjectSummary,
+  ModrinthSortField,
 } from "@/shared/types";
 import {
   Alert,
@@ -87,8 +90,9 @@ import {
   requiresManualCurseForgeDownload,
 } from "@/views/main/features/curseforge/curseforge-browser-model";
 import type {
+  ContentBrowserDialogProps,
+  ContentBrowserSource,
   CurseForgeBrowserActionState,
-  CurseForgeBrowserDialogProps,
   CurseForgeBrowserViewMode,
   InstalledCurseForgeItem,
   SelectedInstance,
@@ -96,9 +100,37 @@ import type {
 import { useCurseForgeBrowserSearch } from "@/views/main/features/curseforge/use-curseforge-browser-search";
 import { LOADER_LABELS } from "@/views/main/features/instances/components/instance-format";
 import { useRendererMediaUrl } from "@/views/main/features/instances/hooks/use-renderer-media-url";
+import { ModrinthResultCard } from "@/views/main/features/modrinth/components/modrinth-result-card";
+import {
+  categorySupportsModrinthLoaderFilter,
+  DEFAULT_MODRINTH_CATEGORY,
+  findInstalledModrinthItem,
+  getModrinthActionState,
+  getModrinthCategoryLabel,
+  getModrinthItemKey,
+  getVisibleModrinthMinecraftVersions,
+  type InstalledModrinthItem,
+  isModrinthCategoryAvailable,
+  MODRINTH_CATEGORIES,
+  MODRINTH_LOADER_OPTIONS,
+  MODRINTH_SORT_OPTIONS,
+} from "@/views/main/features/modrinth/modrinth-browser-model";
+import { useModrinthBrowserSearch } from "@/views/main/features/modrinth/use-modrinth-browser-search";
 import { cn } from "@/views/main/lib/utils";
 
 type LoaderFilter = Exclude<ModLoader, "vanilla"> | "all";
+type BrowserCategory = CurseForgeCategory | ModrinthCategory;
+type SelectedProject =
+  | {
+      category: CurseForgeCategory;
+      item: CurseForgeProjectSummary;
+      source: "curseforge";
+    }
+  | {
+      category: ModrinthCategory;
+      item: ModrinthProjectSummary;
+      source: "modrinth";
+    };
 
 const NO_INSTANCE_VALUE = "none";
 const GRID_SKELETON_KEYS = [
@@ -259,7 +291,7 @@ function BrowserSkeleton({
   );
 }
 
-function CategoryIcon({ category }: { category: CurseForgeCategory }) {
+function CategoryIcon({ category }: { category: BrowserCategory }) {
   if (category === "mods") return <BlocksIcon />;
   if (category === "modpacks") return <PackageIcon />;
   if (category === "resource-packs") return <ImageIcon />;
@@ -270,24 +302,32 @@ function CategoryIcon({ category }: { category: CurseForgeCategory }) {
 
 function CategoryRail({
   activeCategory,
-  installedContent,
+  categories,
+  getInstalledCount,
+  isCategoryAvailable,
   selectedInstance,
   onCategoryChange,
 }: {
-  activeCategory: CurseForgeCategory;
-  installedContent: CurseForgeBrowserDialogProps["installedContent"];
+  activeCategory: BrowserCategory;
+  categories: Array<{
+    description: string;
+    label: string;
+    value: BrowserCategory;
+  }>;
+  getInstalledCount: (category: BrowserCategory) => number;
+  isCategoryAvailable: (
+    category: BrowserCategory,
+    selectedInstance: SelectedInstance | null,
+  ) => boolean;
   selectedInstance: SelectedInstance | null;
-  onCategoryChange: (category: CurseForgeCategory) => void;
+  onCategoryChange: (category: BrowserCategory) => void;
 }) {
   return (
     <nav className="flex min-h-0 flex-col gap-1 p-2">
-      {CURSEFORGE_CATEGORIES.map((category) => {
+      {categories.map((category) => {
         const active = category.value === activeCategory;
-        const installedCount = installedContent?.[category.value]?.length ?? 0;
-        const disabled = !isCurseForgeCategoryAvailable(
-          category.value,
-          selectedInstance,
-        );
+        const installedCount = getInstalledCount(category.value);
+        const disabled = !isCategoryAvailable(category.value, selectedInstance);
 
         return (
           <button
@@ -338,17 +378,27 @@ function SelectedProjectSummary({
   category,
   item,
   onClear,
+  source,
 }: {
-  category: CurseForgeCategory;
-  item: CurseForgeProjectSummary;
+  category: BrowserCategory;
+  item: CurseForgeProjectSummary | ModrinthProjectSummary;
   onClear: () => void;
+  source: ContentBrowserSource;
 }) {
-  const versions = getVisibleMinecraftVersions(item, 4);
+  const versions =
+    source === "curseforge"
+      ? getVisibleMinecraftVersions(item as CurseForgeProjectSummary, 4)
+      : getVisibleModrinthMinecraftVersions(item as ModrinthProjectSummary, 4);
+  const categoryLabel =
+    source === "curseforge"
+      ? getCurseForgeCategoryLabel(category as CurseForgeCategory)
+      : getModrinthCategoryLabel(category as ModrinthCategory);
+  const sourceLabel = source === "curseforge" ? "CurseForge" : "Modrinth";
 
   return (
     <div
       className="flex min-w-0 gap-3 rounded-lg border border-border bg-card/70 p-3"
-      data-slot="curseforge-selected-project"
+      data-slot="content-browser-selected-project"
     >
       {item.logoUrl ? (
         <img
@@ -362,16 +412,15 @@ function SelectedProjectSummary({
           <div className="min-w-0 truncate font-heading font-semibold">
             {item.name}
           </div>
-          <Badge variant="secondary">
-            {getCurseForgeCategoryLabel(category)}
-          </Badge>
+          <Badge variant="secondary">{categoryLabel}</Badge>
+          <Badge variant="outline">{sourceLabel}</Badge>
           <span className="text-muted-foreground text-xs">
             {formatCurseForgeDownloads(item.downloadCount)} downloads
           </span>
         </div>
         <p className="mt-1 line-clamp-2 text-muted-foreground text-sm">
           {item.summary ||
-            "No CurseForge summary is available for this project."}
+            `No ${sourceLabel} summary is available for this project.`}
         </p>
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           <Badge variant="outline">
@@ -389,7 +438,8 @@ function SelectedProjectSummary({
               {loader}
             </Badge>
           ))}
-          {item.allowDistribution === false ? (
+          {source === "curseforge" &&
+          (item as CurseForgeProjectSummary).allowDistribution === false ? (
             <Badge variant="outline">Restricted</Badge>
           ) : null}
         </div>
@@ -475,14 +525,16 @@ function getDisabledReason({
   hasManualInstallCallback,
   hasUpdateCallback,
   manualDownloadRequired,
+  source,
 }: {
   actionState: CurseForgeBrowserActionState;
-  category: CurseForgeCategory;
+  category: BrowserCategory;
   hasFile: boolean;
   hasInstallCallback: boolean;
   hasManualInstallCallback: boolean;
   hasUpdateCallback: boolean;
   manualDownloadRequired: boolean;
+  source: ContentBrowserSource;
 }): string | null {
   if (actionState === "select-instance") {
     return "Select an instance to install content.";
@@ -514,7 +566,7 @@ function getDisabledReason({
       actionState === "failed" ||
       actionState === "update-available")
   ) {
-    return "CurseForge did not provide file metadata for this project.";
+    return `${source === "curseforge" ? "CurseForge" : "Modrinth"} did not provide file metadata for this project.`;
   }
 
   if (
@@ -546,58 +598,94 @@ function getDisabledReason({
   return null;
 }
 
-export function CurseForgeBrowserDialog({
+export function ContentBrowserDialog({
   availableInstances = [],
   initialCategory,
+  initialSource,
+  instanceContent,
   installedContent,
   onCompleteManualInstall,
   onInstall,
   onInstallModpack,
+  onInstallModrinth,
+  onInstallModrinthModpack,
   onOpenChange,
   onOpenDetails,
+  onOpenModrinthDetails,
   onOpenManualDownload,
   onSelectInstance,
   onUninstall,
   onUpdate,
   open,
   selectedInstance,
-}: CurseForgeBrowserDialogProps) {
+}: ContentBrowserDialogProps) {
   const instanceControlled = selectedInstance !== undefined;
   const [localSelectedInstance, setLocalSelectedInstance] =
     useState<SelectedInstance | null>(selectedInstance ?? null);
   const activeInstance = instanceControlled
     ? (selectedInstance ?? null)
     : localSelectedInstance;
-  const [activeCategory, setActiveCategory] = useState<CurseForgeCategory>(
+  const [activeSource, setActiveSource] = useState<ContentBrowserSource>(
+    initialSource ?? "curseforge",
+  );
+  const [activeCategory, setActiveCategory] = useState<BrowserCategory>(
     initialCategory ?? DEFAULT_CURSEFORGE_CATEGORY,
   );
   const [query, setQuery] = useState("");
   const [minecraftVersion, setMinecraftVersion] = useState("");
   const [loader, setLoader] = useState<LoaderFilter>("all");
-  const [sortField, setSortField] = useState<CurseForgeSortField>("popularity");
+  const [curseForgeSortField, setCurseForgeSortField] =
+    useState<CurseForgeSortField>("popularity");
+  const [modrinthSortField, setModrinthSortField] =
+    useState<ModrinthSortField>("relevance");
   const [installedOnly, setInstalledOnly] = useState(false);
   const [viewMode, setViewMode] = useState<CurseForgeBrowserViewMode>("grid");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedProject, setSelectedProject] =
-    useState<CurseForgeProjectSummary | null>(null);
+    useState<SelectedProject | null>(null);
   const [manualInstallRequest, setManualInstallRequest] =
     useState<ManualInstallRequest | null>(null);
   const [pendingKeys, setPendingKeys] = useState<Set<string>>(() => new Set());
   const [failedKeys, setFailedKeys] = useState<Set<string>>(() => new Set());
-  const installActionsConfigured = Boolean(
+  const curseForgeInstallActionsConfigured = Boolean(
     onInstall ||
       onUninstall ||
       onUpdate ||
       onOpenManualDownload ||
       onCompleteManualInstall,
   );
+  const modrinthInstallActionsConfigured = Boolean(
+    onInstallModrinth || onInstallModrinthModpack,
+  );
   const canClearInstance = !instanceControlled || Boolean(onSelectInstance);
+  const activeCategories =
+    activeSource === "curseforge" ? CURSEFORGE_CATEGORIES : MODRINTH_CATEGORIES;
+  const activeCategoryInfo = activeCategories.find(
+    (category) => category.value === activeCategory,
+  ) ?? {
+    description:
+      activeSource === "curseforge"
+        ? "Minecraft content available on CurseForge."
+        : "Minecraft content available on Modrinth.",
+    label: "Minecraft Content",
+    value:
+      activeSource === "curseforge"
+        ? DEFAULT_CURSEFORGE_CATEGORY
+        : DEFAULT_MODRINTH_CATEGORY,
+  };
+  const activeSourceLabel =
+    activeSource === "curseforge" ? "CurseForge" : "Modrinth";
   const activeInstallActionsConfigured =
-    activeCategory === "modpacks"
-      ? Boolean(
-          onInstallModpack || (onOpenManualDownload && onCompleteManualInstall),
-        )
-      : installActionsConfigured;
+    activeSource === "curseforge"
+      ? activeCategory === "modpacks"
+        ? Boolean(
+            onInstallModpack ||
+              (onOpenManualDownload && onCompleteManualInstall),
+          )
+        : curseForgeInstallActionsConfigured
+      : activeCategory === "modpacks"
+        ? Boolean(onInstallModrinthModpack)
+        : modrinthInstallActionsConfigured;
 
   useEffect(() => {
     if (selectedInstance !== undefined) {
@@ -608,10 +696,11 @@ export function CurseForgeBrowserDialog({
   useEffect(() => {
     if (!open) return;
 
+    setActiveSource(initialSource ?? "curseforge");
     setActiveCategory(initialCategory ?? DEFAULT_CURSEFORGE_CATEGORY);
     setSelectedProject(null);
     setManualInstallRequest(null);
-  }, [initialCategory, open]);
+  }, [initialCategory, initialSource, open]);
 
   useEffect(() => {
     if (!open || !activeInstance) return;
@@ -622,48 +711,103 @@ export function CurseForgeBrowserDialog({
   }, [activeInstance, open]);
 
   useEffect(() => {
-    if (
-      !open ||
-      isCurseForgeCategoryAvailable(activeCategory, activeInstance)
-    ) {
+    if (!open) return;
+
+    const available =
+      activeSource === "curseforge"
+        ? isCurseForgeCategoryAvailable(
+            activeCategory as CurseForgeCategory,
+            activeInstance,
+          )
+        : activeCategory !== "worlds" &&
+          isModrinthCategoryAvailable(
+            activeCategory as ModrinthCategory,
+            activeInstance,
+          );
+
+    if (available) {
       return;
     }
 
-    setActiveCategory(DEFAULT_CURSEFORGE_CATEGORY);
+    setActiveCategory(
+      activeSource === "curseforge"
+        ? DEFAULT_CURSEFORGE_CATEGORY
+        : DEFAULT_MODRINTH_CATEGORY,
+    );
     setSelectedProject(null);
     setManualInstallRequest(null);
-  }, [activeCategory, activeInstance, open]);
+  }, [activeCategory, activeInstance, activeSource, open]);
 
-  const search = useCurseForgeBrowserSearch({
-    category: activeCategory,
+  const curseForgeCategory =
+    activeCategory === "worlds"
+      ? "worlds"
+      : (activeCategory as CurseForgeCategory);
+  const modrinthCategory =
+    activeCategory === "worlds"
+      ? DEFAULT_MODRINTH_CATEGORY
+      : (activeCategory as ModrinthCategory);
+  const curseForgeSearch = useCurseForgeBrowserSearch({
+    category: curseForgeCategory,
     loader,
     minecraftVersion: minecraftVersion.trim() || null,
-    open,
+    open: open && activeSource === "curseforge",
     query,
-    sortField,
+    sortField: curseForgeSortField,
+  });
+  const modrinthSearch = useModrinthBrowserSearch({
+    category: modrinthCategory,
+    loader,
+    minecraftVersion: minecraftVersion.trim() || null,
+    open: open && activeSource === "modrinth",
+    query,
+    sortField: modrinthSortField,
   });
 
-  const visibleProjects = useMemo(() => {
-    if (!installedOnly || !activeInstance) return search.projects;
+  const visibleCurseForgeProjects = useMemo(() => {
+    if (!installedOnly || !activeInstance) return curseForgeSearch.projects;
 
-    return search.projects.filter((item) =>
-      findInstalledCurseForgeItem(item, activeCategory, installedContent),
+    return curseForgeSearch.projects.filter((item) =>
+      findInstalledCurseForgeItem(item, curseForgeCategory, installedContent),
     );
   }, [
-    activeCategory,
     activeInstance,
+    curseForgeCategory,
+    curseForgeSearch.projects,
     installedContent,
     installedOnly,
-    search.projects,
+  ]);
+
+  const visibleModrinthProjects = useMemo(() => {
+    if (!installedOnly || !activeInstance) return modrinthSearch.projects;
+
+    return modrinthSearch.projects.filter((item) =>
+      findInstalledModrinthItem(item, modrinthCategory, instanceContent),
+    );
+  }, [
+    activeInstance,
+    instanceContent,
+    installedOnly,
+    modrinthCategory,
+    modrinthSearch.projects,
   ]);
 
   useEffect(() => {
     if (!open || !selectedProject) return;
 
-    if (!visibleProjects.some((item) => item.id === selectedProject.id)) {
+    const projects =
+      selectedProject.source === "curseforge"
+        ? visibleCurseForgeProjects
+        : visibleModrinthProjects;
+
+    if (!projects.some((item) => item.id === selectedProject.item.id)) {
       setSelectedProject(null);
     }
-  }, [open, selectedProject, visibleProjects]);
+  }, [
+    open,
+    selectedProject,
+    visibleCurseForgeProjects,
+    visibleModrinthProjects,
+  ]);
 
   const handleSelectInstance = (instance: SelectedInstance | null) => {
     if (!instance) {
@@ -689,11 +833,11 @@ export function CurseForgeBrowserDialog({
     onSelectInstance?.(instance);
   };
 
-  const runItemAction = async (
+  const runCurseForgeItemAction = async (
     item: CurseForgeProjectSummary,
     action: () => Promise<void> | void,
   ) => {
-    const key = getCurseForgeItemKey(activeCategory, item);
+    const key = getCurseForgeItemKey(curseForgeCategory, item);
     setPendingKeys((current) => new Set(current).add(key));
     setFailedKeys((current) => {
       const next = new Set(current);
@@ -714,23 +858,51 @@ export function CurseForgeBrowserDialog({
     }
   };
 
-  const handlePrimaryAction = (
+  const runModrinthItemAction = async (
+    item: ModrinthProjectSummary,
+    action: () => Promise<void> | void,
+  ) => {
+    const key = getModrinthItemKey(modrinthCategory, item);
+    setPendingKeys((current) => new Set(current).add(key));
+    setFailedKeys((current) => {
+      const next = new Set(current);
+      next.delete(key);
+      return next;
+    });
+
+    try {
+      await action();
+    } catch {
+      setFailedKeys((current) => new Set(current).add(key));
+    } finally {
+      setPendingKeys((current) => {
+        const next = new Set(current);
+        next.delete(key);
+        return next;
+      });
+    }
+  };
+
+  const handleCurseForgePrimaryAction = (
     item: CurseForgeProjectSummary,
     installedItem: InstalledCurseForgeItem | null,
   ) => {
     const manualDownloadRequired = requiresManualCurseForgeDownload(item);
 
     if (manualDownloadRequired) {
-      setManualInstallRequest({ category: activeCategory, item });
+      setManualInstallRequest({ category: curseForgeCategory, item });
 
       if (!onOpenManualDownload) return;
-      if (categoryRequiresInstanceTarget(activeCategory) && !activeInstance) {
+      if (
+        categoryRequiresInstanceTarget(curseForgeCategory) &&
+        !activeInstance
+      ) {
         return;
       }
 
-      void runItemAction(item, () =>
+      void runCurseForgeItemAction(item, () =>
         onOpenManualDownload({
-          category: activeCategory,
+          category: curseForgeCategory,
           instance: activeInstance,
           item,
         }),
@@ -738,9 +910,9 @@ export function CurseForgeBrowserDialog({
       return;
     }
 
-    if (activeCategory === "modpacks") {
+    if (curseForgeCategory === "modpacks") {
       if (!activeInstance && onInstallModpack) {
-        void runItemAction(item, () =>
+        void runCurseForgeItemAction(item, () =>
           onInstallModpack({
             category: "modpacks",
             item,
@@ -757,9 +929,9 @@ export function CurseForgeBrowserDialog({
       hasCurseForgeUpdateAvailable(item, installedItem) &&
       onUpdate
     ) {
-      void runItemAction(item, () =>
+      void runCurseForgeItemAction(item, () =>
         onUpdate({
-          category: activeCategory,
+          category: curseForgeCategory,
           installedItem,
           instance: activeInstance,
           item,
@@ -770,9 +942,36 @@ export function CurseForgeBrowserDialog({
 
     if (!onInstall) return;
 
-    void runItemAction(item, () =>
+    void runCurseForgeItemAction(item, () =>
       onInstall({
-        category: activeCategory,
+        category: curseForgeCategory,
+        instance: activeInstance,
+        item,
+      }),
+    );
+  };
+
+  const handleModrinthPrimaryAction = (
+    item: ModrinthProjectSummary,
+    _installedItem: InstalledModrinthItem | null,
+  ) => {
+    if (modrinthCategory === "modpacks") {
+      if (!activeInstance && onInstallModrinthModpack) {
+        void runModrinthItemAction(item, () =>
+          onInstallModrinthModpack({
+            category: "modpacks",
+            item,
+          }),
+        );
+      }
+      return;
+    }
+
+    if (!activeInstance || !onInstallModrinth) return;
+
+    void runModrinthItemAction(item, () =>
+      onInstallModrinth({
+        category: modrinthCategory,
         instance: activeInstance,
         item,
       }),
@@ -788,7 +987,7 @@ export function CurseForgeBrowserDialog({
       return;
     }
 
-    void runItemAction(manualInstallRequest.item, () =>
+    void runCurseForgeItemAction(manualInstallRequest.item, () =>
       onOpenManualDownload({
         category: manualInstallRequest.category,
         instance: activeInstance,
@@ -806,7 +1005,7 @@ export function CurseForgeBrowserDialog({
       return;
     }
 
-    void runItemAction(manualInstallRequest.item, async () => {
+    void runCurseForgeItemAction(manualInstallRequest.item, async () => {
       await onCompleteManualInstall({
         category: manualInstallRequest.category,
         instance: activeInstance,
@@ -822,35 +1021,50 @@ export function CurseForgeBrowserDialog({
   ) => {
     if (!activeInstance || !onUninstall) return;
 
-    void runItemAction(item, () =>
+    void runCurseForgeItemAction(item, () =>
       onUninstall({
-        category: activeCategory,
+        category: curseForgeCategory,
         instance: activeInstance,
         item: installedItem,
       }),
     );
   };
 
-  const handleDetails = (item: CurseForgeProjectSummary) => {
-    setSelectedProject(item);
-    onOpenDetails?.(item, activeCategory);
+  const handleCurseForgeDetails = (item: CurseForgeProjectSummary) => {
+    setSelectedProject({
+      category: curseForgeCategory,
+      item,
+      source: "curseforge",
+    });
+    onOpenDetails?.(item, curseForgeCategory);
+  };
+
+  const handleModrinthDetails = (item: ModrinthProjectSummary) => {
+    setSelectedProject({
+      category: modrinthCategory,
+      item,
+      source: "modrinth",
+    });
+    onOpenModrinthDetails?.(item, modrinthCategory);
   };
 
   const loaderFilterEnabled = Boolean(
-    categorySupportsLoaderFilter(activeCategory) && minecraftVersion.trim(),
+    (activeSource === "curseforge"
+      ? categorySupportsLoaderFilter(curseForgeCategory)
+      : categorySupportsModrinthLoaderFilter(modrinthCategory)) &&
+      minecraftVersion.trim(),
   );
-  const activeCategoryInfo = CURSEFORGE_CATEGORIES.find(
-    (category) => category.value === activeCategory,
-  ) ?? {
-    description: "Minecraft content available on CurseForge.",
-    label: "Minecraft Content",
-    value: DEFAULT_CURSEFORGE_CATEGORY,
-  };
-  const resultCountLabel = search.loading
+  const activeSearch =
+    activeSource === "curseforge" ? curseForgeSearch : modrinthSearch;
+  const activeVisibleCount =
+    activeSource === "curseforge"
+      ? visibleCurseForgeProjects.length
+      : visibleModrinthProjects.length;
+  const resultCountLabel = activeSearch.loading
     ? "Loading projects"
-    : `${visibleProjects.length} shown${
-        search.totalCount > visibleProjects.length
-          ? ` from ${formatCurseForgeDownloads(search.totalCount)}`
+    : `${activeVisibleCount} shown${
+        activeSearch.totalCount > activeVisibleCount
+          ? ` from ${formatCurseForgeDownloads(activeSearch.totalCount)}`
           : ""
       }`;
   const manualInstallPending = manualInstallRequest
@@ -868,18 +1082,74 @@ export function CurseForgeBrowserDialog({
       ? categoryRequiresInstanceTarget(manualInstallRequest.category) &&
         !activeInstance
       : true);
-  const handleCategoryChange = (category: CurseForgeCategory) => {
-    if (!isCurseForgeCategoryAvailable(category, activeInstance)) {
+  const handleCategoryChange = (category: BrowserCategory) => {
+    const available =
+      activeSource === "curseforge"
+        ? isCurseForgeCategoryAvailable(category, activeInstance)
+        : category !== "worlds" &&
+          isModrinthCategoryAvailable(
+            category as ModrinthCategory,
+            activeInstance,
+          );
+
+    if (!available) {
       return;
     }
 
     setActiveCategory(category);
     setSelectedProject(null);
     setManualInstallRequest(null);
-    if (!categorySupportsLoaderFilter(category)) {
+    if (
+      activeSource === "curseforge"
+        ? !categorySupportsLoaderFilter(category)
+        : category === "resource-packs" || category === "shaders"
+    ) {
       setLoader("all");
     }
   };
+
+  const handleSourceChange = (source: ContentBrowserSource) => {
+    setActiveSource(source);
+    setSelectedProject(null);
+    setManualInstallRequest(null);
+    if (source === "modrinth" && activeCategory === "worlds") {
+      setActiveCategory(DEFAULT_MODRINTH_CATEGORY);
+    }
+    if (source === "curseforge" && activeCategory === "worlds") {
+      setLoader("all");
+    }
+  };
+
+  const getInstalledCount = (category: BrowserCategory): number => {
+    if (activeSource === "curseforge") {
+      return installedContent?.[category as CurseForgeCategory]?.length ?? 0;
+    }
+
+    if (category === "modpacks") return 0;
+
+    const modrinthCategoryForCount = category as ModrinthCategory;
+
+    if (modrinthCategoryForCount === "mods") {
+      return instanceContent?.mods.length ?? 0;
+    }
+    if (modrinthCategoryForCount === "resource-packs") {
+      return instanceContent?.resourcePacks.length ?? 0;
+    }
+    if (modrinthCategoryForCount === "shaders") {
+      return instanceContent?.shaderPacks.length ?? 0;
+    }
+
+    return 0;
+  };
+
+  const isActiveCategoryAvailable = (
+    category: BrowserCategory,
+    instance: SelectedInstance | null,
+  ): boolean =>
+    activeSource === "curseforge"
+      ? isCurseForgeCategoryAvailable(category as CurseForgeCategory, instance)
+      : category !== "worlds" &&
+        isModrinthCategoryAvailable(category as ModrinthCategory, instance);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -891,14 +1161,35 @@ export function CurseForgeBrowserDialog({
           <div className="flex min-w-0 items-start gap-3">
             <div className="grid min-w-0 flex-1 gap-3 xl:grid-cols-[minmax(12rem,1fr)_minmax(20rem,28rem)]">
               <div className="min-w-0">
-                <DialogTitle className="font-heading text-xl font-black leading-tight">
-                  CurseForge
-                </DialogTitle>
+                <div className="flex min-w-0 flex-wrap items-center gap-3">
+                  <DialogTitle className="font-heading text-xl font-black leading-tight">
+                    Content Browser
+                  </DialogTitle>
+                  <ToggleGroup
+                    aria-label="Content source"
+                    value={[activeSource]}
+                    onValueChange={(value) => {
+                      const nextSource = value[0] as
+                        | ContentBrowserSource
+                        | undefined;
+                      if (nextSource) handleSourceChange(nextSource);
+                    }}
+                  >
+                    <ToggleGroupItem type="button" value="curseforge">
+                      CurseForge
+                    </ToggleGroupItem>
+                    <ToggleGroupItem type="button" value="modrinth">
+                      Modrinth
+                    </ToggleGroupItem>
+                  </ToggleGroup>
+                </div>
                 <DialogDescription className="sr-only">
-                  Browse CurseForge Minecraft content and choose an instance for
-                  install actions.
+                  Browse CurseForge and Modrinth Minecraft content and choose an
+                  instance for install actions.
                 </DialogDescription>
                 <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-muted-foreground text-xs">
+                  <span>{activeSourceLabel}</span>
+                  <span className="text-primary">•</span>
                   <span>{resultCountLabel}</span>
                   <span className="text-primary">•</span>
                   <span>
@@ -932,7 +1223,9 @@ export function CurseForgeBrowserDialog({
           <aside className="hidden min-h-0 border-r border-border bg-sidebar/70 lg:flex lg:flex-col">
             <CategoryRail
               activeCategory={activeCategory}
-              installedContent={installedContent}
+              categories={activeCategories}
+              getInstalledCount={getInstalledCount}
+              isCategoryAvailable={isActiveCategoryAvailable}
               selectedInstance={activeInstance}
               onCategoryChange={handleCategoryChange}
             />
@@ -944,12 +1237,12 @@ export function CurseForgeBrowserDialog({
                 className="lg:hidden"
                 value={activeCategory}
                 onValueChange={(value) =>
-                  handleCategoryChange(value as CurseForgeCategory)
+                  handleCategoryChange(value as BrowserCategory)
                 }
               >
                 <TabsList className="w-full justify-start overflow-x-auto">
-                  {CURSEFORGE_CATEGORIES.map((category) => {
-                    const disabled = !isCurseForgeCategoryAvailable(
+                  {activeCategories.map((category) => {
+                    const disabled = !isActiveCategoryAvailable(
                       category.value,
                       activeInstance,
                     );
@@ -990,8 +1283,8 @@ export function CurseForgeBrowserDialog({
                       Filters
                     </Button>
                     <Button
-                      aria-label="Refresh CurseForge results"
-                      onClick={search.refresh}
+                      aria-label={`Refresh ${activeSourceLabel} results`}
+                      onClick={activeSearch.refresh}
                       size="icon-sm"
                       title="Refresh"
                       variant="outline"
@@ -1031,7 +1324,7 @@ export function CurseForgeBrowserDialog({
                     <SearchIcon />
                   </InputGroupAddon>
                   <InputGroupInput
-                    aria-label="Search CurseForge"
+                    aria-label={`Search ${activeSourceLabel}`}
                     onChange={(event) => setQuery(event.target.value)}
                     placeholder="Search projects, authors, categories..."
                     value={query}
@@ -1067,7 +1360,10 @@ export function CurseForgeBrowserDialog({
                       <SelectContent>
                         <SelectGroup>
                           <SelectItem value="all">All loaders</SelectItem>
-                          {CURSEFORGE_LOADER_OPTIONS.map((option) => (
+                          {(activeSource === "curseforge"
+                            ? CURSEFORGE_LOADER_OPTIONS
+                            : MODRINTH_LOADER_OPTIONS
+                          ).map((option) => (
                             <SelectItem key={option.value} value={option.value}>
                               {option.label}
                             </SelectItem>
@@ -1077,17 +1373,28 @@ export function CurseForgeBrowserDialog({
                     </Select>
 
                     <Select
-                      onValueChange={(value) =>
-                        setSortField(value as CurseForgeSortField)
+                      onValueChange={(value) => {
+                        if (activeSource === "curseforge") {
+                          setCurseForgeSortField(value as CurseForgeSortField);
+                        } else {
+                          setModrinthSortField(value as ModrinthSortField);
+                        }
+                      }}
+                      value={
+                        activeSource === "curseforge"
+                          ? curseForgeSortField
+                          : modrinthSortField
                       }
-                      value={sortField}
                     >
                       <SelectTrigger className="h-9 w-full">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectGroup>
-                          {CURSEFORGE_SORT_OPTIONS.map((option) => (
+                          {(activeSource === "curseforge"
+                            ? CURSEFORGE_SORT_OPTIONS
+                            : MODRINTH_SORT_OPTIONS
+                          ).map((option) => (
                             <SelectItem key={option.value} value={option.value}>
                               {option.label}
                             </SelectItem>
@@ -1125,14 +1432,16 @@ export function CurseForgeBrowserDialog({
                     pending={manualInstallPending}
                   />
                 ) : null}
-                {search.error ? (
+                {activeSearch.error ? (
                   <Alert variant="destructive">
                     <AlertCircleIcon />
-                    <AlertTitle>CurseForge could not be loaded</AlertTitle>
-                    <AlertDescription>{search.error}</AlertDescription>
+                    <AlertTitle>
+                      {activeSourceLabel} could not be loaded
+                    </AlertTitle>
+                    <AlertDescription>{activeSearch.error}</AlertDescription>
                     <AlertAction>
                       <Button
-                        onClick={search.refresh}
+                        onClick={activeSearch.refresh}
                         size="sm"
                         variant="outline"
                       >
@@ -1140,22 +1449,24 @@ export function CurseForgeBrowserDialog({
                       </Button>
                     </AlertAction>
                   </Alert>
-                ) : search.loading ? (
+                ) : activeSearch.loading ? (
                   <BrowserSkeleton viewMode={viewMode} />
-                ) : visibleProjects.length === 0 ? (
+                ) : activeVisibleCount === 0 ? (
                   <Empty className="min-h-96 border border-dashed">
                     <EmptyHeader>
                       <EmptyMedia variant="icon">
                         <SearchIcon />
                       </EmptyMedia>
-                      <EmptyTitle>No CurseForge projects found</EmptyTitle>
+                      <EmptyTitle>
+                        No {activeSourceLabel} projects found
+                      </EmptyTitle>
                       <EmptyDescription>
                         Adjust the search, category, version, or installed
                         filter.
                       </EmptyDescription>
                     </EmptyHeader>
                     <EmptyContent>
-                      <Button onClick={search.refresh} variant="outline">
+                      <Button onClick={activeSearch.refresh} variant="outline">
                         <RefreshCcwIcon data-icon="inline-start" />
                         Refresh
                       </Button>
@@ -1170,67 +1481,133 @@ export function CurseForgeBrowserDialog({
                         : "grid-cols-1",
                     )}
                   >
-                    {visibleProjects.map((item) => {
-                      const key = getCurseForgeItemKey(activeCategory, item);
-                      const installedItem = findInstalledCurseForgeItem(
-                        item,
-                        activeCategory,
-                        installedContent,
-                      );
-                      const actionState = getCurseForgeActionState({
-                        category: activeCategory,
-                        failed: failedKeys.has(key),
-                        installedItem,
-                        item,
-                        pending: pendingKeys.has(key),
-                        selectedInstance: activeInstance,
-                      });
-                      const manualDownloadRequired =
-                        requiresManualCurseForgeDownload(item);
-                      const actionDisabledReason = getDisabledReason({
-                        actionState,
-                        category: activeCategory,
-                        hasFile: Boolean(item.latestFile),
-                        hasInstallCallback:
-                          activeCategory === "modpacks"
-                            ? Boolean(onInstallModpack)
-                            : Boolean(onInstall),
-                        hasManualInstallCallback: Boolean(
-                          onOpenManualDownload && onCompleteManualInstall,
-                        ),
-                        hasUpdateCallback:
-                          activeCategory === "modpacks"
-                            ? false
-                            : Boolean(onUpdate),
-                        manualDownloadRequired,
-                      });
+                    {activeSource === "curseforge"
+                      ? visibleCurseForgeProjects.map((item) => {
+                          const key = getCurseForgeItemKey(
+                            curseForgeCategory,
+                            item,
+                          );
+                          const installedItem = findInstalledCurseForgeItem(
+                            item,
+                            curseForgeCategory,
+                            installedContent,
+                          );
+                          const actionState = getCurseForgeActionState({
+                            category: curseForgeCategory,
+                            failed: failedKeys.has(key),
+                            installedItem,
+                            item,
+                            pending: pendingKeys.has(key),
+                            selectedInstance: activeInstance,
+                          });
+                          const manualDownloadRequired =
+                            requiresManualCurseForgeDownload(item);
+                          const actionDisabledReason = getDisabledReason({
+                            actionState,
+                            category: curseForgeCategory,
+                            hasFile: Boolean(item.latestFile),
+                            hasInstallCallback:
+                              curseForgeCategory === "modpacks"
+                                ? Boolean(onInstallModpack)
+                                : Boolean(onInstall),
+                            hasManualInstallCallback: Boolean(
+                              onOpenManualDownload && onCompleteManualInstall,
+                            ),
+                            hasUpdateCallback:
+                              curseForgeCategory === "modpacks"
+                                ? false
+                                : Boolean(onUpdate),
+                            manualDownloadRequired,
+                            source: "curseforge",
+                          });
 
-                      return (
-                        <CurseForgeResultCard
-                          actionDisabledReason={actionDisabledReason}
-                          actionState={actionState}
-                          category={activeCategory}
-                          installActionsConfigured={
-                            activeInstallActionsConfigured
-                          }
-                          installedItem={installedItem}
-                          item={item}
-                          key={key}
-                          manualDownloadRequired={manualDownloadRequired}
-                          onDetails={() => handleDetails(item)}
-                          onPrimaryAction={() =>
-                            handlePrimaryAction(item, installedItem)
-                          }
-                          onSecondaryAction={
-                            installedItem && onUninstall
-                              ? () => handleUninstall(item, installedItem)
-                              : undefined
-                          }
-                          selected={selectedProject?.id === item.id}
-                          viewMode={viewMode}
-                        />
-                      );
-                    })}
+                          return (
+                            <CurseForgeResultCard
+                              actionDisabledReason={actionDisabledReason}
+                              actionState={actionState}
+                              category={curseForgeCategory}
+                              installActionsConfigured={
+                                activeInstallActionsConfigured
+                              }
+                              installedItem={installedItem}
+                              item={item}
+                              key={key}
+                              manualDownloadRequired={manualDownloadRequired}
+                              onDetails={() => handleCurseForgeDetails(item)}
+                              onPrimaryAction={() =>
+                                handleCurseForgePrimaryAction(
+                                  item,
+                                  installedItem,
+                                )
+                              }
+                              onSecondaryAction={
+                                installedItem && onUninstall
+                                  ? () => handleUninstall(item, installedItem)
+                                  : undefined
+                              }
+                              selected={
+                                selectedProject?.source === "curseforge" &&
+                                selectedProject.item.id === item.id
+                              }
+                              viewMode={viewMode}
+                            />
+                          );
+                        })
+                      : visibleModrinthProjects.map((item) => {
+                          const key = getModrinthItemKey(
+                            modrinthCategory,
+                            item,
+                          );
+                          const installedItem = findInstalledModrinthItem(
+                            item,
+                            modrinthCategory,
+                            instanceContent,
+                          );
+                          const actionState = getModrinthActionState({
+                            category: modrinthCategory,
+                            failed: failedKeys.has(key),
+                            installedItem,
+                            item,
+                            pending: pendingKeys.has(key),
+                            selectedInstance: activeInstance,
+                          });
+                          const actionDisabledReason = getDisabledReason({
+                            actionState,
+                            category: modrinthCategory,
+                            hasFile: Boolean(item.latestFile),
+                            hasInstallCallback:
+                              modrinthCategory === "modpacks"
+                                ? Boolean(onInstallModrinthModpack)
+                                : Boolean(onInstallModrinth),
+                            hasManualInstallCallback: false,
+                            hasUpdateCallback: false,
+                            manualDownloadRequired: false,
+                            source: "modrinth",
+                          });
+
+                          return (
+                            <ModrinthResultCard
+                              actionDisabledReason={actionDisabledReason}
+                              actionState={actionState}
+                              category={modrinthCategory}
+                              installActionsConfigured={
+                                activeInstallActionsConfigured
+                              }
+                              installedItem={installedItem}
+                              item={item}
+                              key={key}
+                              onDetails={() => handleModrinthDetails(item)}
+                              onPrimaryAction={() =>
+                                handleModrinthPrimaryAction(item, installedItem)
+                              }
+                              selected={
+                                selectedProject?.source === "modrinth" &&
+                                selectedProject.item.id === item.id
+                              }
+                              viewMode={viewMode}
+                            />
+                          );
+                        })}
                   </div>
                 )}
               </div>
@@ -1239,9 +1616,10 @@ export function CurseForgeBrowserDialog({
             {selectedProject ? (
               <div className="absolute inset-x-0 bottom-0 z-20 border-t border-border bg-background/95 px-4 py-3 shadow-[0_-24px_48px_-36px_black] sm:px-5">
                 <SelectedProjectSummary
-                  category={activeCategory}
-                  item={selectedProject}
+                  category={selectedProject.category}
+                  item={selectedProject.item}
                   onClear={() => setSelectedProject(null)}
+                  source={selectedProject.source}
                 />
               </div>
             ) : null}
@@ -1251,3 +1629,5 @@ export function CurseForgeBrowserDialog({
     </Dialog>
   );
 }
+
+export { ContentBrowserDialog as CurseForgeBrowserDialog };

@@ -14,13 +14,10 @@ import { Progress } from "@/views/main/components/ui/progress";
 import { formatRelativeDate } from "@/views/main/features/catalog/catalog-model";
 import { useDownloadQueueStore } from "@/views/main/features/downloads/download-queue-store";
 import { useInstances } from "@/views/main/hooks/use-instances";
+import { formatClockTime } from "@/views/main/lib/date-format";
 import { cn } from "@/views/main/lib/utils";
 
-const formatSidebarTime = (value: string): string =>
-  new Intl.DateTimeFormat(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(new Date(value));
+const formatSidebarTime = (value: string): string => formatClockTime(value);
 
 const formatProgressPercent = (value: number | null): string =>
   value === null ? "Working" : `${Math.round(value)}%`;
@@ -279,7 +276,12 @@ export function RightSidebar({ open }: RightSidebarProps) {
     const downloadActivities = jobs.map((job) => ({
       description: getDownloadActivityDescription(job),
       id: `download:${job.id}`,
-      initials: job.source === "curseforge" ? "CF" : "DL",
+      initials:
+        job.source === "curseforge"
+          ? "CF"
+          : job.source === "modrinth"
+            ? "MR"
+            : "DL",
       time: job.updatedAt,
       title: job.title,
       tone: getDownloadTone(job),

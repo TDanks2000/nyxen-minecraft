@@ -113,6 +113,7 @@ export function ScreenshotsPage() {
     () => getLatestContentRefresh(contents),
     [contents],
   );
+  const errorCount = instances.filter((instance) => errors[instance.id]).length;
   const contentLoading =
     instances.some((instance) => loadingIds[instance.id]) ||
     (instances.length > 0 &&
@@ -169,7 +170,16 @@ export function ScreenshotsPage() {
       return;
     }
 
-    await refreshManyInstanceContents(instanceIds);
+    const scanned = await refreshManyInstanceContents(instanceIds);
+    const failedCount = Math.max(0, instanceIds.length - scanned.length);
+
+    if (failedCount > 0) {
+      toast.warning(
+        `${failedCount} instance${failedCount === 1 ? "" : "s"} could not be scanned.`,
+      );
+      return;
+    }
+
     toast.success("Screenshot folders scanned.");
   };
 
@@ -236,7 +246,11 @@ export function ScreenshotsPage() {
           icon={ServerIcon}
           label="Last Scan"
           value={latestRefresh ? formatRelativeDate(latestRefresh) : "Pending"}
-          caption="Image metadata stays on local disk."
+          caption={
+            errorCount > 0
+              ? `${errorCount} instance${errorCount === 1 ? "" : "s"} could not be scanned.`
+              : "Image metadata stays on local disk."
+          }
         />
       </section>
 

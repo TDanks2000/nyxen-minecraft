@@ -78,6 +78,7 @@ import { useLoaderVersions } from "@/views/main/hooks/use-loader-versions";
 import { useProfiles } from "@/views/main/hooks/use-profiles";
 import { useSettings } from "@/views/main/hooks/use-settings";
 import { useVersions } from "@/views/main/hooks/use-versions";
+import { openLocalPath } from "@/views/main/lib/open-local-path";
 import { rpc } from "@/views/main/lib/rpc";
 import { cn } from "@/views/main/lib/utils";
 
@@ -144,7 +145,7 @@ const getClosestRamIndex = (stops: Array<number>, value: number): number => {
 };
 
 const openExternalPath = (path: string) => {
-  void rpc.requestProxy.openExternal({ url: `file://${path}` });
+  void openLocalPath(path);
 };
 
 function SettingsFlowStrip({ blocked }: { blocked: boolean }) {

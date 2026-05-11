@@ -3,7 +3,6 @@ import { readFileSync, realpathSync, statSync } from "node:fs";
 import os from "node:os";
 import { extname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Utils } from "electrobun/bun";
 import { APP_NAME } from "../../../shared/constants";
 import type {
   AppEnvironment,
@@ -14,6 +13,14 @@ import { getDataRoot } from "../../launcher/paths";
 import { isPathInsideDirectory } from "../../launcher/validation";
 
 const startedAt = new Date().toISOString();
+
+type ElectrobunBunModule = typeof import("electrobun/bun");
+
+const getElectrobunUtils = async (): Promise<ElectrobunBunModule["Utils"]> => {
+  const module = await import("electrobun/bun");
+
+  return module.Utils;
+};
 
 export const getEnvironment = (): AppEnvironment => ({
   appName: APP_NAME,
@@ -82,12 +89,29 @@ const normalizeExternalUrl = (value: string): string => {
   }
 
   if (url.protocol === "file:") {
+    const dataRoot = getDataRoot();
     const path = fileUrlToPath(
       url,
       "External file URL must stay inside launcher storage.",
     );
 
-    if (!isPathInsideDirectory(path, getDataRoot())) {
+    if (!isPathInsideDirectory(path, dataRoot)) {
+      throw new Error("External file URL must stay inside launcher storage.");
+    }
+
+    let realPath: string;
+    let realDataRoot: string;
+
+    try {
+      realPath = realpathSync(path);
+      realDataRoot = realpathSync(dataRoot);
+    } catch {
+      throw new Error(
+        "External file URL must point to an existing launcher path.",
+      );
+    }
+
+    if (!isPathInsideDirectory(realPath, realDataRoot)) {
       throw new Error("External file URL must stay inside launcher storage.");
     }
 
@@ -103,13 +127,18 @@ const normalizeExternalUrl = (value: string): string => {
   return url.toString();
 };
 
-export const openExternal = ({
+export const openExternal = async ({
   url,
 }: {
   url: string;
-}): { opened: boolean } => ({
-  opened: Utils.openExternal(normalizeExternalUrl(url)),
-});
+}): Promise<{ opened: boolean }> => {
+  const normalizedUrl = normalizeExternalUrl(url);
+  const utils = await getElectrobunUtils();
+
+  return {
+    opened: utils.openExternal(normalizedUrl),
+  };
+};
 
 export const resolveMediaUrl = ({
   url,

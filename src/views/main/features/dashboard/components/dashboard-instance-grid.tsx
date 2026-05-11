@@ -16,6 +16,10 @@ import {
 } from "@/views/main/components/ui/input-group";
 import { Skeleton } from "@/views/main/components/ui/skeleton";
 import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@/views/main/components/ui/toggle-group";
+import {
   InstanceCard,
   InstanceListItem,
 } from "@/views/main/features/instances/components/instance-card";
@@ -74,32 +78,37 @@ export function DashboardInstanceGrid({
           />
         </InputGroup>
 
-        <div className="flex shrink-0 overflow-hidden rounded-md border border-border bg-background/60">
-          <button
+        <ToggleGroup
+          aria-label="Instance view"
+          className="shrink-0"
+          onValueChange={(value) => {
+            const nextMode = value[0];
+            if (nextMode === "grid" || nextMode === "list") {
+              setViewMode(nextMode);
+            }
+          }}
+          size="sm"
+          spacing={0}
+          value={[viewMode]}
+          variant="outline"
+        >
+          <ToggleGroupItem
+            aria-label="Show instances as cards"
+            className="bg-background/60"
             type="button"
-            onClick={() => setViewMode("grid")}
-            className={cn(
-              "flex size-8 items-center justify-center transition-colors",
-              viewMode === "grid"
-                ? "bg-accent text-accent-foreground"
-                : "text-muted-foreground hover:text-foreground",
-            )}
+            value="grid"
           >
-            <LayoutGridIcon className="size-3.5" />
-          </button>
-          <button
+            <LayoutGridIcon />
+          </ToggleGroupItem>
+          <ToggleGroupItem
+            aria-label="Show instances as a list"
+            className="bg-background/60"
             type="button"
-            onClick={() => setViewMode("list")}
-            className={cn(
-              "flex size-8 items-center justify-center transition-colors",
-              viewMode === "list"
-                ? "bg-accent text-accent-foreground"
-                : "text-muted-foreground hover:text-foreground",
-            )}
+            value="list"
           >
-            <ListIcon className="size-3.5" />
-          </button>
-        </div>
+            <ListIcon />
+          </ToggleGroupItem>
+        </ToggleGroup>
       </div>
 
       {loading ? (

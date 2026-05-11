@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { DashboardHero } from "@/views/main/features/dashboard/components/dashboard-hero";
 import { DashboardInstanceGrid } from "@/views/main/features/dashboard/components/dashboard-instance-grid";
 import { StatusStrip } from "@/views/main/features/dashboard/components/status-strip";
@@ -34,8 +34,16 @@ export function DashboardPage() {
   const playInstance = (instanceId: string) => {
     void launchPlan.createLaunchPlan(instanceId);
   };
+  const refreshDashboardData = () => {
+    instancesHook.refresh();
+    statusHook.refresh();
+  };
   const initialInstancesLoading =
     instancesHook.loading && instancesHook.data === null;
+
+  useEffect(() => {
+    statusHook.refresh();
+  }, [statusHook.refresh]);
 
   return (
     <div className="flex flex-col">
@@ -47,11 +55,16 @@ export function DashboardPage() {
         onPlayInstance={playInstance}
       />
 
-      <StatusStrip status={statusHook.data} loading={statusHook.loading} />
+      <StatusStrip
+        error={statusHook.error}
+        status={statusHook.data}
+        loading={statusHook.loading}
+        onRefresh={statusHook.refresh}
+      />
 
       <DashboardInstanceGrid
         featuredInstanceId={heroInstance?.id ?? null}
-        instanceCount={statusHook.data?.counts.instances ?? instances.length}
+        instanceCount={instances.length}
         instances={instances}
         launchLoadingId={launchPlan.loadingInstanceId}
         loading={initialInstancesLoading}
@@ -64,7 +77,7 @@ export function DashboardPage() {
       <NewInstanceDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-        onCreated={() => instancesHook.refresh()}
+        onCreated={refreshDashboardData}
       />
       <LaunchPlanSheet
         open={launchPlan.sheetOpen}

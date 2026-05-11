@@ -37,6 +37,13 @@ const getCompletedInstallItems = (job: DownloadQueueJob): number =>
     (item) => item.status === "completed" || item.status === "skipped",
   ).length;
 
+const getDownloadSourceLabel = (job: DownloadQueueJob): string =>
+  job.source === "modrinth"
+    ? "Modrinth"
+    : job.source === "curseforge"
+      ? "CurseForge"
+      : "Download";
+
 type InstanceActionProps = {
   instance: LauncherInstance;
   launchDisabled: boolean;
@@ -137,7 +144,10 @@ function InstallingInstanceCard({
   const totalItems = Math.max(1, job.totalItems, job.items.length);
   const completedItems = getCompletedInstallItems(job);
   const imageUrl =
-    job.metadata.kind === "curseForgeFile" ? job.metadata.imageUrl : null;
+    job.metadata.kind === "curseForgeFile" ||
+    job.metadata.kind === "modrinthFile"
+      ? job.metadata.imageUrl
+      : null;
 
   return (
     <Card
@@ -186,7 +196,7 @@ function InstallingInstanceCard({
         />
       </CardContent>
       <CardFooter className="justify-between gap-2">
-        <Badge variant="secondary">CurseForge</Badge>
+        <Badge variant="secondary">{getDownloadSourceLabel(job)}</Badge>
         <span className="text-muted-foreground text-xs tabular-nums">
           {completedItems}/{totalItems} files
         </span>
@@ -297,7 +307,9 @@ export function InstanceCard(props: InstanceCardRenderProps) {
       <CardFooter className="justify-between gap-2">
         {installing ? (
           <div className="flex min-w-0 items-center gap-2">
-            <Badge variant="secondary">CurseForge</Badge>
+            <Badge variant="secondary">
+              {installJob ? getDownloadSourceLabel(installJob) : "Download"}
+            </Badge>
             <span className="truncate text-muted-foreground text-xs tabular-nums">
               {completedInstallItems}/{totalInstallItems} files
             </span>

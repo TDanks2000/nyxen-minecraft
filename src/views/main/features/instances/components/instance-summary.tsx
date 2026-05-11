@@ -61,9 +61,13 @@ export function InstanceSummary({
   shaderPackCount,
   totalModsCount,
 }: InstanceSummaryProps) {
-  const copyGameDirectory = () => {
-    void navigator.clipboard.writeText(instance.gameDirectory);
-    toast.success("Game directory copied.");
+  const copyGameDirectory = async () => {
+    try {
+      await navigator.clipboard.writeText(instance.gameDirectory);
+      toast.success("Game directory copied.");
+    } catch {
+      toast.error("Could not copy game directory.");
+    }
   };
 
   return (
@@ -107,7 +111,7 @@ export function InstanceSummary({
           action={
             <Button
               aria-label="Copy game directory path"
-              onClick={copyGameDirectory}
+              onClick={() => void copyGameDirectory()}
               size="icon-xs"
               variant="ghost"
             >

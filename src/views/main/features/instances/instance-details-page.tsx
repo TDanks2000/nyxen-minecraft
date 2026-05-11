@@ -16,7 +16,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/views/main/components/ui/alert-dialog";
-import { CurseForgeBrowserDialog } from "@/views/main/features/curseforge/components/curseforge-browser-dialog";
+import { ContentBrowserDialog } from "@/views/main/features/curseforge/components/curseforge-browser-dialog";
 import { toSelectedInstance } from "@/views/main/features/curseforge/curseforge-browser-model";
 import { useCurseForgeInstall } from "@/views/main/features/curseforge/use-curseforge-install";
 import { useDownloadQueueStore } from "@/views/main/features/downloads/download-queue-store";
@@ -29,6 +29,7 @@ import {
 import { LaunchPlanSheet } from "@/views/main/features/instances/components/launch-plan-sheet";
 import { useInstanceCatalog } from "@/views/main/features/instances/hooks/use-instance-catalog";
 import { useLaunchPlan } from "@/views/main/features/instances/hooks/use-launch-plan";
+import { useModrinthInstall } from "@/views/main/features/modrinth/use-modrinth-install";
 import { useInstances } from "@/views/main/hooks/use-instances";
 import { rpc } from "@/views/main/lib/rpc";
 
@@ -41,7 +42,7 @@ type LaunchActionState =
 
 export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
   const [activeTab, setActiveTab] = useState("mods");
-  const [curseForgeOpen, setCurseForgeOpen] = useState(false);
+  const [contentBrowserOpen, setContentBrowserOpen] = useState(false);
   const [launchActionState, setLaunchActionState] =
     useState<LaunchActionState>("idle");
   const [modpackUpdate, setModpackUpdate] =
@@ -69,6 +70,10 @@ export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
   const catalog = useInstanceCatalog(instance);
   const curseForgeInstall = useCurseForgeInstall({
     onContentUpdated: catalog.replaceContent,
+  });
+  const modrinthInstall = useModrinthInstall({
+    onContentUpdated: catalog.replaceContent,
+    onInstanceCreated: instancesHook.upsertInstance,
   });
   const runningLaunch = instance
     ? (runningLaunches.find((launch) => launch.instanceId === instance.id) ??
@@ -300,7 +305,7 @@ export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
   };
 
   const openSettings = () => setActiveTab("settings");
-  const selectedCurseForgeInstance = toSelectedInstance(instance);
+  const selectedContentInstance = toSelectedInstance(instance);
 
   return (
     <div className="min-h-full bg-background">
@@ -311,7 +316,6 @@ export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
         launchActionState={launchActionState}
         modpackUpdateAvailable={modpackUpdate?.updateAvailable ?? false}
         modpackUpdateChecking={modpackUpdateChecking}
-        onBrowseCurseForge={() => setCurseForgeOpen(true)}
         onOpenSettings={openSettings}
         onPlay={playInstance}
         onStop={stopInstance}
@@ -335,6 +339,7 @@ export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
           instance={instance}
           mutating={catalog.mutating}
           mods={catalog.mods}
+          onBrowseContent={() => setContentBrowserOpen(true)}
           onInstanceDeleted={(deletedInstanceId) => {
             instancesHook.removeInstance(deletedInstanceId);
             void navigate({ to: "/instances" });
@@ -391,17 +396,20 @@ export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <CurseForgeBrowserDialog
-        availableInstances={[selectedCurseForgeInstance]}
+      <ContentBrowserDialog
+        availableInstances={[selectedContentInstance]}
+        instanceContent={catalog.content}
         installedContent={catalog.content?.curseForge}
         initialCategory="mods"
         onCompleteManualInstall={curseForgeInstall.completeManualInstall}
         onInstall={curseForgeInstall.install}
+        onInstallModrinth={modrinthInstall.install}
+        onInstallModrinthModpack={modrinthInstall.installModpack}
         onOpenManualDownload={curseForgeInstall.openManualDownload}
-        open={curseForgeOpen}
-        onOpenChange={setCurseForgeOpen}
+        open={contentBrowserOpen}
+        onOpenChange={setContentBrowserOpen}
         onUpdate={curseForgeInstall.update}
-        selectedInstance={selectedCurseForgeInstance}
+        selectedInstance={selectedContentInstance}
       />
     </div>
   );

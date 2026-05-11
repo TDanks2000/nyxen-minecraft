@@ -31,7 +31,7 @@ import {
   formatInstanceLastPlayed,
   LOADER_LABELS,
 } from "@/views/main/features/instances/components/instance-format";
-import { rpc } from "@/views/main/lib/rpc";
+import { openLocalPath } from "@/views/main/lib/open-local-path";
 
 type InstanceDetailsHeaderProps = {
   enabledModsCount: number;
@@ -40,7 +40,6 @@ type InstanceDetailsHeaderProps = {
   launchActionState: LaunchActionState;
   modpackUpdateAvailable: boolean;
   modpackUpdateChecking: boolean;
-  onBrowseCurseForge: () => void;
   onOpenSettings: () => void;
   onPlay: () => void;
   onStop: () => void;
@@ -95,7 +94,6 @@ export function InstanceDetailsHeader({
   launchActionState,
   modpackUpdateAvailable,
   modpackUpdateChecking,
-  onBrowseCurseForge,
   onOpenSettings,
   onPlay,
   onStop,
@@ -133,13 +131,13 @@ export function InstanceDetailsHeader({
     launchActionState === "stopping";
 
   const openFolder = () => {
-    void rpc.requestProxy.openExternal({
-      url: `file://${instance.gameDirectory}`,
+    void openLocalPath(instance.gameDirectory, {
+      failureMessage: "Could not open the instance folder.",
     });
   };
   const openMetadata = () => {
-    void rpc.requestProxy.openExternal({
-      url: `file://${instance.metadataPath}`,
+    void openLocalPath(instance.metadataPath, {
+      failureMessage: "Could not open instance metadata.",
     });
   };
 
@@ -255,15 +253,6 @@ export function InstanceDetailsHeader({
               <Settings2Icon data-icon="inline-start" />
               Settings
             </Button>
-            <Button
-              className="w-full sm:w-auto"
-              onClick={onBrowseCurseForge}
-              size="lg"
-              variant="outline"
-            >
-              <DownloadIcon data-icon="inline-start" />
-              CurseForge
-            </Button>
             {instance.modpack?.locked ? (
               <Button
                 className="w-full sm:w-auto"
@@ -273,7 +262,7 @@ export function InstanceDetailsHeader({
                 title={
                   modpackUpdateAvailable
                     ? undefined
-                    : "No CurseForge modpack update is available."
+                    : "No modpack update is available."
                 }
                 variant={modpackUpdateAvailable ? "default" : "outline"}
               >

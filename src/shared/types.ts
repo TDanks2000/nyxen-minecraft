@@ -170,6 +170,91 @@ export type CurseForgeSearchResult = {
   };
 };
 
+export type ModrinthCategory =
+  | "mods"
+  | "modpacks"
+  | "resource-packs"
+  | "shaders";
+
+export type ModrinthProjectSection = ModrinthCategory;
+
+export type ModrinthSortField =
+  | "downloads"
+  | "follows"
+  | "newest"
+  | "relevance"
+  | "updated";
+
+export type ModrinthStatus = {
+  baseUrl: string;
+  configured: true;
+  projectTypes: Record<
+    ModrinthCategory,
+    "mod" | "modpack" | "resourcepack" | "shader"
+  >;
+};
+
+export type SearchModrinthProjectsInput = {
+  gameVersion?: string;
+  index?: number;
+  loader?: ModLoader;
+  pageSize?: number;
+  query?: string;
+  section?: ModrinthProjectSection;
+  sortField?: ModrinthSortField;
+} | null;
+
+export type ModrinthProjectFileSummary = {
+  displayName: string;
+  downloadUrl: string;
+  fileDate: string | null;
+  fileName: string;
+  gameVersions: Array<string>;
+  hashes: {
+    sha1?: string;
+    sha512?: string;
+  };
+  id: string;
+  modLoaders: Array<ModLoader>;
+  releaseType: "alpha" | "beta" | "release" | "unknown";
+  sizeBytes: number;
+  versionNumber: string;
+};
+
+export type ModrinthProjectSummary = {
+  authors: Array<string>;
+  categories: Array<string>;
+  dateModified: string | null;
+  downloadCount: number;
+  follows: number;
+  gameVersions: Array<string>;
+  id: string;
+  isAvailable: boolean;
+  latestFile: ModrinthProjectFileSummary | null;
+  logoUrl: string | null;
+  modLoaders: Array<ModLoader>;
+  name: string;
+  screenshotUrls: Array<string>;
+  section: ModrinthProjectSection;
+  slug: string;
+  summary: string;
+  websiteUrl: string;
+};
+
+export type ModrinthSearchResult = {
+  data: Array<ModrinthProjectSummary>;
+  pagination: {
+    index: number;
+    pageSize: number;
+    resultCount: number;
+    totalCount: number;
+  };
+  source: {
+    baseUrl: string;
+    section: ModrinthProjectSection;
+  };
+};
+
 export type MinecraftVersionSummary = {
   complianceLevel: number | null;
   id: string;
@@ -331,7 +416,7 @@ export type LauncherInstanceModpack = {
   projectId: string;
   skippedFiles: number;
   slug?: string;
-  source: "curseforge";
+  source: "curseforge" | "modrinth";
   updatedAt: string;
   version?: string;
   websiteUrl: string | null;
@@ -463,6 +548,7 @@ export type InstanceContent = {
   logs: Array<InstanceFileEntry>;
   mods: Array<InstanceFileEntry>;
   refreshedAt: string;
+  recipe: InstanceRecipeSummary | null;
   resourcePacks: Array<InstanceFileEntry>;
   screenshots: Array<InstanceFileEntry>;
   serverList: InstanceFileEntry | null;
@@ -529,6 +615,26 @@ export type InstallDownloadedCurseForgeFileResult =
     sourcePath: string;
   };
 
+export type DownloadModrinthFileInput = {
+  category: ModrinthCategory;
+  file: ModrinthProjectFileSummary;
+  instanceId?: string;
+  projectId: string;
+  projectLogoUrl?: string | null;
+  projectName: string;
+  projectScreenshotUrls?: Array<string>;
+  projectSlug?: string;
+  projectWebsiteUrl?: string | null;
+};
+
+export type DownloadModrinthFileResult = {
+  category: ModrinthCategory;
+  content: InstanceContent | null;
+  fileName: string;
+  instance: LauncherInstance | null;
+  path: string;
+};
+
 export type CreateLauncherInstanceInput = {
   bannerUrl?: string;
   gameArgs?: Array<string>;
@@ -593,6 +699,113 @@ export type UpdateInstanceModpackResult = {
   content: InstanceContent;
   instance: LauncherInstance;
   update: InstanceModpackUpdate;
+};
+
+export type InstanceRecipeFilePolicy =
+  | "generated"
+  | "local-only"
+  | "managed"
+  | "mutable-config";
+
+export type InstanceRecipeFileSource =
+  | "curseforge"
+  | "generated"
+  | "local"
+  | "modrinth";
+
+export type InstanceRecipeRevision = {
+  createdAt: string;
+  files: Array<{
+    downloadUrls: Array<string>;
+    hashes: {
+      sha1?: string;
+      sha512?: string;
+    };
+    optional: boolean;
+    path: string;
+    policy: InstanceRecipeFilePolicy;
+    providerFileId?: string;
+    providerProjectId?: string;
+    sizeBytes: number | null;
+    source: InstanceRecipeFileSource;
+  }>;
+  id: string;
+  instanceId: string;
+  overrides: Array<{
+    hashes: {
+      sha1?: string;
+      sha512?: string;
+    };
+    path: string;
+    policy: Extract<
+      InstanceRecipeFilePolicy,
+      "local-only" | "managed" | "mutable-config"
+    >;
+    sizeBytes: number | null;
+  }>;
+  previousRevisionId: string | null;
+  runtime: {
+    javaComponent: string | null;
+    javaMajorVersion: number | null;
+    loader: ModLoader;
+    loaderVersion: string | null;
+    minecraftVersionId: string;
+  };
+  schemaVersion: 1;
+  source:
+    | { kind: "manual" }
+    | {
+        fileId: string;
+        fileName: string;
+        kind: "curseforge";
+        projectId: string;
+        slug?: string;
+        version?: string;
+        websiteUrl?: string | null;
+      }
+    | {
+        fileId: string;
+        fileName: string;
+        kind: "modrinth";
+        projectId: string;
+        slug?: string;
+        version?: string;
+        websiteUrl?: string | null;
+      };
+};
+
+export type InstanceRecipeDriftStatus =
+  | "added"
+  | "changed"
+  | "missing"
+  | "optionalMissing"
+  | "weaklyVerified";
+
+export type InstanceRecipeDriftItem = {
+  actualSha1?: string;
+  actualSha512?: string;
+  expectedSha1?: string;
+  expectedSha512?: string;
+  path: string;
+  policy: InstanceRecipeFilePolicy;
+  sizeBytes: number | null;
+  source: InstanceRecipeFileSource;
+  status: InstanceRecipeDriftStatus;
+};
+
+export type InstanceRecipeSummary = {
+  counts: {
+    added: number;
+    changed: number;
+    managedFiles: number;
+    missing: number;
+    optionalMissing: number;
+    overrides: number;
+    weaklyVerified: number;
+  };
+  drift: Array<InstanceRecipeDriftItem>;
+  revision: InstanceRecipeRevision;
+  status: "clean" | "drifted" | "incomplete" | "weaklyVerified";
 };
 
 export type LaunchPlanMissingArtifact = {
@@ -714,6 +927,14 @@ export type DownloadQueueJobMetadata =
       targetInstanceId: string | null;
     }
   | {
+      category: ModrinthCategory;
+      fileId: string;
+      imageUrl: string | null;
+      kind: "modrinthFile";
+      projectId: string;
+      targetInstanceId: string | null;
+    }
+  | {
       kind: "launchArtifacts" | "minecraftVersionManifest";
     };
 
@@ -725,6 +946,10 @@ export type DownloadQueueJobResult =
   | {
       kind: "curseForgeFile";
       result: DownloadCurseForgeFileResult;
+    }
+  | {
+      kind: "modrinthFile";
+      result: DownloadModrinthFileResult;
     }
   | {
       kind: "minecraftVersionManifest";
@@ -741,7 +966,7 @@ export type DownloadQueueJob = {
   metadata: DownloadQueueJobMetadata;
   progress: number | null;
   result: DownloadQueueJobResult | null;
-  source: "launch" | "curseforge";
+  source: "launch" | "curseforge" | "modrinth";
   startedAt: string | null;
   status: DownloadQueueJobStatus;
   subtitle: string;
@@ -758,6 +983,10 @@ export type EnqueueDownloadJobInput =
   | {
       input: DownloadCurseForgeFileInput;
       kind: "curseForgeFile";
+    }
+  | {
+      input: DownloadModrinthFileInput;
+      kind: "modrinthFile";
     }
   | {
       input: null;

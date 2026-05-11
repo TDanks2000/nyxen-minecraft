@@ -1,5 +1,5 @@
-import { formatDistanceToNow } from "date-fns";
 import type { ModLoader } from "@/shared/types";
+import { formatRelativeTime } from "@/views/main/lib/date-format";
 
 export const LOADER_LABELS: Record<ModLoader, string> = {
   fabric: "Fabric",
@@ -15,6 +15,6 @@ export function formatInstanceLastPlayed(
 ): string {
   if (!value) return "Never played";
 
-  const relative = formatDistanceToNow(new Date(value), { addSuffix: true });
+  const relative = formatRelativeTime(value);
   return options.prefix ? `Played ${relative}` : relative;
 }

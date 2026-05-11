@@ -4,9 +4,11 @@ import { rpc } from "@/views/main/lib/rpc";
 
 type InstanceContentStore = {
   byInstanceId: Record<string, InstanceContent>;
+  generation: number;
   errors: Record<string, string>;
   loadingIds: Record<string, boolean>;
   loadPromises: Record<string, Promise<InstanceContent> | undefined>;
+  clearAllContent: () => void;
   clearInstanceContent: (instanceId: string) => void;
   refreshInstanceContent: (instanceId: string) => Promise<InstanceContent>;
   refreshManyInstanceContents: (
@@ -24,9 +26,19 @@ const withoutKey = <T>(record: Record<string, T>, key: string) => {
 export const useInstanceContentStore = create<InstanceContentStore>(
   (set, get) => ({
     byInstanceId: {},
+    generation: 0,
     errors: {},
     loadingIds: {},
     loadPromises: {},
+    clearAllContent: () => {
+      set((state) => ({
+        byInstanceId: {},
+        errors: {},
+        generation: state.generation + 1,
+        loadingIds: {},
+        loadPromises: {},
+      }));
+    },
     clearInstanceContent: (instanceId) => {
       set((state) => ({
         byInstanceId: withoutKey(state.byInstanceId, instanceId),
@@ -46,9 +58,14 @@ export const useInstanceContentStore = create<InstanceContentStore>(
         loadingIds: { ...state.loadingIds, [instanceId]: true },
       }));
 
+      const generation = get().generation;
       const loadPromise = rpc.requestProxy
         .getInstanceContent({ instanceId })
         .then((content) => {
+          if (get().generation !== generation) {
+            return content;
+          }
+
           set((state) => ({
             byInstanceId: {
               ...state.byInstanceId,
@@ -65,6 +82,10 @@ export const useInstanceContentStore = create<InstanceContentStore>(
         .catch((e: unknown) => {
           const message =
             e instanceof Error ? e.message : "Failed to load instance content";
+          if (get().generation !== generation) {
+            throw e;
+          }
+
           set((state) => ({
             errors: {
               ...state.errors,
@@ -78,7 +99,10 @@ export const useInstanceContentStore = create<InstanceContentStore>(
           throw e;
         })
         .finally(() => {
-          if (get().loadPromises[instanceId] === loadPromise) {
+          if (
+            get().generation === generation &&
+            get().loadPromises[instanceId] === loadPromise
+          ) {
             set((state) => ({
               loadPromises: withoutKey(state.loadPromises, instanceId),
             }));

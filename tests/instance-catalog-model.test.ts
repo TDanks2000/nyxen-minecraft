@@ -63,6 +63,7 @@ const createContent = (
   logs: [],
   mods: [],
   refreshedAt: "2024-01-01T00:00:00Z",
+  recipe: null,
   resourcePacks: [],
   screenshots: [],
   serverList: null,

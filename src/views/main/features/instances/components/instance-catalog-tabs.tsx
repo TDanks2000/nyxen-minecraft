@@ -1,4 +1,3 @@
-import { formatDistanceToNow } from "date-fns";
 import {
   ArchiveIcon,
   CameraIcon,
@@ -23,6 +22,7 @@ import { type ElementType, useMemo, useState } from "react";
 import type {
   InstanceContent,
   InstanceFileEntry,
+  InstanceRecipeSummary,
   LauncherInstance,
 } from "@/shared/types";
 import {
@@ -62,7 +62,8 @@ import {
 import { InstanceLogsPanel } from "@/views/main/features/instances/components/instance-logs-panel";
 import { InstanceSettingsPanel } from "@/views/main/features/instances/components/instance-settings-panel";
 import { getModManagementState } from "@/views/main/features/instances/instance-catalog-model";
-import { rpc } from "@/views/main/lib/rpc";
+import { formatRelativeTime } from "@/views/main/lib/date-format";
+import { openLocalPath } from "@/views/main/lib/open-local-path";
 import { cn } from "@/views/main/lib/utils";
 
 type InstanceTabValue =
@@ -92,6 +93,7 @@ type InstanceCatalogTabsProps = {
   mutating: boolean;
   onInstanceDeleted: (instanceId: string) => void;
   onInstanceUpdated: (instance: LauncherInstance) => void;
+  onBrowseContent: () => void;
   onRefreshContent: () => void;
   onSetActiveTab: (tab: string) => void;
   onSetAllModsEnabled: (enabled: boolean) => void;
@@ -132,7 +134,7 @@ const MOD_SORT_OPTIONS: Array<{ label: string; value: ModSortField }> = [
 ];
 
 const openExternalPath = (path: string) => {
-  void rpc.requestProxy.openExternal({ url: `file://${path}` });
+  void openLocalPath(path);
 };
 
 const formatBytes = (bytes: number): string => {
@@ -145,8 +147,7 @@ const formatBytes = (bytes: number): string => {
   return `${(bytes / 1024 ** index).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
 };
 
-const formatModified = (value: string): string =>
-  formatDistanceToNow(new Date(value), { addSuffix: true });
+const formatModified = (value: string): string => formatRelativeTime(value);
 
 function EmptyPanel({
   action,
@@ -508,17 +509,206 @@ function LaunchConfiguration({ instance }: { instance: LauncherInstance }) {
   );
 }
 
+const getRecipeStatusLabel = (
+  status: InstanceRecipeSummary["status"],
+): string => {
+  switch (status) {
+    case "clean":
+      return "Verified";
+    case "drifted":
+      return "Drift Detected";
+    case "incomplete":
+      return "Incomplete";
+    case "weaklyVerified":
+      return "Weakly Verified";
+    default:
+      return "Unknown";
+  }
+};
+
+const getRecipeStatusVariant = (
+  status: InstanceRecipeSummary["status"],
+): React.ComponentProps<typeof Badge>["variant"] => {
+  if (status === "drifted") return "destructive";
+  if (status === "clean") return "default";
+  if (status === "incomplete") return "secondary";
+  return "outline";
+};
+
+const getRecipeSourceLabel = (
+  source: InstanceRecipeSummary["revision"]["source"],
+): string => {
+  if (source.kind === "manual") return "Manual";
+  if (source.kind === "curseforge") return "CurseForge";
+  return "Modrinth";
+};
+
+function RecipeSummaryPanel({
+  recipe,
+}: {
+  recipe: InstanceRecipeSummary | null;
+}) {
+  if (!recipe) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Recipe</CardTitle>
+          <CardAction>
+            <Badge variant="outline">Not recorded</Badge>
+          </CardAction>
+        </CardHeader>
+        <CardContent>
+          <Alert>
+            <FileTextIcon />
+            <AlertTitle>No recipe revision</AlertTitle>
+            <AlertDescription>
+              This instance has local metadata, but no reproducible recipe has
+              been recorded yet.
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const source = recipe.revision.source;
+  const sourceDetail =
+    source.kind === "manual"
+      ? "Manual snapshot"
+      : [source.version, source.fileName].filter(Boolean).join(" / ");
+  const visibleDrift = recipe.drift.slice(0, 5);
+  const hiddenDriftCount = Math.max(
+    0,
+    recipe.drift.length - visibleDrift.length,
+  );
+  const metrics = [
+    ["Managed files", recipe.counts.managedFiles],
+    ["Overrides", recipe.counts.overrides],
+    ["Missing", recipe.counts.missing],
+    ["Changed", recipe.counts.changed],
+    ["Added", recipe.counts.added],
+    ["Weak", recipe.counts.weaklyVerified],
+  ];
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Recipe</CardTitle>
+        <CardAction>
+          <Badge variant={getRecipeStatusVariant(recipe.status)}>
+            {getRecipeStatusLabel(recipe.status)}
+          </Badge>
+        </CardAction>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <div className="grid gap-3 lg:grid-cols-3">
+          <div className="rounded-lg border border-border bg-background/45 p-3 lg:col-span-2">
+            <div className="text-xs text-muted-foreground">Source</div>
+            <div className="mt-1 truncate font-semibold">
+              {getRecipeSourceLabel(source)}
+            </div>
+            <div className="mt-1 truncate text-muted-foreground text-xs">
+              {sourceDetail || recipe.revision.id}
+            </div>
+          </div>
+          <div className="rounded-lg border border-border bg-background/45 p-3">
+            <div className="text-xs text-muted-foreground">Recorded</div>
+            <div className="mt-1 truncate font-semibold">
+              {formatModified(recipe.revision.createdAt)}
+            </div>
+            <div className="mt-1 truncate text-muted-foreground text-xs">
+              {recipe.revision.runtime.minecraftVersionId}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
+          {metrics.map(([label, value]) => (
+            <div
+              className="rounded-md border border-border bg-background/35 px-3 py-2"
+              key={label}
+            >
+              <div className="text-muted-foreground text-xs">{label}</div>
+              <div className="mt-0.5 truncate font-heading font-semibold">
+                {value}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {visibleDrift.length > 0 ? (
+          <div className="flex flex-col gap-2 rounded-lg border border-border bg-background/35 p-3">
+            {visibleDrift.map((item) => (
+              <div
+                className="flex min-w-0 items-center gap-2 text-xs"
+                key={`${item.status}:${item.path}`}
+              >
+                <Badge
+                  variant={
+                    item.status === "changed" ||
+                    item.status === "missing" ||
+                    item.status === "added"
+                      ? "destructive"
+                      : "outline"
+                  }
+                >
+                  {item.status}
+                </Badge>
+                <span className="truncate font-mono text-muted-foreground">
+                  {item.path}
+                </span>
+              </div>
+            ))}
+            {hiddenDriftCount > 0 ? (
+              <div className="text-muted-foreground text-xs">
+                {hiddenDriftCount} more item
+                {hiddenDriftCount === 1 ? "" : "s"} not shown
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 rounded-lg border border-border bg-background/35 p-3 text-xs text-muted-foreground">
+            <CheckCircle2Icon className="size-3.5 text-primary" />
+            No managed file drift detected.
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function WarningPanel({
   disabledModsCount,
   contentError,
   instance,
+  recipe,
 }: {
   contentError: string | null;
   disabledModsCount: number;
   instance: LauncherInstance;
+  recipe: InstanceRecipeSummary | null;
 }) {
   const warnings = [
     ...(contentError ? [contentError] : []),
+    ...(recipe?.status === "drifted"
+      ? [
+          `${recipe.counts.added + recipe.counts.changed + recipe.counts.missing} recipe drift item${
+            recipe.counts.added +
+              recipe.counts.changed +
+              recipe.counts.missing ===
+            1
+              ? ""
+              : "s"
+          } detected`,
+        ]
+      : []),
+    ...(recipe?.status === "incomplete"
+      ? [
+          `${recipe.counts.optionalMissing} optional recipe file${
+            recipe.counts.optionalMissing === 1 ? "" : "s"
+          } skipped during install`,
+        ]
+      : []),
     ...(disabledModsCount > 0
       ? [
           `${disabledModsCount} mod${disabledModsCount === 1 ? "" : "s"} disabled`,
@@ -581,6 +771,7 @@ export function InstanceCatalogTabs({
   logs,
   mods,
   mutating,
+  onBrowseContent,
   onInstanceDeleted,
   onInstanceUpdated,
   onRefreshContent,
@@ -657,25 +848,35 @@ export function InstanceCatalogTabs({
       onValueChange={onSetActiveTab}
       className="min-w-0 flex-col gap-3"
     >
-      <div className="min-w-0 overflow-x-auto border-b border-border">
-        <TabsList
-          className="h-10 w-max gap-3 bg-transparent p-0"
-          variant="line"
+      <div className="flex min-w-0 flex-col gap-2 border-b border-border pb-2 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0 overflow-x-auto">
+          <TabsList
+            className="h-10 w-max gap-3 bg-transparent p-0"
+            variant="line"
+          >
+            {TAB_ITEMS.map((item) => {
+              const Icon = item.icon;
+              return (
+                <TabsTrigger
+                  key={item.value}
+                  className="h-10 px-3 text-xs"
+                  value={item.value}
+                >
+                  <Icon />
+                  {item.label}
+                </TabsTrigger>
+              );
+            })}
+          </TabsList>
+        </div>
+        <Button
+          className="w-full sm:w-auto"
+          onClick={onBrowseContent}
+          size="sm"
         >
-          {TAB_ITEMS.map((item) => {
-            const Icon = item.icon;
-            return (
-              <TabsTrigger
-                key={item.value}
-                className="h-10 px-3 text-xs"
-                value={item.value}
-              >
-                <Icon />
-                {item.label}
-              </TabsTrigger>
-            );
-          })}
-        </TabsList>
+          <SearchIcon data-icon="inline-start" />
+          Browse Content
+        </Button>
       </div>
 
       <TabsContent value="mods" className="w-full min-w-0">
@@ -687,7 +888,8 @@ export function InstanceCatalogTabs({
                 <AlertTitle>Modpack Managed</AlertTitle>
                 <AlertDescription>
                   Mods are controlled by {modpackName ?? "the linked modpack"}.
-                  Use Update Modpack when CurseForge has a newer pack version.
+                  Use Update Modpack when the linked source has a newer pack
+                  version.
                 </AlertDescription>
               </Alert>
             ) : null}
@@ -897,6 +1099,7 @@ export function InstanceCatalogTabs({
               contentError={contentError}
               disabledModsCount={disabledModsCount}
               instance={instance}
+              recipe={content?.recipe ?? null}
             />
           </aside>
         </div>
@@ -932,32 +1135,35 @@ export function InstanceCatalogTabs({
       </TabsContent>
 
       <TabsContent value="versions" className="w-full min-w-0">
-        <Card>
-          <CardHeader>
-            <CardTitle>Versions</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-3 lg:grid-cols-3">
-            {[
-              ["Minecraft", instance.versionId],
-              ["Loader", instance.loader],
-              ["Loader version", instance.loaderVersion ?? "Managed"],
-              ["Created", formatModified(instance.createdAt)],
-              ["Updated", formatModified(instance.updatedAt)],
-              [
-                "Content refreshed",
-                content ? formatModified(content.refreshedAt) : "Not loaded",
-              ],
-            ].map(([label, value]) => (
-              <div
-                className="rounded-lg border border-border bg-background/45 p-3"
-                key={label}
-              >
-                <div className="text-xs text-muted-foreground">{label}</div>
-                <div className="mt-1 truncate font-semibold">{value}</div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+        <div className="flex flex-col gap-3">
+          <Card>
+            <CardHeader>
+              <CardTitle>Versions</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-3 lg:grid-cols-3">
+              {[
+                ["Minecraft", instance.versionId],
+                ["Loader", instance.loader],
+                ["Loader version", instance.loaderVersion ?? "Managed"],
+                ["Created", formatModified(instance.createdAt)],
+                ["Updated", formatModified(instance.updatedAt)],
+                [
+                  "Content refreshed",
+                  content ? formatModified(content.refreshedAt) : "Not loaded",
+                ],
+              ].map(([label, value]) => (
+                <div
+                  className="rounded-lg border border-border bg-background/45 p-3"
+                  key={label}
+                >
+                  <div className="text-xs text-muted-foreground">{label}</div>
+                  <div className="mt-1 truncate font-semibold">{value}</div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+          <RecipeSummaryPanel recipe={content?.recipe ?? null} />
+        </div>
       </TabsContent>
 
       <TabsContent value="resource-packs" className="w-full min-w-0">

@@ -1,6 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
 import {
-  BellIcon,
   ChevronDownIcon,
   CopyIcon,
   MinusIcon,
@@ -28,14 +27,17 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/views/main/components/ui/dropdown-menu";
-import { CurseForgeBrowserDialog } from "@/views/main/features/curseforge/components/curseforge-browser-dialog";
+import { ContentBrowserDialog } from "@/views/main/features/curseforge/components/curseforge-browser-dialog";
 import { toSelectedInstance } from "@/views/main/features/curseforge/curseforge-browser-model";
 import type { SelectedInstance } from "@/views/main/features/curseforge/curseforge-browser-types";
 import { useCurseForgeInstall } from "@/views/main/features/curseforge/use-curseforge-install";
 import { NewInstanceDialog } from "@/views/main/features/instances/components/new-instance-dialog";
+import { useInstanceContentStore } from "@/views/main/features/instances/hooks/use-instance-content-store";
+import { useModrinthInstall } from "@/views/main/features/modrinth/use-modrinth-install";
 import { AddProfileDialog } from "@/views/main/features/profiles/components/add-profile-dialog";
 import { MinecraftSkinHead } from "@/views/main/features/profiles/components/minecraft-skin";
 import { useInstances } from "@/views/main/hooks/use-instances";
+import { useLauncherStatus } from "@/views/main/hooks/use-launcher-status";
 import { useProfiles } from "@/views/main/hooks/use-profiles";
 import { rpc } from "@/views/main/lib/rpc";
 import { cn } from "@/views/main/lib/utils";
@@ -146,20 +148,40 @@ export function Titlebar({
 }: TitlebarProps) {
   const [isMaximized, setIsMaximized] = useState(false);
   const [addProfileOpen, setAddProfileOpen] = useState(false);
-  const [curseForgeOpen, setCurseForgeOpen] = useState(false);
-  const [curseForgeContent, setCurseForgeContent] =
+  const [contentBrowserOpen, setContentBrowserOpen] = useState(false);
+  const [contentBrowserContent, setContentBrowserContent] =
     useState<InstanceContent | null>(null);
-  const [curseForgeInstance, setCurseForgeInstance] =
+  const [contentBrowserInstance, setContentBrowserInstance] =
     useState<SelectedInstance | null>(null);
   const [newInstanceOpen, setNewInstanceOpen] = useState(false);
   const navigate = useNavigate();
   const instances = useInstances();
+  const launcherStatus = useLauncherStatus();
   const profiles = useProfiles();
+  const replaceInstanceContent = useInstanceContentStore(
+    (state) => state.replaceContent,
+  );
   const curseForgeInstall = useCurseForgeInstall({
-    onContentUpdated: setCurseForgeContent,
-    onInstanceCreated: instances.upsertInstance,
+    onContentUpdated: (content) => {
+      setContentBrowserContent(content);
+      replaceInstanceContent(content);
+    },
+    onInstanceCreated: (instance) => {
+      instances.upsertInstance(instance);
+      launcherStatus.refresh();
+    },
   });
-  const curseForgeInstances = useMemo(
+  const modrinthInstall = useModrinthInstall({
+    onContentUpdated: (content) => {
+      setContentBrowserContent(content);
+      replaceInstanceContent(content);
+    },
+    onInstanceCreated: (instance) => {
+      instances.upsertInstance(instance);
+      launcherStatus.refresh();
+    },
+  });
+  const contentBrowserInstances = useMemo(
     () => (instances.data ?? []).map(toSelectedInstance),
     [instances.data],
   );
@@ -185,19 +207,19 @@ export function Titlebar({
   }, [syncWindowState]);
 
   useEffect(() => {
-    if (!curseForgeOpen || !curseForgeInstance) {
-      setCurseForgeContent(null);
+    if (!contentBrowserOpen || !contentBrowserInstance) {
+      setContentBrowserContent(null);
       return;
     }
 
     let cancelled = false;
-    setCurseForgeContent(null);
+    setContentBrowserContent(null);
 
     rpc.requestProxy
-      .getInstanceContent({ instanceId: curseForgeInstance.id })
+      .getInstanceContent({ instanceId: contentBrowserInstance.id })
       .then((content) => {
         if (!cancelled) {
-          setCurseForgeContent(content);
+          setContentBrowserContent(content);
         }
       })
       .catch((error) => {
@@ -205,15 +227,15 @@ export function Titlebar({
         const message =
           error instanceof Error
             ? error.message
-            : "Failed to load installed CurseForge content.";
+            : "Failed to load installed catalog content.";
         toast.error(message);
-        setCurseForgeContent(null);
+        setContentBrowserContent(null);
       });
 
     return () => {
       cancelled = true;
     };
-  }, [curseForgeOpen, curseForgeInstance]);
+  }, [contentBrowserOpen, contentBrowserInstance]);
 
   const handleMinimize = useCallback(() => {
     rpc.requestProxy.minimizeWindow(null).catch(console.error);
@@ -250,8 +272,8 @@ export function Titlebar({
   }, [navigate]);
 
   const rightSidebarToggleLabel = isRightSidebarOpen
-    ? "Hide right sidebar"
-    : "Show right sidebar";
+    ? "Hide downloads and activity"
+    : "Show downloads and activity";
 
   return (
     <>
@@ -282,19 +304,11 @@ export function Titlebar({
 
           <button
             type="button"
-            onClick={() => setCurseForgeOpen(true)}
+            onClick={() => setContentBrowserOpen(true)}
             className="flex h-9 items-center gap-1.5 rounded-md border border-sidebar-border bg-background/55 px-3 font-semibold text-foreground text-xs transition-colors hover:bg-muted"
           >
             <SearchIcon className="size-3.5" />
-            CurseForge
-          </button>
-
-          <button
-            type="button"
-            className="flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
-            aria-label="Notifications"
-          >
-            <BellIcon className="size-4" />
+            Browse Content
           </button>
 
           <button
@@ -444,25 +458,34 @@ export function Titlebar({
       <NewInstanceDialog
         open={newInstanceOpen}
         onOpenChange={setNewInstanceOpen}
-        onCreated={() => instances.refresh()}
+        onCreated={() => {
+          instances.refresh();
+          launcherStatus.refresh();
+        }}
       />
-      <CurseForgeBrowserDialog
-        availableInstances={curseForgeInstances}
-        installedContent={curseForgeContent?.curseForge}
+      <ContentBrowserDialog
+        availableInstances={contentBrowserInstances}
+        instanceContent={contentBrowserContent}
+        installedContent={contentBrowserContent?.curseForge}
         onCompleteManualInstall={curseForgeInstall.completeManualInstall}
         onInstall={curseForgeInstall.install}
         onInstallModpack={curseForgeInstall.installModpack}
+        onInstallModrinth={modrinthInstall.install}
+        onInstallModrinthModpack={modrinthInstall.installModpack}
         onOpenManualDownload={curseForgeInstall.openManualDownload}
-        open={curseForgeOpen}
-        onOpenChange={setCurseForgeOpen}
-        onSelectInstance={setCurseForgeInstance}
+        open={contentBrowserOpen}
+        onOpenChange={setContentBrowserOpen}
+        onSelectInstance={setContentBrowserInstance}
         onUpdate={curseForgeInstall.update}
-        selectedInstance={curseForgeInstance}
+        selectedInstance={contentBrowserInstance}
       />
       <AddProfileDialog
         open={addProfileOpen}
         onOpenChange={setAddProfileOpen}
-        onCreated={() => profiles.refresh()}
+        onCreated={() => {
+          profiles.refresh();
+          launcherStatus.refresh();
+        }}
       />
     </>
   );

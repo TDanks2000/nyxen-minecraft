@@ -110,7 +110,8 @@ Nyxen API, analytics endpoint, or account sync service.
 - Minecraft Java version manifest refresh and caching
 - Version detail caching for launch metadata
 - Launch preflight plans with missing artifact reporting
-- Optional CurseForge catalog search using a local API key
+- Modrinth modpack catalog search and `.mrpack` instance installs
+- Optional CurseForge browser search using a local API key
 - Local launcher directory and settings status
 - Typed Electrobun RPC between Bun and the React webview
 
@@ -221,9 +222,15 @@ NYXEN_MICROSOFT_CLIENT_ID=paste-application-client-id-here
 Then start the app with `bun run dev`. Keep using only the client id for this
 desktop app; do not create or ship a client secret.
 
-## CurseForge Catalog Setup
+## Modrinth Catalog
 
-Nyxen can refresh the Modpacks catalog from CurseForge when a local API key is
+The Modpacks catalog uses the public Modrinth API and does not require a local
+API key. Modrinth `.mrpack` installs are downloaded by the Bun backend and
+installed as locked launcher instances.
+
+## CurseForge Browser Setup
+
+Nyxen can still browse CurseForge Minecraft content when a local API key is
 configured. The key stays on the user's machine and is sent only from the Bun
 backend to the CurseForge API.
 

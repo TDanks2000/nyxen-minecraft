@@ -1,4 +1,3 @@
-import { formatDistanceToNow } from "date-fns";
 import {
   ActivityIcon,
   ArchiveIcon,
@@ -51,6 +50,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/views/main/components/ui/select";
+import { formatRelativeTime } from "@/views/main/lib/date-format";
+import { openLocalPath } from "@/views/main/lib/open-local-path";
 import { rpc } from "@/views/main/lib/rpc";
 import { cn } from "@/views/main/lib/utils";
 
@@ -101,7 +102,7 @@ const LOG_TYPE_ORDER: Array<InstanceLogLineType> = [
 ];
 
 const openExternalPath = (path: string) => {
-  void rpc.requestProxy.openExternal({ url: `file://${path}` });
+  void openLocalPath(path);
 };
 
 const formatBytes = (bytes: number): string => {
@@ -114,8 +115,7 @@ const formatBytes = (bytes: number): string => {
   return `${(bytes / 1024 ** index).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
 };
 
-const formatModified = (value: string): string =>
-  formatDistanceToNow(new Date(value), { addSuffix: true });
+const formatModified = (value: string): string => formatRelativeTime(value);
 
 const getLogLevelVariant = (
   level: InstanceLogLineLevel,

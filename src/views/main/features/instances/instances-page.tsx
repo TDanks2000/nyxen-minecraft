@@ -51,23 +51,32 @@ import { NewInstanceDialog } from "@/views/main/features/instances/components/ne
 import { useLaunchPlan } from "@/views/main/features/instances/hooks/use-launch-plan";
 import { useInstances } from "@/views/main/hooks/use-instances";
 
-const isActiveCurseForgeModpackJob = (job: DownloadQueueJob): boolean =>
-  job.metadata.kind === "curseForgeFile" &&
-  job.metadata.category === "modpacks" &&
+const isModpackDownloadJob = (job: DownloadQueueJob): boolean =>
+  (job.metadata.kind === "curseForgeFile" ||
+    job.metadata.kind === "modrinthFile") &&
+  job.metadata.category === "modpacks";
+
+const isActiveModpackDownloadJob = (job: DownloadQueueJob): boolean =>
+  isModpackDownloadJob(job) &&
   (job.status === "queued" || job.status === "running");
 
-const isCompletedCurseForgeModpackJob = (job: DownloadQueueJob): boolean =>
-  job.metadata.kind === "curseForgeFile" &&
-  job.metadata.category === "modpacks" &&
+const isCompletedModpackDownloadJob = (job: DownloadQueueJob): boolean =>
+  isModpackDownloadJob(job) &&
   job.status === "completed" &&
-  job.result?.kind === "curseForgeFile" &&
+  (job.result?.kind === "curseForgeFile" ||
+    job.result?.kind === "modrinthFile") &&
   Boolean(job.result.result.instance);
 
 const getActiveModpackJobInstanceId = (
   job: DownloadQueueJob,
   instances: Array<LauncherInstance>,
 ): string | null => {
-  if (job.metadata.kind !== "curseForgeFile") return null;
+  if (
+    job.metadata.kind !== "curseForgeFile" &&
+    job.metadata.kind !== "modrinthFile"
+  ) {
+    return null;
+  }
   const metadata = job.metadata;
 
   if (
@@ -205,7 +214,7 @@ export function InstancesPage() {
   const instances = instancesHook.data ?? [];
   const loading = instancesHook.loading && instancesHook.data === null;
   const activeModpackJobs = useMemo(
-    () => downloadJobs.filter(isActiveCurseForgeModpackJob),
+    () => downloadJobs.filter(isActiveModpackDownloadJob),
     [downloadJobs],
   );
   const { activeModpackJobByInstanceId, matchedActiveModpackJobIds } =
@@ -293,7 +302,7 @@ export function InstancesPage() {
 
     for (const job of downloadJobs) {
       if (
-        !isCompletedCurseForgeModpackJob(job) ||
+        !isCompletedModpackDownloadJob(job) ||
         refreshedModpackJobsRef.current.has(job.id)
       ) {
         continue;

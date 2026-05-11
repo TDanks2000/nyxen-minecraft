@@ -37,8 +37,11 @@ import {
 import { Skeleton } from "@/views/main/components/ui/skeleton";
 import { Spinner } from "@/views/main/components/ui/spinner";
 import { Switch } from "@/views/main/components/ui/switch";
+import { useDownloadQueueStore } from "@/views/main/features/downloads/download-queue-store";
+import { useInstanceContentStore } from "@/views/main/features/instances/hooks/use-instance-content-store";
 import { useInstances } from "@/views/main/hooks/use-instances";
 import { useLauncherStatus } from "@/views/main/hooks/use-launcher-status";
+import { useProfiles } from "@/views/main/hooks/use-profiles";
 import { useSettings } from "@/views/main/hooks/use-settings";
 import { rpc } from "@/views/main/lib/rpc";
 
@@ -122,7 +125,14 @@ export function SettingsPage() {
   const settingsHook = useSettings();
   const statusHook = useLauncherStatus();
   const instancesHook = useInstances();
+  const profilesHook = useProfiles();
   const { setTheme } = useTheme();
+  const clearAllInstanceContent = useInstanceContentStore(
+    (state) => state.clearAllContent,
+  );
+  const clearFinishedDownloadJobs = useDownloadQueueStore(
+    (state) => state.clearFinishedDownloadJobs,
+  );
   const [confirmStorageAction, setConfirmStorageAction] =
     useState<StorageAction | null>(null);
   const [clearingStorage, setClearingStorage] = useState<StorageAction | null>(
@@ -161,10 +171,13 @@ export function SettingsPage() {
             })`
           : "Launcher data cleared",
       );
+      await clearFinishedDownloadJobs().catch(() => []);
       statusHook.refresh();
 
       if (action === "data") {
         instancesHook.refresh();
+        profilesHook.refresh();
+        clearAllInstanceContent();
       }
 
       setConfirmStorageAction(null);

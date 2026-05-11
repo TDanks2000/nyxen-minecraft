@@ -26,6 +26,7 @@ import {
   MinecraftSkinCharacter,
   MinecraftSkinHead,
 } from "@/views/main/features/profiles/components/minecraft-skin";
+import { useLauncherStatus } from "@/views/main/hooks/use-launcher-status";
 import { useProfiles } from "@/views/main/hooks/use-profiles";
 import { cn } from "@/views/main/lib/utils";
 
@@ -94,6 +95,7 @@ function MinecraftCharacterPlaceholder() {
 
 export function ProfilesPage() {
   const profilesHook = useProfiles();
+  const statusHook = useLauncherStatus();
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const profiles = profilesHook.data;
@@ -273,7 +275,10 @@ export function ProfilesPage() {
       <AddProfileDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-        onCreated={() => profilesHook.refresh()}
+        onCreated={() => {
+          profilesHook.refresh();
+          statusHook.refresh();
+        }}
       />
     </div>
   );

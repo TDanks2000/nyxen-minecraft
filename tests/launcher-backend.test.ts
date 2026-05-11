@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import {
   chmodSync,
   existsSync,
@@ -2945,6 +2946,322 @@ describe("launcher backend", () => {
     }
   });
 
+  test("searches Modrinth modpacks through the backend API client", async () => {
+    const { searchModrinthProjects } = await import(
+      "../src/bun/launcher/modrinth"
+    );
+    const requestedUrls: Array<URL> = [];
+    const fetcher = async (
+      input: string | URL | Request,
+    ): Promise<Response> => {
+      const url = new URL(
+        input instanceof Request ? input.url : input.toString(),
+      );
+      requestedUrls.push(url);
+
+      if (url.pathname === "/v2/search") {
+        return jsonResponse({
+          hits: [
+            {
+              author: "Modrinth Author",
+              categories: ["fabric", "adventure"],
+              date_modified: "2024-03-02T00:00:00Z",
+              description: "Performance-focused Modrinth pack.",
+              display_categories: ["Adventure"],
+              downloads: 2000,
+              follows: 300,
+              gallery: ["https://cdn.modrinth.test/gallery.png"],
+              icon_url: "https://cdn.modrinth.test/icon.png",
+              project_id: "AABBCCDD",
+              project_type: "modpack",
+              slug: "modrinth-pack",
+              title: "Modrinth Pack",
+              versions: ["1.20.4"],
+            },
+          ],
+          limit: 12,
+          offset: 0,
+          total_hits: 1,
+        });
+      }
+
+      if (url.pathname === "/v2/project/AABBCCDD/version") {
+        return jsonResponse([
+          {
+            date_published: "2024-03-03T00:00:00Z",
+            files: [
+              {
+                filename: "modrinth-pack.mrpack",
+                hashes: { sha1: "pack-sha1" },
+                primary: true,
+                size: 123,
+                url: "https://cdn.modrinth.test/modrinth-pack.mrpack",
+              },
+            ],
+            game_versions: ["1.20.4"],
+            id: "version-one",
+            loaders: ["fabric"],
+            name: "Version One",
+            version_number: "1.0.0",
+            version_type: "release",
+          },
+        ]);
+      }
+
+      return new Response("not found", { status: 404 });
+    };
+
+    const result = await searchModrinthProjects(
+      {
+        gameVersion: "1.20.4",
+        loader: "fabric",
+        pageSize: 12,
+        section: "modpacks",
+      },
+      {
+        baseUrl: "https://api.modrinth.test/v2",
+        fetcher,
+      },
+    );
+
+    const searchUrl = requestedUrls.find(
+      (url) => url.pathname === "/v2/search",
+    );
+    if (!searchUrl) {
+      throw new Error("Expected Modrinth search fetch to be called.");
+    }
+
+    expect(JSON.parse(searchUrl.searchParams.get("facets") ?? "[]")).toEqual([
+      ["project_type:modpack"],
+      ["versions:1.20.4"],
+      ["categories:fabric"],
+    ]);
+    expect(searchUrl.searchParams.get("index")).toBe("downloads");
+    expect(result.data[0]).toMatchObject({
+      authors: ["Modrinth Author"],
+      downloadCount: 2000,
+      id: "AABBCCDD",
+      latestFile: {
+        downloadUrl: "https://cdn.modrinth.test/modrinth-pack.mrpack",
+        fileName: "modrinth-pack.mrpack",
+        id: "version-one",
+      },
+      section: "modpacks",
+      slug: "modrinth-pack",
+      websiteUrl: "https://modrinth.com/modpack/modrinth-pack",
+    });
+  });
+
+  test("installs Modrinth modpacks as locked instances", async () => {
+    const { downloadModrinthFile } = await import(
+      "../src/bun/launcher/instance-content"
+    );
+    const modData = new TextEncoder().encode("mod contents");
+    const modHash = createHash("sha1").update(modData).digest("hex");
+    const packArchive = createStoredZip({
+      "modrinth.index.json": JSON.stringify({
+        dependencies: {
+          "fabric-loader": "0.16.10",
+          minecraft: "1.20.4",
+        },
+        files: [
+          {
+            downloads: ["https://cdn.modrinth.test/mods/performance.jar"],
+            fileSize: modData.byteLength,
+            hashes: { sha1: modHash },
+            path: "mods/performance.jar",
+          },
+        ],
+        formatVersion: 1,
+        game: "minecraft",
+        name: "Modrinth Installed Pack",
+        versionId: "1.0.0",
+      }),
+      "overrides/config/performance.toml": "enabled = true\n",
+    });
+    const fetcher = async (
+      input: string | URL | Request,
+    ): Promise<Response> => {
+      const url = input instanceof Request ? input.url : input.toString();
+
+      if (url === "https://cdn.modrinth.test/modrinth-pack.mrpack") {
+        return new Response(Buffer.from(packArchive));
+      }
+
+      if (url === "https://cdn.modrinth.test/mods/performance.jar") {
+        return new Response(Buffer.from(modData));
+      }
+
+      return new Response("not found", { status: 404 });
+    };
+
+    const result = await downloadModrinthFile(
+      {
+        category: "modpacks",
+        file: {
+          displayName: "Modrinth Installed Pack 1.0.0",
+          downloadUrl: "https://cdn.modrinth.test/modrinth-pack.mrpack",
+          fileDate: "2024-03-03T00:00:00Z",
+          fileName: "modrinth-pack.mrpack",
+          gameVersions: ["1.20.4"],
+          hashes: {},
+          id: "version-one",
+          modLoaders: ["fabric"],
+          releaseType: "release",
+          sizeBytes: packArchive.byteLength,
+          versionNumber: "1.0.0",
+        },
+        projectId: "AABBCCDD",
+        projectName: "Modrinth Installed Pack",
+        projectSlug: "modrinth-installed-pack",
+        projectWebsiteUrl:
+          "https://modrinth.com/modpack/modrinth-installed-pack",
+      },
+      { fetcher },
+    );
+
+    const instance = result.instance;
+    if (!instance?.modpack) {
+      throw new Error("Expected Modrinth modpack install to create instance.");
+    }
+
+    expect(instance.loader).toBe("fabric");
+    expect(instance.loaderVersion).toBe("0.16.10");
+    expect(instance.versionId).toBe("1.20.4");
+    expect(instance.modpack).toMatchObject({
+      fileId: "version-one",
+      installedFiles: 1,
+      projectId: "AABBCCDD",
+      skippedFiles: 0,
+      source: "modrinth",
+      version: "1.0.0",
+    });
+    expect(existsSync(join(instance.folders.mods, "performance.jar"))).toBe(
+      true,
+    );
+    expect(
+      readFileSync(
+        join(instance.gameDirectory, "config", "performance.toml"),
+        "utf8",
+      ),
+    ).toBe("enabled = true\n");
+    expect(result.content?.recipe).toMatchObject({
+      counts: {
+        managedFiles: 1,
+        overrides: 1,
+      },
+      status: "clean",
+    });
+    expect(result.content?.recipe?.revision.source).toMatchObject({
+      fileId: "version-one",
+      kind: "modrinth",
+      projectId: "AABBCCDD",
+    });
+    expect(result.content?.recipe?.revision.files[0]).toMatchObject({
+      optional: false,
+      path: "mods/performance.jar",
+      policy: "managed",
+      source: "modrinth",
+    });
+  });
+
+  test("detects recipe drift for Modrinth modpack instances", async () => {
+    const { downloadModrinthFile, getInstanceContent } = await import(
+      "../src/bun/launcher/instance-content"
+    );
+    const modData = new TextEncoder().encode("mod contents");
+    const modHash = createHash("sha1").update(modData).digest("hex");
+    const packArchive = createStoredZip({
+      "modrinth.index.json": JSON.stringify({
+        dependencies: {
+          "fabric-loader": "0.16.10",
+          minecraft: "1.20.4",
+        },
+        files: [
+          {
+            downloads: ["https://cdn.modrinth.test/mods/performance.jar"],
+            fileSize: modData.byteLength,
+            hashes: { sha1: modHash },
+            path: "mods/performance.jar",
+          },
+        ],
+        formatVersion: 1,
+        game: "minecraft",
+        name: "Drift Test Pack",
+        versionId: "1.0.0",
+      }),
+      "overrides/config/performance.toml": "enabled = true\n",
+    });
+    const fetcher = async (
+      input: string | URL | Request,
+    ): Promise<Response> => {
+      const url = input instanceof Request ? input.url : input.toString();
+
+      if (url === "https://cdn.modrinth.test/drift-pack.mrpack") {
+        return new Response(Buffer.from(packArchive));
+      }
+
+      if (url === "https://cdn.modrinth.test/mods/performance.jar") {
+        return new Response(Buffer.from(modData));
+      }
+
+      return new Response("not found", { status: 404 });
+    };
+
+    const result = await downloadModrinthFile(
+      {
+        category: "modpacks",
+        file: {
+          displayName: "Drift Test Pack 1.0.0",
+          downloadUrl: "https://cdn.modrinth.test/drift-pack.mrpack",
+          fileDate: "2024-03-03T00:00:00Z",
+          fileName: "drift-pack.mrpack",
+          gameVersions: ["1.20.4"],
+          hashes: {},
+          id: "version-one",
+          modLoaders: ["fabric"],
+          releaseType: "release",
+          sizeBytes: packArchive.byteLength,
+          versionNumber: "1.0.0",
+        },
+        projectId: "DRIFTTEST",
+        projectName: "Drift Test Pack",
+        projectSlug: "drift-test-pack",
+        projectWebsiteUrl: "https://modrinth.com/modpack/drift-test-pack",
+      },
+      { fetcher },
+    );
+
+    const instance = result.instance;
+    if (!instance) {
+      throw new Error("Expected Modrinth modpack install to create instance.");
+    }
+
+    writeFileSync(join(instance.folders.mods, "performance.jar"), "changed");
+    writeFileSync(join(instance.folders.mods, "extra.jar"), "extra");
+    rmSync(join(instance.gameDirectory, "config", "performance.toml"), {
+      force: true,
+    });
+
+    const content = getInstanceContent({ instanceId: instance.id });
+
+    expect(content.recipe?.status).toBe("drifted");
+    expect(content.recipe?.counts).toMatchObject({
+      added: 1,
+      changed: 1,
+      missing: 1,
+    });
+    expect(
+      content.recipe?.drift.map((item) => `${item.status}:${item.path}`),
+    ).toEqual(
+      expect.arrayContaining([
+        "added:mods/extra.jar",
+        "changed:mods/performance.jar",
+        "missing:config/performance.toml",
+      ]),
+    );
+  });
+
   test("resolves Fabric launch metadata and maven artifacts", async () => {
     const { createLauncherInstance } = await import(
       "../src/bun/launcher/instances"
@@ -4112,13 +4429,45 @@ describe("launcher backend", () => {
 
   test("rejects unsafe external URLs before opening them", async () => {
     const { openExternal } = await import("../src/bun/rpc/handlers/runtime");
+    const { ensureLauncherDirectories } = await import(
+      "../src/bun/launcher/paths"
+    );
 
-    expect(() => openExternal({ url: "javascript:alert(1)" })).toThrow(
+    await expect(openExternal({ url: "javascript:alert(1)" })).rejects.toThrow(
       "External URL must use HTTP, HTTPS, or launcher file URLs.",
     );
-    expect(() => openExternal({ url: "file:///etc/passwd" })).toThrow(
+    await expect(openExternal({ url: "file:///etc/passwd" })).rejects.toThrow(
       "External file URL must stay inside launcher storage.",
     );
+
+    const directories = ensureLauncherDirectories();
+    await expect(
+      openExternal({
+        url: pathToFileURL(join(directories.temp, "missing-folder")).toString(),
+      }),
+    ).rejects.toThrow(
+      "External file URL must point to an existing launcher path.",
+    );
+
+    if (process.platform !== "win32") {
+      const outsideRoot = mkdtempSync(join(tmpdir(), "nyxen-outside-open-"));
+      const outsidePath = join(outsideRoot, "outside.txt");
+      const linkedPath = join(directories.temp, "outside-link.txt");
+
+      writeFileSync(outsidePath, "outside");
+      symlinkSync(outsidePath, linkedPath);
+
+      try {
+        await expect(
+          openExternal({ url: pathToFileURL(linkedPath).toString() }),
+        ).rejects.toThrow(
+          "External file URL must stay inside launcher storage.",
+        );
+      } finally {
+        rmSync(outsideRoot, { force: true, recursive: true });
+        rmSync(linkedPath, { force: true });
+      }
+    }
   });
 
   test("resolves launcher media file URLs for renderer images", async () => {
@@ -4385,6 +4734,39 @@ describe("launcher backend", () => {
     });
     const instance = createLauncherInstance({
       name: "Offline Survival",
+      profileId: profile.id,
+      versionId: "1.20.4",
+    });
+
+    await expect(
+      createLaunchPlan(
+        {
+          instanceId: instance.id,
+        },
+        {
+          fetcher: fakeFetch,
+        },
+      ),
+    ).rejects.toThrow("not backed by a Microsoft account");
+  });
+
+  test("rejects launch plans for unverified Microsoft profiles", async () => {
+    const { createLauncherInstance } = await import(
+      "../src/bun/launcher/instances"
+    );
+    const { createLaunchPlan } = await import(
+      "../src/bun/launcher/launch-plan"
+    );
+    const { createLauncherProfile } = await import(
+      "../src/bun/launcher/profiles"
+    );
+
+    const profile = createLauncherProfile({
+      displayName: "UnverifiedDev",
+      kind: "microsoft",
+    });
+    const instance = createLauncherInstance({
+      name: "Unverified Survival",
       profileId: profile.id,
       versionId: "1.20.4",
     });

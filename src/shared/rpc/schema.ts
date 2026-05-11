@@ -16,6 +16,8 @@ import type {
   DownloadArtifactsResult,
   DownloadCurseForgeFileInput,
   DownloadCurseForgeFileResult,
+  DownloadModrinthFileInput,
+  DownloadModrinthFileResult,
   DownloadQueueJob,
   EnqueueDownloadJobInput,
   GetInstanceContentInput,
@@ -42,10 +44,13 @@ import type {
   MinecraftVersionDetails,
   MinecraftVersionManifest,
   MinecraftVersionSummary,
+  ModrinthSearchResult,
+  ModrinthStatus,
   ResolveMediaUrlInput,
   ResolveMediaUrlResult,
   RunningLaunch,
   SearchCurseForgeProjectsInput,
+  SearchModrinthProjectsInput,
   SetInstanceModEnabledInput,
   SettingsStatus,
   SettingValue,
@@ -91,6 +96,14 @@ export type MainViewRPC = {
       searchCurseForgeProjects: {
         params: SearchCurseForgeProjectsInput;
         response: CurseForgeSearchResult;
+      };
+      getModrinthStatus: {
+        params: null;
+        response: ModrinthStatus;
+      };
+      searchModrinthProjects: {
+        params: SearchModrinthProjectsInput;
+        response: ModrinthSearchResult;
       };
       refreshMinecraftVersionManifest: {
         params: null;
@@ -195,6 +208,10 @@ export type MainViewRPC = {
       downloadCurseForgeFile: {
         params: DownloadCurseForgeFileInput;
         response: DownloadCurseForgeFileResult;
+      };
+      downloadModrinthFile: {
+        params: DownloadModrinthFileInput;
+        response: DownloadModrinthFileResult;
       };
       installDownloadedCurseForgeFile: {
         params: InstallDownloadedCurseForgeFileInput;
