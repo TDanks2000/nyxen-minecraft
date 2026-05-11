@@ -537,6 +537,9 @@ const makeLaunchPlan = (instance: LauncherInstance): LaunchPlan => {
     instance,
     java: {
       component: "java-runtime-gamma",
+      detectedMajorVersion: null,
+      detectedVersion: null,
+      detectionError: null,
       executable: `${directories.runtimes}/java-runtime-gamma/bin/java`,
       management: "app-controlled",
       majorVersion: 21,

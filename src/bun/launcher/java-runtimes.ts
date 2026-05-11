@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import {
   chmodSync,
@@ -58,6 +59,30 @@ export type ManagedJavaRuntime = RequiredJavaVersion & {
   versionName: string;
 };
 
+export type DetectedJavaRuntime = {
+  error: string | null;
+  executable: string;
+  majorVersion: number | null;
+  output: string;
+  version: string | null;
+};
+
+export type JavaVersionProbeResult = {
+  error?: { message?: string } | null;
+  status: number | null;
+  stderr: string;
+  stdout: string;
+};
+
+export type JavaVersionProbeRunner = (
+  executable: string,
+) => JavaVersionProbeResult;
+
+type JavaDetectionOptions = {
+  runner?: JavaVersionProbeRunner;
+  timeoutMs?: number;
+};
+
 const runtimeManifestPointerSchema = z.object({
   sha1: z.string().optional(),
   size: z.number().int().optional(),
@@ -101,6 +126,100 @@ const runtimePackageManifestSchema = z.object({
 type RuntimeManifest = z.infer<typeof runtimeManifestSchema>;
 type RuntimeEntry = z.infer<typeof runtimeEntrySchema>;
 type RuntimePackageManifest = z.infer<typeof runtimePackageManifestSchema>;
+
+const parseJavaMajorVersion = (version: string): number | null => {
+  const normalized = version.trim();
+  const legacyMatch = /^1\.(\d+)(?:[._-]|$)/.exec(normalized);
+
+  if (legacyMatch?.[1]) {
+    return Number.parseInt(legacyMatch[1], 10);
+  }
+
+  const modernMatch = /^(\d+)(?:[._-]|$)/.exec(normalized);
+
+  return modernMatch?.[1] ? Number.parseInt(modernMatch[1], 10) : null;
+};
+
+export const parseJavaRuntimeVersion = (
+  output: string,
+): Pick<DetectedJavaRuntime, "majorVersion" | "version"> | null => {
+  const versionMatch =
+    /(?:openjdk|java)\s+version\s+"([^"]+)"/i.exec(output) ??
+    /(?:openjdk|java)\s+([^"\s]+)\s/i.exec(output);
+  const version = versionMatch?.[1]?.trim();
+
+  if (!version) return null;
+
+  return {
+    majorVersion: parseJavaMajorVersion(version),
+    version,
+  };
+};
+
+const runJavaVersionProbe = (
+  executable: string,
+  timeoutMs: number,
+): JavaVersionProbeResult => {
+  const result = spawnSync(executable, ["-version"], {
+    encoding: "utf8",
+    timeout: timeoutMs,
+    windowsHide: true,
+  });
+
+  return {
+    error: result.error ? { message: result.error.message } : null,
+    status: result.status,
+    stderr: result.stderr ?? "",
+    stdout: result.stdout ?? "",
+  };
+};
+
+export const detectInstalledJavaRuntime = (
+  executable = "java",
+  options: JavaDetectionOptions = {},
+): DetectedJavaRuntime => {
+  const timeoutMs = Math.max(1, Math.trunc(options.timeoutMs ?? 3_000));
+  const runner =
+    options.runner ?? ((path) => runJavaVersionProbe(path, timeoutMs));
+  const result = runner(executable);
+  const output = [result.stdout, result.stderr]
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+
+  if (result.error?.message) {
+    return {
+      error: result.error.message,
+      executable,
+      majorVersion: null,
+      output,
+      version: null,
+    };
+  }
+
+  const parsed = parseJavaRuntimeVersion(output);
+
+  if (!parsed?.majorVersion || !parsed.version) {
+    return {
+      error: "Java version output could not be parsed.",
+      executable,
+      majorVersion: parsed?.majorVersion ?? null,
+      output,
+      version: parsed?.version ?? null,
+    };
+  }
+
+  return {
+    error:
+      result.status === 0
+        ? null
+        : `Java version exited with status ${result.status}.`,
+    executable,
+    majorVersion: parsed.majorVersion,
+    output,
+    version: parsed.version,
+  };
+};
 
 const getRequestTimeoutMs = (options: JavaRuntimeOptions): number => {
   if (options.requestTimeoutMs !== undefined) {

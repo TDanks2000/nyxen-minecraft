@@ -657,6 +657,9 @@ const createTestLaunchPlan = (
     },
     java: {
       component: "java-runtime-gamma",
+      detectedMajorVersion: null,
+      detectedVersion: null,
+      detectionError: null,
       executable: "java",
       management: "auto",
       majorVersion: 17,
@@ -1278,6 +1281,99 @@ describe("launcher backend", () => {
     ).toThrow("Java executable must point to java or javaw");
   });
 
+  test("explains required Java when an instance pins user-managed Java", async () => {
+    const { createLauncherInstance } = await import(
+      "../src/bun/launcher/instances"
+    );
+    const { createLaunchPlan } = await import(
+      "../src/bun/launcher/launch-plan"
+    );
+    const { completeMicrosoftProfileLogin, startMicrosoftProfileLogin } =
+      await import("../src/bun/launcher/microsoft-auth");
+    const { getMinecraftVersionDetails, refreshMinecraftVersionManifest } =
+      await import("../src/bun/launcher/versions");
+
+    await refreshMinecraftVersionManifest({ fetcher: fakeFetch });
+    await getMinecraftVersionDetails(
+      { versionId: "1.20.4" },
+      { fetcher: fakeFetch },
+    );
+    const login = await startMicrosoftProfileLogin({ fetcher: fakeFetch });
+    let loginResult = await completeMicrosoftProfileLogin(
+      { deviceCode: login.deviceCode },
+      { fetcher: fakeFetch },
+    );
+
+    for (
+      let attempt = 0;
+      loginResult.status === "pending" && attempt < 10;
+      attempt += 1
+    ) {
+      await wait(0);
+      loginResult = await completeMicrosoftProfileLogin(
+        { deviceCode: login.deviceCode },
+        { fetcher: fakeFetch },
+      );
+    }
+
+    if (loginResult.status !== "complete") {
+      throw new Error("Expected Microsoft login to complete.");
+    }
+
+    const instance = createLauncherInstance({
+      javaExecutable: "/usr/bin/java",
+      name: "Pinned Java",
+      profileId: loginResult.profile.id,
+      versionId: "1.20.4",
+    });
+    const plan = await createLaunchPlan(
+      { instanceId: instance.id },
+      {
+        fetcher: fakeFetch,
+        javaVersionProbeRunner: () => ({
+          error: null,
+          status: 0,
+          stderr: 'openjdk version "1.8.0_392"',
+          stdout: "",
+        }),
+      },
+    );
+
+    expect(plan.java.management).toBe("auto");
+    expect(plan.java.executable).toBe("/usr/bin/java");
+    expect(plan.java.detectedMajorVersion).toBe(8);
+    expect(plan.java.detectedVersion).toBe("1.8.0_392");
+    expect(plan.warnings).toContain(
+      "Instance Java executable is user-managed; detected Java 8, but 1.20.4 requires Java 17.",
+    );
+
+    const missingJavaInstance = createLauncherInstance({
+      javaExecutable: "/opt/missing/bin/java",
+      name: "Missing Java",
+      profileId: loginResult.profile.id,
+      versionId: "1.20.4",
+    });
+    const missingJavaPlan = await createLaunchPlan(
+      { instanceId: missingJavaInstance.id },
+      {
+        fetcher: fakeFetch,
+        javaVersionProbeRunner: () => ({
+          error: { message: "ENOENT" },
+          status: null,
+          stderr: "",
+          stdout: "",
+        }),
+      },
+    );
+
+    expect(missingJavaPlan.java.detectedMajorVersion).toBeNull();
+    expect(missingJavaPlan.java.detectedVersion).toBeNull();
+    expect(missingJavaPlan.java.detectionError).toBe("ENOENT");
+    expect(missingJavaPlan.warnings).toContain(
+      "Instance Java executable is user-managed; 1.20.4 requires Java 17, but Java version could not be detected: ENOENT",
+    );
+  });
+
   test("creates isolated Prism-style folders for each instance", async () => {
     const { createLauncherInstance } = await import(
       "../src/bun/launcher/instances"
@@ -1636,6 +1732,7 @@ describe("launcher backend", () => {
   test("installs and updates CurseForge modpacks as locked instances", async () => {
     const {
       downloadCurseForgeFile,
+      getInstanceContent,
       getMissingRequiredModpackDependencies,
       getInstanceModpackUpdate,
       setInstanceModEnabled,
@@ -1935,6 +2032,49 @@ describe("launcher backend", () => {
         "utf8",
       ),
     ).toBe("fallback-dependency");
+    const initialRecipe = result.content?.recipe;
+    expect(initialRecipe).toMatchObject({
+      counts: {
+        managedFiles: 3,
+        overrides: 1,
+        weaklyVerified: 0,
+      },
+      status: "clean",
+    });
+    expect(initialRecipe?.revision.source).toMatchObject({
+      fileId: "444",
+      kind: "curseforge",
+      projectId: "111",
+    });
+    expect(
+      initialRecipe?.revision.files.map((file) => file.path).sort(),
+    ).toEqual([
+      "mods/dependency.jar",
+      "mods/fallback-dependency.jar",
+      "resourcepacks/resource-pack.zip",
+    ]);
+    expect(
+      initialRecipe?.revision.files.every(
+        (file) => file.hashes.sha1 && file.hashes.sha512,
+      ),
+    ).toBe(true);
+    writeFileSync(
+      join(instance.folders.mods, "fallback-dependency.jar"),
+      "changed",
+    );
+    rmSync(join(instance.folders.mods, "dependency.jar"), { force: true });
+    const driftedRecipe = getInstanceContent({
+      instanceId: instance.id,
+    }).recipe;
+    expect(driftedRecipe?.status).toBe("drifted");
+    expect(
+      driftedRecipe?.drift.map((item) => `${item.status}:${item.path}`),
+    ).toEqual(
+      expect.arrayContaining([
+        "changed:mods/fallback-dependency.jar",
+        "missing:mods/dependency.jar",
+      ]),
+    );
     expect(getMissingRequiredModpackDependencies(instance)).toEqual([]);
     const metadataPath = join(
       instance.folders.metadata,
@@ -1991,6 +2131,12 @@ describe("launcher backend", () => {
     );
     expect(update.updateAvailable).toBe(true);
 
+    writeFileSync(join(instance.folders.config, "user.cfg"), "before-update");
+    mkdirSync(join(instance.folders.saves, "World"), { recursive: true });
+    writeFileSync(
+      join(instance.folders.saves, "World", "level.dat"),
+      "world-data",
+    );
     mediaAvailable = false;
     const updated = await updateInstanceModpack(
       { instanceId: instance.id },
@@ -2008,6 +2154,57 @@ describe("launcher backend", () => {
     expect(updated.instance.modpack?.iconUrl).toBe(originalIconUrl);
     expect(updated.instance.modpack?.bannerUrl).toBe(originalBannerUrl);
     expect(updated.update.updateAvailable).toBe(false);
+    expect(updated.content.recipe).toMatchObject({
+      counts: {
+        added: 1,
+        managedFiles: 3,
+        overrides: 1,
+        weaklyVerified: 0,
+      },
+      status: "drifted",
+    });
+    expect(
+      updated.content.recipe?.drift.map(
+        (item) => `${item.status}:${item.path}`,
+      ),
+    ).toContain("added:config/user.cfg");
+    expect(updated.content.recipe?.revision.source).toMatchObject({
+      fileId: "445",
+      kind: "curseforge",
+      projectId: "111",
+    });
+    expect(updated.content.recipe?.revision.previousRevisionId).toBe(
+      initialRecipe?.revision.id,
+    );
+    const snapshotFolder = join(instance.folders.metadata, "update-snapshots");
+    const [snapshotFile] = readdirSync(snapshotFolder).sort();
+    if (!snapshotFile) {
+      throw new Error("Expected modpack update snapshot to be written.");
+    }
+    const snapshot = JSON.parse(
+      readFileSync(join(snapshotFolder, snapshotFile), "utf8"),
+    );
+    expect(snapshot).toMatchObject({
+      instanceId: instance.id,
+      modpack: {
+        fileId: "444",
+      },
+      reason: {
+        fromFileId: "444",
+        kind: "modpack-update",
+        toFileId: "445",
+      },
+      recipeRevisionId: initialRecipe?.revision.id,
+    });
+    expect(
+      snapshot.files.mods.map((file: { path: string }) => file.path),
+    ).toContain("mods/fallback-dependency.jar");
+    expect(
+      snapshot.files.config.map((file: { path: string }) => file.path),
+    ).toContain("config/user.cfg");
+    expect(
+      snapshot.files.saves.map((file: { path: string }) => file.path),
+    ).toContain("saves/World/level.dat");
     expect(
       readFileSync(join(instance.gameDirectory, "options.txt"), "utf8"),
     ).toBe("pack-version-2");
@@ -2020,6 +2217,146 @@ describe("launcher backend", () => {
     expect(
       readFileSync(join(instance.folders.resourcePacks, "resource-pack.zip")),
     ).toEqual(Buffer.from(resourcePackArchive));
+  });
+
+  test("marks skipped CurseForge modpack dependencies as optional recipe files", async () => {
+    const { downloadCurseForgeFile } = await import(
+      "../src/bun/launcher/instance-content"
+    );
+    const { refreshMinecraftVersionManifest } = await import(
+      "../src/bun/launcher/versions"
+    );
+
+    await refreshMinecraftVersionManifest({ fetcher: fakeFetch });
+
+    const packArchive = createStoredZip({
+      "manifest.json": JSON.stringify({
+        files: [
+          {
+            fileID: 333,
+            projectID: 222,
+            required: true,
+          },
+          {
+            fileID: 335,
+            projectID: 223,
+            required: true,
+          },
+        ],
+        manifestType: "minecraftModpack",
+        manifestVersion: 1,
+        minecraft: {
+          modLoaders: [{ id: "fabric-0.15.7", primary: true }],
+          version: "1.20.4",
+        },
+        name: "Partial CurseForge Pack",
+        overrides: "overrides",
+        version: "partial-1",
+      }),
+      "overrides/options.txt": "partial-pack",
+    });
+    const fetcher = async (
+      input: string | URL | Request,
+    ): Promise<Response> => {
+      const url = input instanceof Request ? input.url : input.toString();
+
+      if (url === "https://downloads.example.test/partial-pack.zip") {
+        return new Response(Buffer.from(packArchive), {
+          headers: { "content-length": String(packArchive.byteLength) },
+        });
+      }
+
+      if (url === "https://curseforge.test/v1/mods/222/files/333") {
+        return jsonResponse({
+          data: {
+            displayName: "Installed Dependency",
+            downloadUrl: "https://downloads.example.test/installed.jar",
+            fileDate: "2024-02-01T00:00:00Z",
+            fileName: "installed.jar",
+            gameVersions: ["1.20.4", "Fabric"],
+            id: 333,
+            releaseType: 1,
+          },
+        });
+      }
+
+      if (url === "https://curseforge.test/v1/mods/223/files/335") {
+        return jsonResponse({
+          data: {
+            displayName: "Skipped Dependency",
+            downloadUrl: "https://downloads.example.test/skipped.jar",
+            fileDate: "2024-02-01T00:00:00Z",
+            fileName: "skipped.jar",
+            gameVersions: ["1.20.4", "Fabric"],
+            id: 335,
+            releaseType: 1,
+          },
+        });
+      }
+
+      if (url === "https://downloads.example.test/installed.jar") {
+        return new Response("installed");
+      }
+
+      if (url === "https://downloads.example.test/skipped.jar") {
+        return new Response("unavailable", { status: 503 });
+      }
+
+      return new Response("not found", { status: 404 });
+    };
+
+    const result = await downloadCurseForgeFile(
+      {
+        category: "modpacks",
+        file: {
+          displayName: "Partial CurseForge Pack 1.0",
+          downloadUrl: "https://downloads.example.test/partial-pack.zip",
+          fileDate: "2024-02-01T00:00:00Z",
+          fileName: "partial-pack.zip",
+          gameVersions: ["1.20.4", "Fabric"],
+          id: 444,
+          modLoaders: ["fabric"],
+          releaseType: "release",
+        },
+        projectId: 111,
+        projectName: "Partial CurseForge Pack",
+      },
+      {
+        apiKey: "test-curseforge-key",
+        baseUrl: "https://curseforge.test",
+        fetcher,
+      },
+    );
+    const recipe = result.content?.recipe;
+
+    expect(result.instance?.modpack).toMatchObject({
+      installedFiles: 1,
+      skippedFiles: 1,
+    });
+    expect(recipe).toMatchObject({
+      counts: {
+        managedFiles: 2,
+        optionalMissing: 1,
+      },
+      status: "incomplete",
+    });
+    expect(recipe?.revision.files).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          optional: false,
+          path: "mods/installed.jar",
+        }),
+        expect.objectContaining({
+          optional: true,
+          path: "mods/skipped.jar",
+          providerFileId: "335",
+          providerProjectId: "223",
+        }),
+      ]),
+    );
+    expect(
+      recipe?.drift.map((item) => `${item.status}:${item.path}`),
+    ).toContain("optionalMissing:mods/skipped.jar");
   });
 
   test("queues CurseForge downloads in backend-owned download state", async () => {
@@ -4598,6 +4935,9 @@ describe("launcher backend", () => {
       classpath,
       java: {
         component: "java-runtime-gamma",
+        detectedMajorVersion: null,
+        detectedVersion: null,
+        detectionError: null,
         executable: fakeJavaPath,
         management: "auto",
         majorVersion: 17,
@@ -4657,6 +4997,9 @@ describe("launcher backend", () => {
     const plan = createTestLaunchPlan(directories, {
       java: {
         component: "java-runtime-gamma",
+        detectedMajorVersion: null,
+        detectedVersion: null,
+        detectionError: null,
         executable: join(dataRoot, "missing-runtime", "bin", "java"),
         management: "auto",
         majorVersion: 17,

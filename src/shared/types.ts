@@ -849,6 +849,9 @@ export type LaunchPlan = {
   instance: LauncherInstance;
   java: {
     component: string | null;
+    detectedMajorVersion: number | null;
+    detectedVersion: string | null;
+    detectionError: string | null;
     executable: string;
     management: JavaManagementMode;
     majorVersion: number | null;

@@ -14,7 +14,10 @@ import { getJavaManagementMode } from "../settings/store";
 import { collectMissingAssetObjectArtifacts } from "./assets";
 import { getLauncherInstance } from "./instances";
 import {
+  type DetectedJavaRuntime,
+  detectInstalledJavaRuntime,
   getRequiredJavaVersion,
+  type JavaVersionProbeRunner,
   type ManagedJavaRuntime,
   resolveManagedJavaRuntime,
 } from "./java-runtimes";
@@ -44,7 +47,9 @@ type Fetcher = (
 type LaunchPlanOptions = {
   fetcher?: Fetcher;
   manifestCacheTtlMs?: number;
+  javaDetectionTimeoutMs?: number;
   javaRuntimeManifestUrl?: string;
+  javaVersionProbeRunner?: JavaVersionProbeRunner;
   requestTimeoutMs?: number;
 };
 
@@ -336,6 +341,7 @@ export const createLaunchPlan = async (
   const javaManagement = getJavaManagementMode();
   const requiredJava = getRequiredJavaVersion(versionDetails);
   let javaExecutable = instance.javaExecutable ?? "java";
+  let detectedJava: DetectedJavaRuntime | null = null;
   let managedRuntime: ManagedJavaRuntime | null = null;
   let assetIndexId: string | null = null;
 
@@ -377,6 +383,28 @@ export const createLaunchPlan = async (
     }
 
     missingArtifacts.push(...managedRuntime.missingArtifacts);
+  } else if (instance.javaExecutable) {
+    detectedJava = detectInstalledJavaRuntime(instance.javaExecutable, {
+      runner: options.javaVersionProbeRunner,
+      timeoutMs: options.javaDetectionTimeoutMs,
+    });
+
+    if (
+      detectedJava.majorVersion !== null &&
+      detectedJava.majorVersion !== requiredJava.majorVersion
+    ) {
+      warnings.push(
+        `Instance Java executable is user-managed; detected Java ${detectedJava.majorVersion}, but ${versionDetailsId} requires Java ${requiredJava.majorVersion}.`,
+      );
+    } else if (detectedJava.error && detectedJava.version === null) {
+      warnings.push(
+        `Instance Java executable is user-managed; ${versionDetailsId} requires Java ${requiredJava.majorVersion}, but Java version could not be detected: ${detectedJava.error}`,
+      );
+    } else {
+      warnings.push(
+        `Instance Java executable is user-managed; ${versionDetailsId} requires Java ${requiredJava.majorVersion}.`,
+      );
+    }
   }
 
   if (modLoader?.installerPath) {
@@ -579,6 +607,9 @@ export const createLaunchPlan = async (
     instance,
     java: {
       component: requiredJava.component,
+      detectedMajorVersion: detectedJava?.majorVersion ?? null,
+      detectedVersion: detectedJava?.version ?? null,
+      detectionError: detectedJava?.error ?? null,
       executable: javaExecutable,
       management: javaManagement,
       majorVersion: requiredJava.majorVersion,

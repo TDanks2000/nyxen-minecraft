@@ -328,8 +328,20 @@ export function LaunchPlanSheet({
                   <p className="text-xs text-muted-foreground mt-0.5">
                     {plan.java.management === "app-controlled"
                       ? `Managed Java ${plan.java.majorVersion ?? "runtime"}${plan.java.runtimeVersion ? ` (${plan.java.runtimeVersion})` : ""}`
-                      : `System Java${plan.java.majorVersion ? ` · Java ${plan.java.majorVersion}` : ""}`}
+                      : `System Java${plan.java.detectedMajorVersion ? ` · detected Java ${plan.java.detectedMajorVersion}` : plan.java.majorVersion ? ` · requires Java ${plan.java.majorVersion}` : ""}`}
                   </p>
+                  {plan.java.management !== "app-controlled" &&
+                    plan.java.detectedVersion && (
+                      <p className="text-muted-foreground text-xs">
+                        Detected version: {plan.java.detectedVersion}
+                      </p>
+                    )}
+                  {plan.java.management !== "app-controlled" &&
+                    plan.java.detectionError && (
+                      <p className="text-amber-600 text-xs dark:text-amber-400">
+                        Detection failed: {plan.java.detectionError}
+                      </p>
+                    )}
                   {plan.java.management === "app-controlled" ? (
                     <div className="mt-2 flex flex-col gap-1.5">
                       <p className="text-xs text-muted-foreground">

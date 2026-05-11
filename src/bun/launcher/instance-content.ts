@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
   closeSync,
+  type Dirent,
   existsSync,
   mkdirSync,
   openSync,
@@ -57,6 +58,8 @@ import type { CurseForgeOptions } from "./curseforge";
 import { getCurseForgeProject, getCurseForgeProjectFile } from "./curseforge";
 import {
   getInstanceRecipeSummary,
+  readInstanceRecipeRevision,
+  writeCurseForgeRecipeRevision,
   writeModrinthRecipeRevision,
 } from "./instance-recipes";
 import {
@@ -146,6 +149,11 @@ type ParsedCurseForgeModpackManifest = {
   recommendedMemoryMb: number | null;
   version: string | null;
 };
+
+type SkippedCurseForgeModpackDependency = Pick<
+  InstalledCurseForgeFile,
+  "category" | "fileId" | "fileName" | "projectId"
+>;
 
 type ModrinthModpackManifestFile = {
   downloads: Array<string>;
@@ -2210,6 +2218,148 @@ const removeManagedModFiles = (instance: LauncherInstance): void => {
   }
 };
 
+type InstanceUpdateSnapshotFile = {
+  modifiedAt: string;
+  path: string;
+  sizeBytes: number;
+};
+
+type InstanceUpdateSnapshot = {
+  createdAt: string;
+  files: {
+    config: Array<InstanceUpdateSnapshotFile>;
+    mods: Array<InstanceUpdateSnapshotFile>;
+    resourcePacks: Array<InstanceUpdateSnapshotFile>;
+    saves: Array<InstanceUpdateSnapshotFile>;
+    shaderPacks: Array<InstanceUpdateSnapshotFile>;
+  };
+  id: string;
+  instanceId: string;
+  modpack: LauncherInstanceModpack | null;
+  reason: {
+    fromFileId: string;
+    fromVersion?: string;
+    kind: "modpack-update";
+    toFileId: string;
+    toVersion?: string;
+  };
+  recipeRevisionId: string | null;
+};
+
+const toSnapshotRelativePath = (
+  instance: LauncherInstance,
+  path: string,
+): string | null => {
+  const relativePath = relative(resolve(instance.gameDirectory), resolve(path));
+
+  if (
+    !relativePath ||
+    relativePath.startsWith("..") ||
+    isAbsolute(relativePath)
+  ) {
+    return null;
+  }
+
+  return relativePath
+    .split(/[\\/]+/)
+    .filter(Boolean)
+    .join("/");
+};
+
+const listSnapshotFiles = (
+  instance: LauncherInstance,
+  folder: string,
+): Array<InstanceUpdateSnapshotFile> => {
+  const files: Array<InstanceUpdateSnapshotFile> = [];
+
+  const visit = (directory: string): void => {
+    let entries: Array<Dirent>;
+
+    try {
+      entries = readdirSync(directory, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    for (const entry of entries) {
+      if (!isSafeFileName(entry.name) || entry.isSymbolicLink()) continue;
+
+      const path = join(directory, entry.name);
+
+      if (entry.isDirectory()) {
+        visit(path);
+        continue;
+      }
+
+      if (!entry.isFile()) continue;
+
+      const relativePath = toSnapshotRelativePath(instance, path);
+      if (!relativePath) continue;
+
+      const stats = statSync(path);
+      files.push({
+        modifiedAt: stats.mtime.toISOString(),
+        path: relativePath,
+        sizeBytes: stats.size,
+      });
+    }
+  };
+
+  visit(folder);
+
+  return files.sort((a, b) => a.path.localeCompare(b.path));
+};
+
+const writeInstanceUpdateSnapshot = ({
+  instance,
+  targetFile,
+}: {
+  instance: LauncherInstance;
+  targetFile: DownloadCurseForgeFileInput["file"];
+}): string | null => {
+  if (!instance.modpack) return null;
+
+  const createdAt = new Date().toISOString();
+  const recipeRevision = readInstanceRecipeRevision(instance);
+  const snapshot: InstanceUpdateSnapshot = {
+    createdAt,
+    files: {
+      config: listSnapshotFiles(instance, instance.folders.config),
+      mods: listSnapshotFiles(instance, instance.folders.mods),
+      resourcePacks: listSnapshotFiles(
+        instance,
+        instance.folders.resourcePacks,
+      ),
+      saves: listSnapshotFiles(instance, instance.folders.saves),
+      shaderPacks: listSnapshotFiles(instance, instance.folders.shaderPacks),
+    },
+    id: `snapshot_${randomUUID()}`,
+    instanceId: instance.id,
+    modpack: instance.modpack,
+    reason: {
+      fromFileId: instance.modpack.fileId,
+      fromVersion: instance.modpack.version,
+      kind: "modpack-update",
+      toFileId: String(targetFile.id),
+      toVersion: targetFile.displayName || undefined,
+    },
+    recipeRevisionId: recipeRevision?.id ?? null,
+  };
+  const safeCreatedAt = createdAt.replaceAll(/[:.]/g, "-");
+  const path = join(
+    instance.folders.metadata,
+    "update-snapshots",
+    `${safeCreatedAt}-${snapshot.id}.json`,
+  );
+
+  writeDownloadedFile(
+    path,
+    new TextEncoder().encode(`${JSON.stringify(snapshot, null, 2)}\n`),
+  );
+
+  return path;
+};
+
 const getInstallableDependencyCategory = (
   section: Awaited<ReturnType<typeof getCurseForgeProject>>["section"],
 ): Exclude<CurseForgeCategory, "modpacks"> | null => {
@@ -2302,9 +2452,14 @@ const installModpackDependencies = async (
   instance: LauncherInstance,
   manifest: ParsedCurseForgeModpackManifest,
   options: DownloadCurseForgeFileOptions,
-): Promise<{ installedFiles: number; skippedFiles: number }> => {
+): Promise<{
+  installedFiles: number;
+  skippedDependencies: Array<SkippedCurseForgeModpackDependency>;
+  skippedFiles: number;
+}> => {
   let installedFiles = 0;
   let skippedFiles = 0;
+  const skippedDependencies: Array<SkippedCurseForgeModpackDependency> = [];
   const requiredDependencies = manifest.files.filter(
     (dependency) => dependency.required,
   );
@@ -2327,6 +2482,7 @@ const installModpackDependencies = async (
 
     const dependencyItemId = `curseforge:${dependency.projectID}:${dependency.fileID}`;
     let dependencyLabel = `Project ${dependency.projectID} file ${dependency.fileID}`;
+    let skippedDependency: SkippedCurseForgeModpackDependency | null = null;
 
     try {
       const file = await getCurseForgeProjectFile(
@@ -2343,6 +2499,15 @@ const installModpackDependencies = async (
         options,
       });
       const fileName = sanitizeCurseForgeFileName(installInput);
+      skippedDependency =
+        installInput.category === "modpacks"
+          ? null
+          : {
+              category: installInput.category,
+              fileId: String(file.id),
+              fileName,
+              projectId: String(dependency.projectID),
+            };
       const data = await fetchCurseForgeDownload(installInput, options);
 
       await installCurseForgeFileData(
@@ -2353,6 +2518,9 @@ const installModpackDependencies = async (
       installedFiles += 1;
     } catch {
       skippedFiles += 1;
+      if (skippedDependency) {
+        skippedDependencies.push(skippedDependency);
+      }
       emitCurseForgeProgress(options, {
         item: {
           error: null,
@@ -2366,7 +2534,7 @@ const installModpackDependencies = async (
     }
   }
 
-  return { installedFiles, skippedFiles };
+  return { installedFiles, skippedDependencies, skippedFiles };
 };
 
 const installCurseForgeModpackData = async (
@@ -2475,6 +2643,15 @@ const installCurseForgeModpackData = async (
   const metadata = readCurseForgeMetadata(instance);
   metadata.modpacks = [installedItem];
   writeCurseForgeMetadata(instance, metadata);
+  writeCurseForgeRecipeRevision({
+    archiveData: data,
+    fileName,
+    input,
+    installedFiles: Object.values(metadata).flatMap((items) => items ?? []),
+    instance,
+    manifest,
+    skippedFiles: dependencyResult.skippedDependencies,
+  });
 
   return {
     category: "modpacks",
@@ -3073,6 +3250,7 @@ export const updateInstanceModpack = async (
     projectWebsiteUrl: latest.websiteUrl,
   };
   const fileName = sanitizeCurseForgeFileName(input);
+  writeInstanceUpdateSnapshot({ instance, targetFile: latestFile });
   const data = await fetchCurseForgeDownload(input, options);
   const result = await installCurseForgeModpackData(
     input,

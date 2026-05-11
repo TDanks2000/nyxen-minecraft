@@ -11,7 +11,9 @@ import {
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type {
+  DownloadCurseForgeFileInput,
   DownloadModrinthFileInput,
+  InstalledCurseForgeFile,
   InstanceRecipeDriftItem,
   InstanceRecipeDriftStatus,
   InstanceRecipeFilePolicy,
@@ -49,6 +51,38 @@ type WriteModrinthRecipeRevisionInput = {
   instance: LauncherInstance;
   manifest: ModrinthRecipeManifest;
   skippedFilePaths: Set<string>;
+};
+
+type CurseForgeRecipeManifestFile = {
+  fileID: number;
+  projectID: number;
+  required: boolean;
+};
+
+type CurseForgeRecipeManifest = {
+  files: Array<CurseForgeRecipeManifestFile>;
+  minecraftVersion: string;
+  modLoader: LauncherInstance["loader"];
+  modLoaderVersion: string | null;
+  name: string | null;
+  overrides: string | null;
+  recommendedMemoryMb: number | null;
+  version: string | null;
+};
+
+type CurseForgeRecipeProviderFile = Pick<
+  InstalledCurseForgeFile,
+  "category" | "fileId" | "fileName" | "projectId"
+>;
+
+type WriteCurseForgeRecipeRevisionInput = {
+  archiveData: Uint8Array;
+  fileName: string;
+  input: DownloadCurseForgeFileInput;
+  installedFiles: Array<InstalledCurseForgeFile>;
+  instance: LauncherInstance;
+  manifest: CurseForgeRecipeManifest;
+  skippedFiles: Array<CurseForgeRecipeProviderFile>;
 };
 
 const recipeRevisionFileName = "recipe-revision.json";
@@ -164,8 +198,12 @@ export const readInstanceRecipeRevision = (
 
 const getOverrideEntries = (
   archiveData: Uint8Array,
+  overridesFolder = "overrides",
 ): InstanceRecipeRevision["overrides"] => {
-  const prefix = "overrides/";
+  const normalizedFolder = normalizeRecipePath(overridesFolder);
+  if (!normalizedFolder) return [];
+
+  const prefix = `${normalizedFolder}/`;
 
   return listZipEntries(archiveData).flatMap((entry) => {
     if (!entry.name.startsWith(prefix)) return [];
@@ -185,6 +223,118 @@ const getOverrideEntries = (
       },
     ];
   });
+};
+
+const getCurseForgeRecipePath = (
+  file: CurseForgeRecipeProviderFile,
+): string | null => {
+  const root =
+    file.category === "mods"
+      ? "mods"
+      : file.category === "resource-packs"
+        ? "resourcepacks"
+        : file.category === "shaders"
+          ? "shaderpacks"
+          : file.category === "worlds"
+            ? "saves"
+            : null;
+
+  return root ? normalizeRecipePath(`${root}/${file.fileName}`) : null;
+};
+
+const getRecipeFileMetadata = (
+  instance: LauncherInstance,
+  relativePath: string,
+): {
+  hashes: { sha1: string; sha512: string };
+  sizeBytes: number;
+} | null => {
+  const path = join(instance.gameDirectory, ...relativePath.split("/"));
+
+  if (!existsSync(path)) return null;
+
+  try {
+    return {
+      hashes: hashFile(path),
+      sizeBytes: statSync(path).size,
+    };
+  } catch {
+    return null;
+  }
+};
+
+export const writeCurseForgeRecipeRevision = ({
+  archiveData,
+  fileName,
+  input,
+  installedFiles,
+  instance,
+  manifest,
+  skippedFiles,
+}: WriteCurseForgeRecipeRevisionInput): InstanceRecipeRevision => {
+  const previousRevision = readInstanceRecipeRevision(instance);
+  const manifestFileIds = new Set(
+    manifest.files.map((file) => `${file.projectID}:${file.fileID}`),
+  );
+  const now = new Date().toISOString();
+  const toRecipeFile = (
+    file: CurseForgeRecipeProviderFile,
+    optional: boolean,
+  ): InstanceRecipeRevision["files"] => {
+    if (!manifestFileIds.has(`${file.projectId}:${file.fileId}`)) return [];
+
+    const path = getCurseForgeRecipePath(file);
+    if (!path) return [];
+
+    const metadata = optional ? null : getRecipeFileMetadata(instance, path);
+
+    return [
+      {
+        downloadUrls: [],
+        hashes: metadata?.hashes ?? {},
+        optional,
+        path,
+        policy: "managed" as const,
+        providerFileId: file.fileId,
+        providerProjectId: file.projectId,
+        sizeBytes: metadata?.sizeBytes ?? null,
+        source: "curseforge" as const,
+      },
+    ];
+  };
+  const files = [
+    ...installedFiles.flatMap((file) => toRecipeFile(file, false)),
+    ...skippedFiles.flatMap((file) => toRecipeFile(file, true)),
+  ];
+  const revision: InstanceRecipeRevision = {
+    createdAt: now,
+    files,
+    id: `recipe_${randomUUID()}`,
+    instanceId: instance.id,
+    overrides: getOverrideEntries(archiveData, manifest.overrides ?? undefined),
+    previousRevisionId: previousRevision?.id ?? null,
+    runtime: {
+      javaComponent: null,
+      javaMajorVersion: null,
+      loader: manifest.modLoader,
+      loaderVersion: manifest.modLoaderVersion,
+      minecraftVersionId: manifest.minecraftVersion,
+    },
+    schemaVersion: 1,
+    source: {
+      fileId: String(input.file.id),
+      fileName,
+      kind: "curseforge",
+      projectId: String(input.projectId),
+      slug: input.projectSlug?.trim() || undefined,
+      version: input.file.displayName || manifest.version || undefined,
+      websiteUrl: input.projectWebsiteUrl ?? null,
+    },
+  };
+
+  writeRecipeRevision(instance, revision);
+
+  return revision;
 };
 
 export const writeModrinthRecipeRevision = ({
