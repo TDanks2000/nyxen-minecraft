@@ -596,8 +596,13 @@ const removeFixtureRoot = async (path: string): Promise<void> => {
       return;
     } catch (error) {
       const code = (error as { code?: string }).code;
+      const retryable = Boolean(code && retryableCodes.has(code));
 
-      if (attempt >= 10 || !code || !retryableCodes.has(code)) {
+      if (attempt >= 10 || !retryable) {
+        if (process.platform === "win32" && retryable) {
+          return;
+        }
+
         throw error;
       }
 
