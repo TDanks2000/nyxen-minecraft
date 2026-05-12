@@ -587,6 +587,25 @@ const fakeNeoForgeInstallerFetch = async (
 const wait = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
+const removeFixtureRoot = async (path: string): Promise<void> => {
+  const retryableCodes = new Set(["EBUSY", "ENOTEMPTY", "EPERM"]);
+
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      rmSync(path, { force: true, recursive: true });
+      return;
+    } catch (error) {
+      const code = (error as { code?: string }).code;
+
+      if (attempt >= 10 || !code || !retryableCodes.has(code)) {
+        throw error;
+      }
+
+      await wait(100);
+    }
+  }
+};
+
 const createTestLaunchPlan = (
   directories: LauncherDirectories,
   overrides: Partial<LaunchPlan> = {},
@@ -705,7 +724,7 @@ describe("launcher backend", () => {
     sqlite.close();
     delete process.env.NYXEN_DATA_DIR;
     delete process.env.NYXEN_MICROSOFT_CLIENT_ID;
-    rmSync(dataRoot, { force: true, recursive: true });
+    await removeFixtureRoot(dataRoot);
   });
 
   test("persists version metadata, profiles, instances, and launch plans", async () => {
