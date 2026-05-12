@@ -1019,6 +1019,8 @@ const getLogLineTypeLabel = (type: InstanceLogLineType): string => {
       return "Graphics";
     case "io":
       return "File I/O";
+    case "java":
+      return "Java";
     case "loader":
       return "Loader";
     case "mixin":
@@ -1054,18 +1056,6 @@ const classifyLogLine = ({
     rawSearchable.includes("crash report")
   ) {
     return { groupLabel: "Crash Report", groupSeed: "crash", type: "crash" };
-  }
-
-  if (
-    exceptionName ||
-    /^caused by:/i.test(trimmed) ||
-    /^suppressed:/i.test(trimmed)
-  ) {
-    const label =
-      exceptionName ??
-      trimmed.replace(/^(caused by|suppressed):\s*/i, "").split(":")[0] ??
-      "Exception";
-    return { groupLabel: label, groupSeed: label, type: "exception" };
   }
 
   if (
@@ -1119,6 +1109,19 @@ const classifyLogLine = ({
   }
 
   if (
+    searchable.includes("unsupportedclassversionerror") ||
+    searchable.includes("outofmemoryerror") ||
+    searchable.includes("could not reserve enough space") ||
+    searchable.includes("invalid maximum heap size") ||
+    searchable.includes("unrecognized vm option") ||
+    searchable.includes("java runtime") ||
+    searchable.includes("java version") ||
+    searchable.includes("jvm")
+  ) {
+    return { groupLabel: "Java", groupSeed: "java", type: "java" };
+  }
+
+  if (
     searchable.includes("authentication") ||
     searchable.includes("authlib") ||
     searchable.includes("microsoft") ||
@@ -1149,6 +1152,18 @@ const classifyLogLine = ({
     searchable.includes("directory")
   ) {
     return { groupLabel: "File I/O", groupSeed: "io", type: "io" };
+  }
+
+  if (
+    exceptionName ||
+    /^caused by:/i.test(trimmed) ||
+    /^suppressed:/i.test(trimmed)
+  ) {
+    const label =
+      exceptionName ??
+      trimmed.replace(/^(caused by|suppressed):\s*/i, "").split(":")[0] ??
+      "Exception";
+    return { groupLabel: label, groupSeed: label, type: "exception" };
   }
 
   if (level === "unknown" && trimmed.length === 0) {

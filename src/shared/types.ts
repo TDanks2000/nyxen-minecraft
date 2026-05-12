@@ -492,6 +492,7 @@ export type InstanceLogLineType =
   | "game"
   | "graphics"
   | "io"
+  | "java"
   | "loader"
   | "mixin"
   | "mod"
@@ -554,6 +555,72 @@ export type InstanceContent = {
   serverList: InstanceFileEntry | null;
   shaderPacks: Array<InstanceFileEntry>;
   worlds: Array<InstanceFileEntry>;
+};
+
+export type ExportInstanceSupportBundleInput = {
+  instanceId: string;
+  maxLogLines?: number;
+  maxLogs?: number;
+};
+
+export type InstanceSupportBundle = {
+  content: {
+    counts: InstanceContent["counts"];
+    logs: Array<
+      Pick<
+        InstanceFileEntry,
+        "displayName" | "fileName" | "modifiedAt" | "sizeBytes"
+      >
+    >;
+    recipe: {
+      counts: InstanceRecipeSummary["counts"];
+      revisionId: string;
+      source: InstanceRecipeSummary["revision"]["source"]["kind"];
+      status: InstanceRecipeSummary["status"];
+    } | null;
+  };
+  createdAt: string;
+  instance: Pick<
+    LauncherInstance,
+    "id" | "loader" | "loaderVersion" | "name" | "versionId"
+  >;
+  launchAttempts: Array<LaunchAttemptRecord>;
+  launchPlanSummary: LaunchPlanSummary | null;
+  logs: Array<{
+    entry: Pick<
+      InstanceFileEntry,
+      "displayName" | "fileName" | "modifiedAt" | "sizeBytes"
+    >;
+    lines: Array<
+      Pick<
+        InstanceLogLine,
+        | "details"
+        | "groupLabel"
+        | "level"
+        | "lineNumber"
+        | "message"
+        | "source"
+        | "thread"
+        | "timestamp"
+        | "type"
+      >
+    >;
+    readBytes: number;
+    summary: InstanceLogFilePreview["summary"];
+    totalBytes: number;
+    truncated: boolean;
+  }>;
+  redacted: true;
+  redactions: {
+    count: number;
+    kinds: Array<"dataRootPath" | "databaseFile" | "homePath" | "secretValue">;
+  };
+  schemaVersion: 1;
+};
+
+export type ExportInstanceSupportBundleResult = {
+  bundle: InstanceSupportBundle;
+  path: string;
 };
 
 export type GetInstanceContentInput = {
@@ -808,6 +875,47 @@ export type InstanceRecipeSummary = {
   status: "clean" | "drifted" | "incomplete" | "weaklyVerified";
 };
 
+export type ExportInstanceRecipeInput = {
+  instanceId: string;
+};
+
+export type ExportedInstanceRecipeWarningCode =
+  | "blockedFiles"
+  | "localOnlyFiles"
+  | "optionalFiles"
+  | "privateFiles"
+  | "unavailableFiles"
+  | "weaklyVerifiedFiles";
+
+export type ExportedInstanceRecipe = {
+  app: {
+    name: "nyxen";
+    schemaVersion: 1;
+  };
+  checksum: {
+    algorithm: "sha256";
+    covers: "recipe";
+    value: string;
+  };
+  exportedAt: string;
+  recipe: Omit<InstanceRecipeRevision, "instanceId" | "previousRevisionId">;
+  sourceInstance: Pick<
+    LauncherInstance,
+    "loader" | "loaderVersion" | "name" | "versionId"
+  >;
+  warnings: Array<{
+    code: ExportedInstanceRecipeWarningCode;
+    count: number;
+    message: string;
+  }>;
+  schemaVersion: 1;
+};
+
+export type ExportInstanceRecipeResult = {
+  path: string;
+  recipe: ExportedInstanceRecipe;
+};
+
 export type LaunchPlanMissingArtifact = {
   id: string;
   kind:
@@ -879,6 +987,100 @@ export type LaunchPlan = {
   nativeArtifactPaths: Array<string>;
   profile: LauncherProfile | null;
   warnings: Array<string>;
+};
+
+export type LaunchPlanSummary = {
+  counts: {
+    classpathEntries: number;
+    gameArguments: number;
+    jvmArguments: number;
+    missingArtifacts: number;
+    nativeArtifacts: number;
+    warnings: number;
+  };
+  createdAt: string;
+  id: string;
+  instance: {
+    id: string;
+    loader: ModLoader;
+    loaderVersion: string | null;
+    name: string;
+    versionId: string;
+  };
+  java: {
+    component: string | null;
+    detectedMajorVersion: number | null;
+    detectedVersion: string | null;
+    detectionError: string | null;
+    executable: string;
+    management: JavaManagementMode;
+    majorVersion: number | null;
+    memoryMaxMb: number;
+    memoryMinMb: number;
+    runtimePlatform: string | null;
+    runtimeVersion: string | null;
+  };
+  minecraft: LaunchPlan["minecraft"];
+  missingArtifacts: Array<LaunchPlanMissingArtifact>;
+  modLoader: LaunchPlan["modLoader"];
+  profile: {
+    displayName: string;
+    id: string;
+    kind: LauncherProfile["kind"];
+  } | null;
+  schemaVersion: 1;
+  warnings: Array<string>;
+};
+
+export type LaunchAttemptOutcomeReason =
+  | "launchError"
+  | "missingArtifacts"
+  | "missingModpackDependencies"
+  | "missingProfile";
+
+export type LaunchAttemptOutcome = {
+  message: string;
+  missingArtifactCount?: number;
+  missingModpackDependencyCount?: number;
+  pid?: number;
+  reason: LaunchAttemptOutcomeReason | null;
+  startedAt?: string;
+  status: "blocked" | "failed" | "started";
+};
+
+export type LaunchRepairCategory =
+  | "javaLaunch"
+  | "missingFiles"
+  | "missingModpackDependency"
+  | "staleAuth"
+  | "unknown"
+  | "wrongJava";
+
+export type LaunchRepairActionId =
+  | "downloadMissingArtifacts"
+  | "inspectLaunchLog"
+  | "reinstallModpack"
+  | "selectJavaRuntime"
+  | "signInMicrosoft";
+
+export type LaunchRepairSuggestion = {
+  actionId: LaunchRepairActionId;
+  category: LaunchRepairCategory;
+  confidence: "high" | "low" | "medium";
+  evidence: Array<string>;
+  nextAction: string;
+  safeToAutomate: boolean;
+  title: string;
+};
+
+export type LaunchAttemptRecord = {
+  createdAt: string;
+  id: string;
+  instance: LaunchPlanSummary["instance"];
+  outcome: LaunchAttemptOutcome;
+  planSummary: LaunchPlanSummary;
+  repair: LaunchRepairSuggestion | null;
+  schemaVersion: 1;
 };
 
 export type CreateLaunchPlanInput = {

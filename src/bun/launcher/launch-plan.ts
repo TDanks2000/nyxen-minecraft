@@ -21,6 +21,7 @@ import {
   type ManagedJavaRuntime,
   resolveManagedJavaRuntime,
 } from "./java-runtimes";
+import { persistLaunchPlanSummary } from "./launch-diagnostics";
 import { ensureMicrosoftProfileLaunchAuth } from "./microsoft-auth";
 import { type ResolvedModLoader, resolveModLoader } from "./mod-loaders";
 import {
@@ -577,7 +578,7 @@ export const createLaunchPlan = async (
     );
   }
 
-  return {
+  const plan: LaunchPlan = {
     arguments: {
       game: [
         ...(launchDetails.arguments?.game ??
@@ -638,4 +639,16 @@ export const createLaunchPlan = async (
     profile,
     warnings,
   };
+
+  try {
+    persistLaunchPlanSummary(plan);
+  } catch (error) {
+    warnings.push(
+      error instanceof Error
+        ? `Launch plan diagnostics could not be saved: ${error.message}`
+        : "Launch plan diagnostics could not be saved.",
+    );
+  }
+
+  return plan;
 };

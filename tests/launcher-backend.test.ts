@@ -715,6 +715,9 @@ describe("launcher backend", () => {
     const { createLaunchPlan } = await import(
       "../src/bun/launcher/launch-plan"
     );
+    const { readLaunchPlanSummary } = await import(
+      "../src/bun/launcher/launch-diagnostics"
+    );
     const { listLauncherProfiles } = await import(
       "../src/bun/launcher/profiles"
     );
@@ -820,6 +823,36 @@ describe("launcher backend", () => {
       "assetIndex",
       "library",
     ]);
+    expect(readLaunchPlanSummary(instance)).toMatchObject({
+      counts: {
+        classpathEntries: plan.classpath.length,
+        missingArtifacts: 3,
+        warnings: plan.warnings.length,
+      },
+      instance: {
+        id: instance.id,
+        name: "Survival",
+        versionId: "1.20.4",
+      },
+      java: {
+        management: "auto",
+        memoryMaxMb: 8192,
+      },
+      minecraft: {
+        versionId: "1.20.4",
+      },
+      missingArtifacts: [
+        { kind: "clientJar" },
+        { kind: "assetIndex" },
+        { kind: "library" },
+      ],
+      profile: {
+        displayName: profile.displayName,
+        id: profile.id,
+        kind: "microsoft",
+      },
+      schemaVersion: 1,
+    });
     expect(status.counts).toEqual({
       instances: 1,
       profiles: 1,
@@ -1662,6 +1695,304 @@ describe("launcher backend", () => {
         instanceId: instance.id,
       }),
     ).toThrow("File name is invalid.");
+  });
+
+  test("classifies common launch failure log categories", async () => {
+    const { getInstanceContent, getInstanceLogFile } = await import(
+      "../src/bun/launcher/instance-content"
+    );
+    const { createLauncherInstance } = await import(
+      "../src/bun/launcher/instances"
+    );
+    const { refreshMinecraftVersionManifest } = await import(
+      "../src/bun/launcher/versions"
+    );
+
+    await refreshMinecraftVersionManifest({ fetcher: fakeFetch });
+
+    const instance = createLauncherInstance({
+      name: "Failure Categories",
+      versionId: "1.20.4",
+    });
+
+    writeFileSync(
+      join(instance.folders.logs, "latest.log"),
+      [
+        "[12:00:00] [main/ERROR]: java.lang.UnsupportedClassVersionError: net/minecraft/client/Main has been compiled by a more recent version of the Java Runtime",
+        "[12:00:01] [main/ERROR] [net.fabricmc.loader.impl.FabricLoader/]: Fabric Loader failed to load mods",
+        "[12:00:02] [main/ERROR]: Mod file badmod.jar is missing required dependency",
+        "[12:00:03] [Render thread/ERROR] [net.minecraft.client.renderer.RenderSystem/]: OpenGL shader failed to compile",
+        "[12:00:04] [Render thread/WARN] [com.mojang.authlib.yggdrasil.YggdrasilAuthenticationService/]: Authentication servers are unavailable",
+        "[12:00:05] [Netty Client IO/ERROR]: java.net.ConnectException: Connection timed out",
+        "[12:00:06] [Render thread/ERROR]: java.nio.file.AccessDeniedException: options.txt",
+      ].join("\n"),
+    );
+
+    const content = getInstanceContent({ instanceId: instance.id });
+    const latestLog = content.logs.find((log) => log.fileName === "latest.log");
+
+    expect(latestLog).toBeDefined();
+
+    const preview = getInstanceLogFile({
+      fileId: latestLog?.id ?? "",
+      instanceId: instance.id,
+    });
+
+    expect(preview.lines.map((line) => line.type)).toEqual([
+      "java",
+      "loader",
+      "mod",
+      "graphics",
+      "auth",
+      "network",
+      "io",
+    ]);
+    expect(preview.lines.map((line) => line.groupLabel)).toEqual([
+      "Java",
+      "Loader",
+      "Mod",
+      "Graphics",
+      "Authentication",
+      "Network",
+      "File I/O",
+    ]);
+  });
+
+  test("exports redacted support bundles", async () => {
+    const { createLauncherInstance } = await import(
+      "../src/bun/launcher/instances"
+    );
+    const { exportInstanceSupportBundle } = await import(
+      "../src/bun/launcher/support-bundle"
+    );
+    const { refreshMinecraftVersionManifest } = await import(
+      "../src/bun/launcher/versions"
+    );
+
+    await refreshMinecraftVersionManifest({ fetcher: fakeFetch });
+
+    const instance = createLauncherInstance({
+      name: "Support Bundle",
+      versionId: "1.20.4",
+    });
+
+    writeFileSync(
+      join(instance.folders.logs, "latest.log"),
+      [
+        `[12:00:00] [main/ERROR]: Authorization: Bearer secret-token-value access_token=secret-access-token at ${dataRoot}/launcher/launcher.db`,
+        "[12:00:01] [main/ERROR]: java.lang.RuntimeException: hidden token should not escape",
+      ].join("\n"),
+    );
+
+    const result = exportInstanceSupportBundle({
+      instanceId: instance.id,
+      maxLogLines: 10,
+      maxLogs: 1,
+    });
+    const saved = readFileSync(result.path, "utf8");
+
+    expect(existsSync(result.path)).toBe(true);
+    expect(result.bundle.redacted).toBe(true);
+    expect(result.bundle.redactions.count).toBeGreaterThanOrEqual(3);
+    expect(result.bundle.redactions.kinds).toEqual(
+      expect.arrayContaining(["dataRootPath", "secretValue"]),
+    );
+    expect(result.bundle.logs).toHaveLength(1);
+    expect(result.bundle.logs[0]?.lines[0]?.message).toContain(
+      "[redacted-secret]",
+    );
+    expect(result.bundle.logs[0]?.lines[0]?.message).toContain(
+      "[launcher-data]",
+    );
+    expect(saved).not.toContain("secret-token-value");
+    expect(saved).not.toContain("secret-access-token");
+    expect(saved).not.toContain(dataRoot);
+    expect(saved).not.toContain("launcher.db");
+  });
+
+  test("exports portable recipe files without local instance ids", async () => {
+    const { createLauncherInstance } = await import(
+      "../src/bun/launcher/instances"
+    );
+    const { exportInstanceRecipe } = await import(
+      "../src/bun/launcher/recipe-export"
+    );
+    const { refreshMinecraftVersionManifest } = await import(
+      "../src/bun/launcher/versions"
+    );
+
+    await refreshMinecraftVersionManifest({ fetcher: fakeFetch });
+
+    const instance = createLauncherInstance({
+      loader: "fabric",
+      loaderVersion: "0.15.7",
+      name: "Recipe Export",
+      versionId: "1.20.4",
+    });
+    const revision = {
+      createdAt: "2026-05-12T00:00:00.000Z",
+      files: [
+        {
+          downloadUrls: ["https://cdn.modrinth.com/data/example/mod.jar"],
+          hashes: {},
+          optional: false,
+          path: "mods/example.jar",
+          policy: "managed",
+          providerProjectId: "modrinth-project",
+          sizeBytes: 1234,
+          source: "modrinth",
+        },
+        {
+          downloadUrls: [],
+          hashes: { sha1: "0123456789abcdef0123456789abcdef01234567" },
+          optional: true,
+          path: "mods/skipped-provider.jar",
+          policy: "managed",
+          providerFileId: "blocked-file",
+          providerProjectId: "blocked-project",
+          sizeBytes: null,
+          source: "curseforge",
+        },
+        {
+          downloadUrls: [],
+          hashes: { sha1: "abcdefabcdefabcdefabcdefabcdefabcdefabcd" },
+          optional: false,
+          path: "mods/unavailable-provider.jar",
+          policy: "managed",
+          sizeBytes: null,
+          source: "modrinth",
+        },
+        {
+          downloadUrls: [],
+          hashes: { sha1: "0123456789abcdef0123456789abcdef01234567" },
+          optional: true,
+          path: "mods/local-helper.jar",
+          policy: "local-only",
+          sizeBytes: 42,
+          source: "local",
+        },
+      ],
+      id: "recipe_export_test",
+      instanceId: instance.id,
+      overrides: [],
+      previousRevisionId: "recipe_previous_local_id",
+      runtime: {
+        javaComponent: "java-runtime-gamma",
+        javaMajorVersion: 17,
+        loader: "fabric",
+        loaderVersion: "0.15.7",
+        minecraftVersionId: "1.20.4",
+      },
+      schemaVersion: 1,
+      source: {
+        fileId: "modrinth-file",
+        fileName: "exportable.mrpack",
+        kind: "modrinth",
+        projectId: "modrinth-pack",
+        version: "1.0.0",
+        websiteUrl: "https://modrinth.com/modpack/exportable",
+      },
+    };
+
+    writeFileSync(
+      join(instance.folders.metadata, "recipe-revision.json"),
+      `${JSON.stringify(revision, null, 2)}\n`,
+    );
+
+    const result = exportInstanceRecipe({ instanceId: instance.id });
+    const saved = JSON.parse(readFileSync(result.path, "utf8"));
+    const savedText = readFileSync(result.path, "utf8");
+    const stableStringify = (value: unknown): string => {
+      if (Array.isArray(value)) {
+        return `[${value
+          .map((item) => (item === undefined ? "null" : stableStringify(item)))
+          .join(",")}]`;
+      }
+
+      if (value && typeof value === "object") {
+        return `{${Object.entries(value)
+          .filter(([, item]) => item !== undefined)
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(
+            ([key, item]) => `${JSON.stringify(key)}:${stableStringify(item)}`,
+          )
+          .join(",")}}`;
+      }
+
+      return JSON.stringify(value);
+    };
+    const expectedChecksum = createHash("sha256")
+      .update(stableStringify(saved.recipe))
+      .digest("hex");
+
+    expect(existsSync(result.path)).toBe(true);
+    expect(saved).toMatchObject({
+      app: {
+        name: "nyxen",
+        schemaVersion: 1,
+      },
+      checksum: {
+        algorithm: "sha256",
+        covers: "recipe",
+        value: expectedChecksum,
+      },
+      recipe: {
+        files: [
+          {
+            path: "mods/example.jar",
+            source: "modrinth",
+          },
+          {
+            optional: true,
+            path: "mods/skipped-provider.jar",
+            source: "curseforge",
+          },
+          {
+            path: "mods/unavailable-provider.jar",
+            source: "modrinth",
+          },
+          {
+            optional: true,
+            path: "mods/local-helper.jar",
+            policy: "local-only",
+          },
+        ],
+        id: "recipe_export_test",
+        runtime: {
+          loader: "fabric",
+          minecraftVersionId: "1.20.4",
+        },
+      },
+      schemaVersion: 1,
+      sourceInstance: {
+        loader: "fabric",
+        loaderVersion: "0.15.7",
+        name: "Recipe Export",
+        versionId: "1.20.4",
+      },
+    });
+    expect("instanceId" in saved.recipe).toBe(false);
+    expect("previousRevisionId" in saved.recipe).toBe(false);
+    expect(savedText).not.toContain(instance.id);
+    expect(saved.warnings).toEqual([
+      expect.objectContaining({ code: "weaklyVerifiedFiles", count: 1 }),
+      expect.objectContaining({ code: "optionalFiles", count: 2 }),
+      expect.objectContaining({ code: "unavailableFiles", count: 1 }),
+      expect.objectContaining({ code: "blockedFiles", count: 1 }),
+      expect.objectContaining({ code: "privateFiles", count: 1 }),
+      expect.objectContaining({ code: "localOnlyFiles", count: 1 }),
+    ]);
+    expect(expectedChecksum).toMatch(/^[a-f0-9]{64}$/);
+    expect(
+      createHash("sha256")
+        .update(
+          stableStringify({
+            ...saved.recipe,
+            runtime: { ...saved.recipe.runtime, minecraftVersionId: "1.20.5" },
+          }),
+        )
+        .digest("hex"),
+    ).not.toBe(expectedChecksum);
   });
 
   test("downloads CurseForge files into instance folders and metadata", async () => {
@@ -5025,6 +5356,9 @@ describe("launcher backend", () => {
     const { createLaunchPlan } = await import(
       "../src/bun/launcher/launch-plan"
     );
+    const { classifyLaunchAttempt, readLaunchAttemptRecords } = await import(
+      "../src/bun/launcher/launch-diagnostics"
+    );
     const { launchInstance } = await import("../src/bun/rpc/handlers");
     const { getMinecraftVersionDetails, refreshMinecraftVersionManifest } =
       await import("../src/bun/launcher/versions");
@@ -5058,6 +5392,95 @@ describe("launcher backend", () => {
         },
       }),
     ).rejects.toThrow("Download missing artifacts before launching Minecraft");
+
+    expect(readLaunchAttemptRecords(instance)).toMatchObject([
+      {
+        instance: {
+          id: instance.id,
+          name: "Trusted Plan",
+          versionId: "1.20.4",
+        },
+        outcome: {
+          missingArtifactCount: plan.missingArtifacts.length,
+          reason: "missingArtifacts",
+          status: "blocked",
+        },
+        planSummary: {
+          counts: {
+            missingArtifacts: plan.missingArtifacts.length,
+          },
+          profile: plan.profile
+            ? {
+                id: plan.profile.id,
+                kind: plan.profile.kind,
+              }
+            : null,
+          schemaVersion: 1,
+        },
+        repair: {
+          actionId: "downloadMissingArtifacts",
+          category: "missingFiles",
+          confidence: "high",
+          safeToAutomate: true,
+        },
+        schemaVersion: 1,
+      },
+    ]);
+
+    expect(
+      classifyLaunchAttempt({
+        outcome: {
+          message: "Java exited before Minecraft opened.",
+          reason: "launchError",
+          status: "failed",
+        },
+        planSummary: {
+          counts: {
+            classpathEntries: plan.classpath.length,
+            gameArguments: plan.arguments.game.length,
+            jvmArguments: plan.arguments.jvm.length,
+            missingArtifacts: plan.missingArtifacts.length,
+            nativeArtifacts: plan.nativeArtifactPaths.length,
+            warnings: 1,
+          },
+          createdAt: plan.createdAt,
+          id: "plan_java_mismatch",
+          instance: {
+            id: instance.id,
+            loader: instance.loader,
+            loaderVersion: instance.loaderVersion,
+            name: instance.name,
+            versionId: instance.versionId,
+          },
+          java: {
+            component: plan.java.component,
+            detectedMajorVersion: 8,
+            detectedVersion: "1.8.0_392",
+            detectionError: null,
+            executable: "/usr/bin/java",
+            management: "auto",
+            majorVersion: 17,
+            memoryMaxMb: plan.java.memoryMaxMb,
+            memoryMinMb: plan.java.memoryMinMb,
+            runtimePlatform: null,
+            runtimeVersion: null,
+          },
+          minecraft: plan.minecraft,
+          missingArtifacts: plan.missingArtifacts,
+          modLoader: plan.modLoader,
+          profile: null,
+          schemaVersion: 1,
+          warnings: [
+            "Instance Java executable is user-managed; detected Java 8, but 1.20.4 requires Java 17.",
+          ],
+        },
+      }),
+    ).toMatchObject({
+      actionId: "selectJavaRuntime",
+      category: "wrongJava",
+      confidence: "high",
+      safeToAutomate: false,
+    });
   });
 
   test("rejects launch plans for offline profiles", async () => {

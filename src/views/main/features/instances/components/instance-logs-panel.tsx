@@ -76,6 +76,7 @@ const LOG_TYPE_LABELS: Record<InstanceLogLineType, string> = {
   game: "Game",
   graphics: "Graphics",
   io: "File I/O",
+  java: "Java",
   loader: "Loader",
   mixin: "Mixin",
   mod: "Mod",
@@ -89,6 +90,7 @@ const LOG_TYPE_ORDER: Array<InstanceLogLineType> = [
   "crash",
   "exception",
   "stackTrace",
+  "java",
   "mixin",
   "loader",
   "mod",
@@ -132,7 +134,9 @@ const getLogLevelLabel = (level: InstanceLogLineLevel): string =>
 const getLogTypeVariant = (
   type: InstanceLogLineType,
 ): React.ComponentProps<typeof Badge>["variant"] => {
-  if (type === "crash" || type === "exception") return "destructive";
+  if (type === "crash" || type === "exception" || type === "java") {
+    return "destructive";
+  }
   if (type === "mixin" || type === "loader" || type === "mod") {
     return "outline";
   }

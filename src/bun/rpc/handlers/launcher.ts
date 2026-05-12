@@ -25,6 +25,7 @@ import {
 } from "../../launcher/executor";
 import { getMissingRequiredModpackDependencies } from "../../launcher/instance-content";
 import { markLauncherInstanceLaunched } from "../../launcher/instances";
+import { persistLaunchAttempt } from "../../launcher/launch-diagnostics";
 import { createLaunchPlan } from "../../launcher/launch-plan";
 import { getLauncherProfileAuthSecrets } from "../../launcher/profiles";
 
@@ -135,9 +136,27 @@ export const launchInstance = async (
 ): Promise<LaunchInstanceResult> => {
   const plan = await createLaunchPlan(getLaunchPlanRequest(input));
   let accessToken: string | undefined;
+  const recordAttempt = (
+    outcome: Parameters<typeof persistLaunchAttempt>[1],
+  ): void => {
+    try {
+      persistLaunchAttempt(plan, outcome);
+    } catch {
+      // Diagnostics should never be the reason a launch is blocked.
+    }
+  };
 
   if (plan.missingArtifacts.length > 0) {
-    throw new Error("Download missing artifacts before launching Minecraft.");
+    const message = "Download missing artifacts before launching Minecraft.";
+
+    recordAttempt({
+      message,
+      missingArtifactCount: plan.missingArtifacts.length,
+      reason: "missingArtifacts",
+      status: "blocked",
+    });
+
+    throw new Error(message);
   }
 
   const missingModpackDependencies = getMissingRequiredModpackDependencies(
@@ -145,17 +164,31 @@ export const launchInstance = async (
   );
 
   if (missingModpackDependencies.length > 0) {
-    throw new Error(
-      `${plan.instance.name} is missing ${missingModpackDependencies.length} required modpack file${
-        missingModpackDependencies.length === 1 ? "" : "s"
-      }. Reinstall or update the modpack before launching.`,
-    );
+    const message = `${plan.instance.name} is missing ${missingModpackDependencies.length} required modpack file${
+      missingModpackDependencies.length === 1 ? "" : "s"
+    }. Reinstall or update the modpack before launching.`;
+
+    recordAttempt({
+      message,
+      missingModpackDependencyCount: missingModpackDependencies.length,
+      reason: "missingModpackDependencies",
+      status: "blocked",
+    });
+
+    throw new Error(message);
   }
 
   if (!plan.profile || plan.profile.kind !== "microsoft") {
-    throw new Error(
-      "A verified Microsoft profile is required to launch Minecraft.",
-    );
+    const message =
+      "A verified Microsoft profile is required to launch Minecraft.";
+
+    recordAttempt({
+      message,
+      reason: "missingProfile",
+      status: "blocked",
+    });
+
+    throw new Error(message);
   }
 
   if (plan.profile?.id && plan.profile.kind === "microsoft") {
@@ -163,9 +196,31 @@ export const launchInstance = async (
     accessToken = secrets?.minecraftAccessToken ?? undefined;
   }
 
-  const result = launchMinecraft(plan, { accessToken });
-  markLauncherInstanceLaunched(plan.instance.id);
+  let result: LaunchInstanceResult;
 
+  try {
+    result = launchMinecraft(plan, { accessToken });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to launch Minecraft.";
+
+    recordAttempt({
+      message,
+      reason: "launchError",
+      status: "failed",
+    });
+
+    throw error;
+  }
+
+  markLauncherInstanceLaunched(plan.instance.id);
+  recordAttempt({
+    message: "Minecraft process started.",
+    pid: result.pid,
+    reason: null,
+    startedAt: result.startedAt,
+    status: "started",
+  });
   return result;
 };
 
