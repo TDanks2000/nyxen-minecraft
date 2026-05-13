@@ -408,24 +408,33 @@ export const persistLaunchAttempt = (
 
 export const readLaunchAttemptRecords = (
   instance: LauncherInstance,
+  options: { limit?: number } = {},
 ): Array<LaunchAttemptRecord> => {
   const directory = getLaunchAttemptsDirectory(instance);
 
   if (!existsSync(directory)) return [];
 
-  return readdirSync(directory, { withFileTypes: true })
+  const entries = readdirSync(directory, { withFileTypes: true })
     .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .flatMap((entry) => {
-      try {
-        const parsed: unknown = JSON.parse(
-          readFileSync(join(directory, entry.name), "utf8"),
-        );
-        const record = parseLaunchAttemptRecord(parsed);
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const limit =
+    typeof options.limit === "number"
+      ? Math.max(0, Math.trunc(options.limit))
+      : null;
+  if (limit === 0) return [];
 
-        return record ? [record] : [];
-      } catch {
-        return [];
-      }
-    });
+  const selectedEntries = limit === null ? entries : entries.slice(-limit);
+
+  return selectedEntries.flatMap((entry) => {
+    try {
+      const parsed: unknown = JSON.parse(
+        readFileSync(join(directory, entry.name), "utf8"),
+      );
+      const record = parseLaunchAttemptRecord(parsed);
+
+      return record ? [record] : [];
+    } catch {
+      return [];
+    }
+  });
 };

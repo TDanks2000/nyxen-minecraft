@@ -59,6 +59,7 @@ const createContent = (
   },
   curseForge: {},
   instanceId: "instance-1",
+  launchAttempts: [],
   logFolders: [],
   logs: [],
   mods: [],

@@ -546,6 +546,7 @@ export type InstanceContent = {
     Record<CurseForgeCategory, Array<InstalledCurseForgeFile>>
   >;
   instanceId: string;
+  launchAttempts: Array<LaunchAttemptRecord>;
   logFolders: Array<InstanceLogFolder>;
   logs: Array<InstanceFileEntry>;
   mods: Array<InstanceFileEntry>;

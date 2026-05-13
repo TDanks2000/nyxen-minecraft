@@ -397,6 +397,7 @@ export function InstanceModsPanel({
           contentError={contentError}
           disabledModsCount={disabledModsCount}
           instance={instance}
+          launchAttempts={content?.launchAttempts ?? []}
           recipe={content?.recipe ?? null}
         />
       </aside>

@@ -1,5 +1,9 @@
 import { CheckCircle2Icon, ShieldAlertIcon } from "lucide-react";
-import type { InstanceRecipeSummary, LauncherInstance } from "@/shared/types";
+import type {
+  InstanceContent,
+  InstanceRecipeSummary,
+  LauncherInstance,
+} from "@/shared/types";
 import { Badge } from "@/views/main/components/ui/badge";
 import { Button } from "@/views/main/components/ui/button";
 import {
@@ -15,6 +19,7 @@ type InstanceWarningPanelProps = {
   contentError: string | null;
   disabledModsCount: number;
   instance: LauncherInstance;
+  launchAttempts: InstanceContent["launchAttempts"];
   recipe: InstanceRecipeSummary | null;
 };
 
@@ -22,10 +27,19 @@ export function InstanceWarningPanel({
   disabledModsCount,
   contentError,
   instance,
+  launchAttempts,
   recipe,
 }: InstanceWarningPanelProps) {
+  const latestLaunchRepair =
+    [...launchAttempts]
+      .reverse()
+      .find((attempt) => attempt.outcome.status !== "started" && attempt.repair)
+      ?.repair ?? null;
   const warnings = [
     ...(contentError ? [contentError] : []),
+    ...(latestLaunchRepair
+      ? [`${latestLaunchRepair.title}: ${latestLaunchRepair.nextAction}`]
+      : []),
     ...(recipe?.status === "drifted"
       ? [
           `${recipe.counts.added + recipe.counts.changed + recipe.counts.missing} recipe drift item${

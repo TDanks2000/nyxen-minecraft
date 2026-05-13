@@ -5477,9 +5477,15 @@ describe("launcher backend", () => {
       readLaunchAttemptRecords,
       summarizeLaunchPlan,
     } = await import("../src/bun/launcher/launch-diagnostics");
+    const { getInstanceContent } = await import(
+      "../src/bun/launcher/instance-content"
+    );
     const { launchInstance } = await import("../src/bun/rpc/handlers");
     const { getMinecraftVersionDetails, refreshMinecraftVersionManifest } =
       await import("../src/bun/launcher/versions");
+    const { upsertVerifiedMicrosoftProfile } = await import(
+      "../src/bun/launcher/profiles"
+    );
 
     await refreshMinecraftVersionManifest({ fetcher: fakeFetch });
     await getMinecraftVersionDetails(
@@ -5489,8 +5495,19 @@ describe("launcher backend", () => {
       },
     );
 
+    const profile = upsertVerifiedMicrosoftProfile({
+      accountId: "trusted-plan-account",
+      displayName: "TrustedPlan",
+      entitlements: ["game_minecraft", "product_minecraft"],
+      minecraftAccessToken: "trusted-plan-token",
+      minecraftAccessTokenExpiresAt: "2099-01-04T00:00:00.000Z",
+      microsoftRefreshToken: "trusted-plan-refresh",
+      ownershipCheckedAt: "2026-05-13T00:00:00.000Z",
+      skinUrl: null,
+    });
     const instance = createLauncherInstance({
       name: "Trusted Plan",
+      profileId: profile.id,
       versionId: "1.20.4",
     });
     const plan = await createLaunchPlan(
@@ -5544,6 +5561,21 @@ describe("launcher backend", () => {
         schemaVersion: 1,
       },
     ]);
+    expect(getInstanceContent({ instanceId: instance.id })).toMatchObject({
+      launchAttempts: [
+        {
+          outcome: {
+            reason: "missingArtifacts",
+            status: "blocked",
+          },
+          repair: {
+            actionId: "downloadMissingArtifacts",
+            category: "missingFiles",
+            nextAction: "Download the missing launch files, then retry launch.",
+          },
+        },
+      ],
+    });
 
     expect(
       classifyLaunchAttempt({

@@ -343,6 +343,7 @@ const makeContent = (instance: LauncherInstance): InstanceContent => {
         }
       : {},
     instanceId: instance.id,
+    launchAttempts: [],
     logFolders: [
       {
         displayName: "Game Logs",

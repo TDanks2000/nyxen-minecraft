@@ -85,6 +85,7 @@ Goal: make failure states understandable.
 - Add repair actions for missing files, corrupt files, wrong Java, missing mod
   dependency, stale auth, and failed native extraction.
 - [x] Add redacted support bundle export.
+- [x] Surface the latest launch repair suggestion in instance warnings.
 
 Exit criteria:
 

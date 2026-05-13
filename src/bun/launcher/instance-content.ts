@@ -68,6 +68,7 @@ import {
   setLauncherInstanceModpack,
   updateLauncherInstance,
 } from "./instances";
+import { readLaunchAttemptRecords } from "./launch-diagnostics";
 import type { ModrinthOptions } from "./modrinth";
 import { ensurePrivateDirectory, getLauncherDirectories } from "./paths";
 import { listZipEntries, readZipJson } from "./zip";
@@ -93,6 +94,7 @@ const defaultLogPreviewLines = 700;
 const maxLogPreviewBytes = 1024 * 1024;
 const maxLogPreviewLines = 2000;
 const maxCompressedLogBytes = 2 * 1024 * 1024;
+const maxLaunchAttemptsInContent = 5;
 
 type DownloadCurseForgeFileOptions = CurseForgeOptions & {
   maxBytes?: number;
@@ -3047,6 +3049,9 @@ export const getInstanceContent = ({
     },
     curseForge: readCurseForgeMetadata(instance),
     instanceId: instance.id,
+    launchAttempts: readLaunchAttemptRecords(instance, {
+      limit: maxLaunchAttemptsInContent,
+    }),
     logFolders,
     logs,
     mods,
