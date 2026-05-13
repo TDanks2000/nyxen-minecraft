@@ -24,11 +24,11 @@ import {
   SelectValue,
 } from "@/views/main/components/ui/select";
 import { Slider } from "@/views/main/components/ui/slider";
-import { Spinner } from "@/views/main/components/ui/spinner";
 import {
   ToggleGroup,
   ToggleGroupItem,
 } from "@/views/main/components/ui/toggle-group";
+import { InstanceSettingsLoadingBox } from "@/views/main/features/instances/components/instance-settings-loading-box";
 import { useLoaderVersions } from "@/views/main/hooks/use-loader-versions";
 import { useSettings } from "@/views/main/hooks/use-settings";
 import { useVersions } from "@/views/main/hooks/use-versions";
@@ -361,7 +361,7 @@ export function NewInstanceDialog({ open, onOpenChange, onCreated }: Props) {
               <Field data-invalid={!!versions.error || versionsEmpty}>
                 <FieldLabel htmlFor="ni-version">Minecraft Version</FieldLabel>
                 {versions.loading ? (
-                  <LoadingBox label="Loading versions" />
+                  <InstanceSettingsLoadingBox label="Loading versions" />
                 ) : versionsEmpty ? (
                   <div className="flex flex-col gap-1">
                     <div className="flex h-8 items-center gap-2 rounded-lg border border-input bg-muted px-2.5 text-muted-foreground text-sm">
@@ -478,7 +478,7 @@ export function NewInstanceDialog({ open, onOpenChange, onCreated }: Props) {
                       : "Select a Minecraft version first"}
                   </div>
                 ) : loaderVersions.loading ? (
-                  <LoadingBox label="Fetching loader versions" />
+                  <InstanceSettingsLoadingBox label="Fetching loader versions" />
                 ) : loaderVersions.error ? (
                   <div className="flex flex-col gap-1">
                     <div className="flex h-8 items-center gap-2 rounded-lg border border-destructive/50 bg-muted px-2.5 text-muted-foreground text-sm">
@@ -562,15 +562,6 @@ export function NewInstanceDialog({ open, onOpenChange, onCreated }: Props) {
         </form>
       </MultiStepDialogContent>
     </MultiStepDialog>
-  );
-}
-
-function LoadingBox({ label }: { label: string }) {
-  return (
-    <div className="flex h-8 items-center gap-2 rounded-lg border border-input bg-background px-2.5 text-muted-foreground text-sm">
-      <Spinner className="size-3.5" />
-      {label}
-    </div>
   );
 }
 

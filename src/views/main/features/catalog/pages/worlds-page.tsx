@@ -176,7 +176,7 @@ export function WorldsPage() {
   };
 
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-5 p-5">
+    <div className="flex min-h-full w-full flex-col gap-5 p-4 sm:p-6">
       <LibraryPageHeader
         eyebrow="Saves"
         title="Worlds"
@@ -196,7 +196,7 @@ export function WorldsPage() {
         }
       />
 
-      <section className="grid grid-cols-3 gap-3 max-lg:grid-cols-1">
+      <section className="grid grid-cols-[repeat(auto-fit,minmax(16rem,1fr))] gap-3">
         <MetricCard
           icon={GlobeIcon}
           label="Worlds"
@@ -256,7 +256,7 @@ export function WorldsPage() {
               description="Create or import a world in an instance save folder, then scan again."
             />
           ) : (
-            <div className="grid grid-cols-2 gap-3 max-lg:grid-cols-1">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(24rem,1fr))] gap-3">
               {filteredWorlds.map((world) => (
                 <Card key={world.id}>
                   <CardHeader>

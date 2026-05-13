@@ -15,6 +15,7 @@ import type {
   LaunchPlan,
   LaunchPlanMissingArtifact,
 } from "../../shared/types";
+import { isLowEndModeEnabled } from "../settings/store";
 import { collectMissingAssetObjectArtifacts } from "./assets";
 import {
   assertArtifactStoragePath,
@@ -40,20 +41,39 @@ type DownloadOptions = {
 };
 
 const DEFAULT_DOWNLOAD_CONCURRENCY = 6;
+const LOW_END_DOWNLOAD_CONCURRENCY = 2;
 const DEFAULT_DOWNLOAD_TIMEOUT_MS = 60_000;
 
 const verifySha1 = (data: Uint8Array, expected: string): boolean =>
   createHash("sha1").update(data).digest("hex") === expected;
 
-const getDownloadConcurrency = (options: DownloadOptions): number => {
-  const configured =
-    options.concurrency ?? Number(process.env.NYXEN_DOWNLOAD_CONCURRENCY ?? "");
-
-  if (!Number.isFinite(configured) || configured <= 0) {
-    return DEFAULT_DOWNLOAD_CONCURRENCY;
+const normalizeDownloadConcurrency = (value: number): number | null => {
+  if (!Number.isFinite(value) || value <= 0) {
+    return null;
   }
 
-  return Math.max(1, Math.min(16, Math.trunc(configured)));
+  return Math.max(1, Math.min(16, Math.trunc(value)));
+};
+
+const getDownloadConcurrency = (options: DownloadOptions): number => {
+  if (options.concurrency !== undefined) {
+    return (
+      normalizeDownloadConcurrency(options.concurrency) ??
+      DEFAULT_DOWNLOAD_CONCURRENCY
+    );
+  }
+
+  const envConcurrency = process.env.NYXEN_DOWNLOAD_CONCURRENCY?.trim();
+
+  if (envConcurrency) {
+    const configured = normalizeDownloadConcurrency(Number(envConcurrency));
+
+    if (configured !== null) return configured;
+  }
+
+  return isLowEndModeEnabled()
+    ? LOW_END_DOWNLOAD_CONCURRENCY
+    : DEFAULT_DOWNLOAD_CONCURRENCY;
 };
 
 const getDownloadTimeoutMs = (options: DownloadOptions): number => {

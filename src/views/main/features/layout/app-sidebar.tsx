@@ -86,7 +86,7 @@ export function AppSidebar() {
     instancesHook.loading && instancesHook.data === null;
 
   return (
-    <aside className="hidden w-52 shrink-0 flex-col overflow-y-auto border-r border-sidebar-border bg-sidebar md:flex">
+    <aside className="flex w-14 shrink-0 flex-col overflow-y-auto border-r border-sidebar-border bg-sidebar md:w-52">
       {/* Primary navigation */}
       <nav className="flex flex-col gap-0.5 p-2 pt-2">
         {NAV_ITEMS.map((item) => {
@@ -102,28 +102,29 @@ export function AppSidebar() {
             <Link
               key={item.label}
               to={item.to}
+              title={item.label}
               className={cn(
-                "flex items-center gap-3 h-9 px-3 text-sm font-medium no-underline transition-colors rounded-md",
+                "flex h-9 items-center justify-center gap-3 rounded-md px-0 text-sm font-medium no-underline transition-colors md:justify-start md:px-3",
                 "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground",
                 isActive &&
-                  "bg-primary/[0.12] text-foreground border-l-[3px] border-primary rounded-l-none pl-[10px]",
+                  "rounded-l-none border-primary border-l-[3px] bg-primary/[0.12] text-foreground md:pl-[10px]",
               )}
             >
               <Icon className="size-4 shrink-0" />
-              {item.label}
+              <span className="hidden md:inline">{item.label}</span>
             </Link>
           );
         })}
       </nav>
 
       {/* Quick Play */}
-      <div className="px-3 mt-4 mb-1.5">
+      <div className="mt-4 mb-1.5 hidden px-3 md:block">
         <span className="text-[0.58rem] font-bold tracking-[0.15em] text-muted-foreground/50 uppercase">
           Quick Play
         </span>
       </div>
 
-      <div className="flex flex-col gap-0.5 px-2">
+      <div className="hidden flex-col gap-0.5 px-2 md:flex">
         {initialInstancesLoading ? (
           ["quick-play-a", "quick-play-b", "quick-play-c"].map((key) => (
             <div
@@ -157,7 +158,7 @@ export function AppSidebar() {
       </div>
 
       {/* Bottom – active game */}
-      <div className="mt-auto border-t border-sidebar-border">
+      <div className="mt-auto hidden border-sidebar-border border-t md:block">
         <div className="flex items-center gap-2 px-3 py-3 bg-primary/5">
           {activeInstance ? (
             <InstanceIcon

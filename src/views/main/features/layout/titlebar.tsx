@@ -17,7 +17,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { APP_NAME } from "@/shared/constants";
-import type { InstanceContent, LauncherProfile } from "@/shared/types";
+import type { InstanceContent } from "@/shared/types";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,9 +33,14 @@ import type { SelectedInstance } from "@/views/main/features/curseforge/cursefor
 import { useCurseForgeInstall } from "@/views/main/features/curseforge/use-curseforge-install";
 import { NewInstanceDialog } from "@/views/main/features/instances/components/new-instance-dialog";
 import { useInstanceContentStore } from "@/views/main/features/instances/hooks/use-instance-content-store";
+import { TitlebarAppIcon } from "@/views/main/features/layout/titlebar-app-icon";
+import { TitlebarProfileFace } from "@/views/main/features/layout/titlebar-profile-face";
+import {
+  getProfileStateLabel,
+  isVerifiedMinecraftProfile,
+} from "@/views/main/features/layout/titlebar-profile-model";
 import { useModrinthInstall } from "@/views/main/features/modrinth/use-modrinth-install";
 import { AddProfileDialog } from "@/views/main/features/profiles/components/add-profile-dialog";
-import { MinecraftSkinHead } from "@/views/main/features/profiles/components/minecraft-skin";
 import { useInstances } from "@/views/main/hooks/use-instances";
 import { useLauncherStatus } from "@/views/main/hooks/use-launcher-status";
 import { useProfiles } from "@/views/main/hooks/use-profiles";
@@ -48,99 +53,6 @@ type TitlebarProps = {
   isRightSidebarOpen: boolean;
   onToggleRightSidebar: () => void;
 };
-
-function AppIcon() {
-  return (
-    <div className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-sm bg-primary">
-      <svg
-        viewBox="0 0 20 20"
-        className="size-6"
-        fill="none"
-        aria-hidden="true"
-      >
-        <rect x="4" y="5" width="4" height="4" fill="#0a1208" />
-        <rect x="12" y="5" width="4" height="4" fill="#0a1208" />
-        <rect x="8" y="9" width="4" height="2" fill="#0a1208" />
-        <rect x="6" y="11" width="3" height="4" fill="#0a1208" />
-        <rect x="11" y="11" width="3" height="4" fill="#0a1208" />
-      </svg>
-    </div>
-  );
-}
-
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/);
-
-  if (parts.length === 1) {
-    return (parts[0]?.slice(0, 2) ?? "?").toUpperCase();
-  }
-
-  return (
-    (parts[0]?.[0] ?? "") + (parts[parts.length - 1]?.[0] ?? "")
-  ).toUpperCase();
-}
-
-const isVerifiedMinecraftProfile = (profile: LauncherProfile): boolean =>
-  profile.kind === "microsoft" &&
-  Boolean(profile.accountId) &&
-  Boolean(profile.ownershipCheckedAt) &&
-  profile.entitlements.includes("game_minecraft") &&
-  profile.entitlements.includes("product_minecraft");
-
-const getProfileStateLabel = (profile: LauncherProfile | null): string => {
-  if (!profile) {
-    return "No profile";
-  }
-
-  if (isVerifiedMinecraftProfile(profile)) {
-    return "Online";
-  }
-
-  return profile.kind === "microsoft" ? "Needs sign-in" : "Unavailable";
-};
-
-function ProfileFace({
-  className,
-  initialsClassName,
-  profile,
-  scale,
-}: {
-  className?: string;
-  initialsClassName?: string;
-  profile: LauncherProfile | null;
-  scale: number;
-}) {
-  const label = profile ? initials(profile.displayName) : "?";
-  const verified = profile ? isVerifiedMinecraftProfile(profile) : false;
-
-  return (
-    <div className={cn("relative shrink-0", className)} aria-hidden="true">
-      <div className="flex size-full items-center justify-center overflow-hidden rounded-md bg-linear-to-br from-amber-400 to-orange-600">
-        {profile ? (
-          <MinecraftSkinHead
-            displayName={profile.displayName}
-            scale={scale}
-            skinUrl={profile.skinUrl}
-          />
-        ) : null}
-        <span
-          className={cn(
-            "select-none font-black text-[0.55rem] text-white",
-            initialsClassName,
-          )}
-        >
-          {label}
-        </span>
-      </div>
-      <span
-        className={cn(
-          "absolute right-0 bottom-0 size-2 rounded-full ring-1 ring-sidebar",
-          verified ? "bg-primary" : "bg-muted-foreground",
-        )}
-      />
-    </div>
-  );
-}
 
 export function Titlebar({
   isRightSidebarOpen,
@@ -277,10 +189,10 @@ export function Titlebar({
 
   return (
     <>
-      <div className="electrobun-webkit-app-region-drag relative z-9999 flex h-12 shrink-0 select-none items-center border-sidebar-border border-b bg-sidebar px-4">
-        <div className="flex w-52 shrink-0 items-center gap-2.5">
-          <AppIcon />
-          <div className="flex flex-col leading-none">
+      <div className="electrobun-webkit-app-region-drag relative z-9999 flex h-12 shrink-0 select-none items-center border-sidebar-border border-b bg-sidebar px-2 sm:px-4">
+        <div className="flex w-14 shrink-0 items-center gap-2.5 md:w-52">
+          <TitlebarAppIcon />
+          <div className="hidden flex-col leading-none md:flex">
             <span className="font-black text-[0.68rem] text-foreground uppercase tracking-[0.18em]">
               {APP_NAME}
             </span>
@@ -296,19 +208,23 @@ export function Titlebar({
           <button
             type="button"
             onClick={() => setNewInstanceOpen(true)}
-            className="flex h-9 items-center gap-1.5 rounded-md bg-primary px-3.5 font-semibold text-primary-foreground text-xs transition-colors hover:bg-primary/90"
+            className="flex h-9 items-center gap-1.5 whitespace-nowrap rounded-md bg-primary px-2.5 font-semibold text-primary-foreground text-xs transition-colors hover:bg-primary/90 sm:px-3.5"
+            aria-label="Add instance"
+            title="Add instance"
           >
             <PlusIcon className="size-3.5" />
-            Add Instance
+            <span className="hidden sm:inline">Add Instance</span>
           </button>
 
           <button
             type="button"
             onClick={() => setContentBrowserOpen(true)}
-            className="flex h-9 items-center gap-1.5 rounded-md border border-sidebar-border bg-background/55 px-3 font-semibold text-foreground text-xs transition-colors hover:bg-muted"
+            className="flex h-9 items-center gap-1.5 whitespace-nowrap rounded-md border border-sidebar-border bg-background/55 px-2.5 font-semibold text-foreground text-xs transition-colors hover:bg-muted sm:px-3"
+            aria-label="Browse content"
+            title="Browse content"
           >
             <SearchIcon className="size-3.5" />
-            Browse Content
+            <span className="hidden sm:inline">Browse Content</span>
           </button>
 
           <button
@@ -352,12 +268,12 @@ export function Titlebar({
                   : "Open profile options"
               }
             >
-              <ProfileFace
+              <TitlebarProfileFace
                 className="size-7"
                 profile={activeProfile}
                 scale={3.5}
               />
-              <div className="flex min-w-0 flex-col leading-none">
+              <div className="hidden min-w-0 flex-col leading-none sm:flex">
                 <span className="truncate font-semibold text-foreground text-xs">
                   {activeProfile?.displayName ??
                     (profiles.loading ? "Loading..." : "No profile")}
@@ -370,7 +286,7 @@ export function Titlebar({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-72">
               <div className="flex items-center gap-3 rounded-md bg-muted/45 p-2">
-                <ProfileFace
+                <TitlebarProfileFace
                   className="size-10"
                   initialsClassName="text-xs"
                   profile={activeProfile}

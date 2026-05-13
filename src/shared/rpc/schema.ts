@@ -20,6 +20,8 @@ import type {
   DownloadModrinthFileResult,
   DownloadQueueJob,
   EnqueueDownloadJobInput,
+  ExportInstanceRecipeInput,
+  ExportInstanceRecipeResult,
   GetInstanceContentInput,
   GetInstanceLogFileInput,
   GetInstanceModpackUpdateInput,
@@ -172,6 +174,10 @@ export type MainViewRPC = {
       updateInstanceModpack: {
         params: UpdateInstanceModpackInput;
         response: UpdateInstanceModpackResult;
+      };
+      exportInstanceRecipe: {
+        params: ExportInstanceRecipeInput;
+        response: ExportInstanceRecipeResult;
       };
       createLaunchPlan: {
         params: CreateLaunchPlanInput;

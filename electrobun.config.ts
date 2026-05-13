@@ -14,6 +14,15 @@ export default {
     bun: {
       entrypoint: "src/bun/index.ts",
     },
+    mac: {
+      icons: "assets/icon.iconset",
+    },
+    win: {
+      icon: "assets/icon.ico",
+    },
+    linux: {
+      icon: "assets/icon.png",
+    },
     targets: "all",
     copy: {
       ".electrobun/views/main": "views/main",

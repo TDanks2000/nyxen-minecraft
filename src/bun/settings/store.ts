@@ -13,10 +13,12 @@ import {
 } from "../launcher/paths";
 
 export const JAVA_MANAGEMENT_SETTING_KEY = "launcher.javaManagement";
+export const LOW_END_MODE_SETTING_KEY = "launcher.lowEndMode";
 
 const defaultSettings: AppSettings = {
   "app.theme": "system",
   [JAVA_MANAGEMENT_SETTING_KEY]: "auto",
+  [LOW_END_MODE_SETTING_KEY]: false,
   "launcher.keepOpenAfterLaunch": false,
   "launcher.showSnapshots": false,
 };
@@ -53,6 +55,10 @@ const normalizeSettings = (value: unknown): AppSettings => {
     normalized[JAVA_MANAGEMENT_SETTING_KEY] = "auto";
   }
 
+  if (typeof normalized[LOW_END_MODE_SETTING_KEY] !== "boolean") {
+    normalized[LOW_END_MODE_SETTING_KEY] = false;
+  }
+
   return normalized;
 };
 
@@ -85,6 +91,12 @@ export const getJavaManagementMode = (): JavaManagementMode => {
   const mode = settings[JAVA_MANAGEMENT_SETTING_KEY];
 
   return isJavaManagementMode(mode) ? mode : "auto";
+};
+
+export const isLowEndModeEnabled = (): boolean => {
+  const settings = readSettingsFile();
+
+  return settings[LOW_END_MODE_SETTING_KEY] === true;
 };
 
 export const getSettingsStatus = (): SettingsStatus => {

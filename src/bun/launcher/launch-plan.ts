@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync } from "node:fs";
-import { release } from "node:os";
+import { release, totalmem } from "node:os";
 import { join, posix } from "node:path";
 import type {
   CreateLaunchPlanInput,
@@ -52,7 +52,10 @@ type LaunchPlanOptions = {
   javaRuntimeManifestUrl?: string;
   javaVersionProbeRunner?: JavaVersionProbeRunner;
   requestTimeoutMs?: number;
+  systemMemoryTotalMb?: number;
 };
+
+const highMemoryWarningRatio = 0.75;
 
 const minecraftOsName = (): "linux" | "osx" | "windows" => {
   if (process.platform === "darwin") {
@@ -64,6 +67,37 @@ const minecraftOsName = (): "linux" | "osx" | "windows" => {
   }
 
   return "linux";
+};
+
+const getSystemMemoryTotalMb = (options: LaunchPlanOptions): number => {
+  if (options.systemMemoryTotalMb !== undefined) {
+    return Math.max(0, Math.trunc(options.systemMemoryTotalMb));
+  }
+
+  return Math.floor(totalmem() / 1024 / 1024);
+};
+
+const createMemoryWarnings = (
+  memoryMaxMb: number,
+  systemMemoryTotalMb: number,
+): Array<string> => {
+  if (!Number.isFinite(systemMemoryTotalMb) || systemMemoryTotalMb <= 0) {
+    return [];
+  }
+
+  const warningThresholdMb = Math.floor(
+    systemMemoryTotalMb * highMemoryWarningRatio,
+  );
+
+  if (memoryMaxMb <= warningThresholdMb) {
+    return [];
+  }
+
+  return [
+    `Instance max memory is set to ${memoryMaxMb} MB, which is more than ${Math.round(
+      highMemoryWarningRatio * 100,
+    )}% of detected system memory (${systemMemoryTotalMb} MB).`,
+  ];
 };
 
 const mavenPathFromName = (name: string): string | null => {
@@ -577,6 +611,13 @@ export const createLaunchPlan = async (
       "Launch plan has missing artifacts that must be downloaded before launch.",
     );
   }
+
+  warnings.push(
+    ...createMemoryWarnings(
+      instance.memoryMaxMb,
+      getSystemMemoryTotalMb(options),
+    ),
+  );
 
   const plan: LaunchPlan = {
     arguments: {

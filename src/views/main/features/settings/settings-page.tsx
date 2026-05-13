@@ -11,7 +11,7 @@ import {
   Trash2Icon,
   Volume2Icon,
 } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { useTheme } from "@/views/main/components/theme-provider";
 import {
@@ -39,6 +39,9 @@ import { Spinner } from "@/views/main/components/ui/spinner";
 import { Switch } from "@/views/main/components/ui/switch";
 import { useDownloadQueueStore } from "@/views/main/features/downloads/download-queue-store";
 import { useInstanceContentStore } from "@/views/main/features/instances/hooks/use-instance-content-store";
+import { PathRow } from "@/views/main/features/settings/components/path-row";
+import { SettingGroup } from "@/views/main/features/settings/components/setting-group";
+import { SettingRow } from "@/views/main/features/settings/components/setting-row";
 import { useInstances } from "@/views/main/hooks/use-instances";
 import { useLauncherStatus } from "@/views/main/hooks/use-launcher-status";
 import { useProfiles } from "@/views/main/hooks/use-profiles";
@@ -46,80 +49,6 @@ import { useSettings } from "@/views/main/hooks/use-settings";
 import { rpc } from "@/views/main/lib/rpc";
 
 type StorageAction = "cache" | "data";
-
-function SettingGroup({
-  icon: Icon,
-  title,
-  children,
-}: {
-  icon: React.ElementType;
-  title: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-2 px-1">
-        <Icon className="size-3.5 text-primary shrink-0" />
-        <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-          {title}
-        </span>
-        <div className="flex-1 h-px bg-border/60" />
-      </div>
-      <div className="overflow-hidden rounded-lg border border-border/50 bg-card/90 shadow-sm backdrop-blur-sm divide-y divide-border/40">
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function SettingRow({
-  label,
-  description,
-  children,
-}: {
-  label: string;
-  description?: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-6 px-4 py-3 transition-colors hover:bg-muted/20">
-      <div className="min-w-0">
-        <p className="text-sm font-medium leading-none">{label}</p>
-        {description && (
-          <p className="mt-1 text-xs leading-snug text-muted-foreground">
-            {description}
-          </p>
-        )}
-      </div>
-      <div className="shrink-0">{children}</div>
-    </div>
-  );
-}
-
-function PathRow({
-  icon: Icon,
-  label,
-  path,
-}: {
-  icon: React.ElementType;
-  label: string;
-  path: string;
-}) {
-  return (
-    <div className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/20">
-      <Icon className="size-4 shrink-0 text-muted-foreground/60" />
-      <span className="w-20 shrink-0 text-sm font-medium text-muted-foreground">
-        {label}
-      </span>
-      <span
-        className="min-w-0 flex-1 truncate text-right font-mono text-xs text-foreground/80"
-        title={path}
-      >
-        {path}
-      </span>
-    </div>
-  );
-}
 
 export function SettingsPage() {
   const settingsHook = useSettings();
@@ -148,6 +77,7 @@ export function SettingsPage() {
       ? "app-controlled"
       : "auto";
   const keepOpen = !!settings?.["launcher.keepOpenAfterLaunch"];
+  const lowEndMode = !!settings?.["launcher.lowEndMode"];
   const showSnapshots = !!settings?.["launcher.showSnapshots"];
 
   async function handleTheme(value: string) {
@@ -202,7 +132,7 @@ export function SettingsPage() {
 
   return (
     <>
-      <div className="mx-auto flex max-w-7xl flex-col gap-6 p-5">
+      <div className="flex min-h-full w-full flex-col gap-6 p-4 sm:p-6">
         <section>
           <span className="text-muted-foreground text-xs font-black uppercase tracking-widest">
             Preferences
@@ -288,7 +218,7 @@ export function SettingsPage() {
 
             <SettingGroup icon={SlidersHorizontalIcon} title="Behavior">
               {settingsHook.loading ? (
-                ["keep-open", "show-snapshots"].map((key) => (
+                ["keep-open", "show-snapshots", "low-end-mode"].map((key) => (
                   <div key={key} className="px-4 py-3">
                     <Skeleton className="h-5 w-48 rounded-md" />
                   </div>
@@ -318,6 +248,20 @@ export function SettingsPage() {
                       onCheckedChange={(checked) =>
                         settingsHook.updateSetting(
                           "launcher.showSnapshots",
+                          checked,
+                        )
+                      }
+                    />
+                  </SettingRow>
+                  <SettingRow
+                    label="Low-end mode"
+                    description="Reduce default download concurrency for modest hardware and networks"
+                  >
+                    <Switch
+                      checked={lowEndMode}
+                      onCheckedChange={(checked) =>
+                        settingsHook.updateSetting(
+                          "launcher.lowEndMode",
                           checked,
                         )
                       }

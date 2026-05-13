@@ -54,6 +54,7 @@ const parseEntitlements = (value: string | null): Array<string> => {
 const toProfile = (row: ProfileRow): LauncherProfile => ({
   accountId: row.accountId,
   authExpiresAt: row.minecraftAccessTokenExpiresAt,
+  authRefreshable: Boolean(row.microsoftRefreshToken),
   createdAt: row.createdAt,
   displayName: row.displayName,
   entitlements: parseEntitlements(row.entitlements),

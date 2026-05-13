@@ -65,6 +65,11 @@ Goal: make modpack updates safer than competitor defaults.
 - Apply update with hash verification.
 - Restore previous snapshot.
 
+Completed:
+
+- [x] Wire the existing CurseForge modpack update check/apply flow through the
+  main-view RPC router so the instance details UI can call it.
+
 Exit criteria:
 
 - Updating a pack is reversible.
@@ -91,11 +96,11 @@ Exit criteria:
 Goal: beat Prism's manual export and GDLauncher's code sharing with transparent
 recipes.
 
-- Export recipe to a small JSON file.
+- [x] Export recipe to a small JSON file.
 - Import recipe with provider resolution.
-- Warn on unavailable, blocked, private, or local-only files.
+- [x] Warn on unavailable, blocked, private, or local-only files.
 - Add optional bundle format for private files.
-- Sign recipe with a local key or checksum manifest.
+- [x] Sign recipe with a local key or checksum manifest.
 
 Exit criteria:
 

@@ -74,6 +74,66 @@ const hasJavaMismatchWarning = (planSummary: LaunchPlanSummary): boolean =>
         warning.includes("could not be detected")),
   );
 
+const hasAuthFailureEvidence = (
+  outcome: LaunchAttemptOutcome,
+  planSummary: LaunchPlanSummary,
+): boolean => {
+  const searchable = [outcome.message, ...planSummary.warnings]
+    .join(" ")
+    .toLowerCase();
+
+  return [
+    "authlib",
+    "authentication",
+    "expired token",
+    "invalid session",
+    "invalid token",
+    "microsoft profile needs to be signed in again",
+    "sign in again",
+    "stale auth",
+    "yggdrasil",
+  ].some((needle) => searchable.includes(needle));
+};
+
+const hasNativeExtractionFailureEvidence = (
+  outcome: LaunchAttemptOutcome,
+  planSummary: LaunchPlanSummary,
+): boolean => {
+  const searchable = [outcome.message, ...planSummary.warnings]
+    .join(" ")
+    .toLowerCase();
+
+  return [
+    "failed to extract native",
+    "java.library.path",
+    "lwjgl",
+    "native library",
+    "no lwjgl",
+    "org.lwjgl",
+    "unsatisfiedlinkerror",
+  ].some((needle) => searchable.includes(needle));
+};
+
+const hasCorruptArtifactEvidence = (
+  outcome: LaunchAttemptOutcome,
+  planSummary: LaunchPlanSummary,
+): boolean => {
+  const searchable = [outcome.message, ...planSummary.warnings]
+    .join(" ")
+    .toLowerCase();
+
+  return [
+    "checksum mismatch",
+    "corrupt jar",
+    "corrupt library",
+    "invalid loc header",
+    "invalid signature file digest",
+    "jar is corrupt",
+    "zip end header not found",
+    "zipexception",
+  ].some((needle) => searchable.includes(needle));
+};
+
 export const classifyLaunchAttempt = ({
   outcome,
   planSummary,
@@ -124,6 +184,54 @@ export const classifyLaunchAttempt = ({
         "Sign in with a Microsoft profile that owns Minecraft, then retry launch.",
       safeToAutomate: false,
       title: "Sign in to Minecraft",
+    };
+  }
+
+  if (
+    outcome.reason === "launchError" &&
+    hasAuthFailureEvidence(outcome, planSummary)
+  ) {
+    return {
+      actionId: "signInMicrosoft",
+      category: "staleAuth",
+      confidence: "high",
+      evidence: repairEvidence(outcome, planSummary),
+      nextAction:
+        "Sign in with the affected Microsoft profile again, then retry launch.",
+      safeToAutomate: false,
+      title: "Refresh Minecraft sign-in",
+    };
+  }
+
+  if (
+    outcome.reason === "launchError" &&
+    hasCorruptArtifactEvidence(outcome, planSummary)
+  ) {
+    return {
+      actionId: "redownloadCorruptArtifacts",
+      category: "corruptFiles",
+      confidence: "medium",
+      evidence: repairEvidence(outcome, planSummary),
+      nextAction:
+        "Re-download corrupt launch libraries or assets, then retry launch.",
+      safeToAutomate: true,
+      title: "Re-download corrupt launch files",
+    };
+  }
+
+  if (
+    outcome.reason === "launchError" &&
+    hasNativeExtractionFailureEvidence(outcome, planSummary)
+  ) {
+    return {
+      actionId: "reextractNatives",
+      category: "nativeExtraction",
+      confidence: "medium",
+      evidence: repairEvidence(outcome, planSummary),
+      nextAction:
+        "Re-extract native libraries for this instance, then retry launch.",
+      safeToAutomate: true,
+      title: "Re-extract native libraries",
     };
   }
 

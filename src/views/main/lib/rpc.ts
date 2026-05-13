@@ -61,6 +61,20 @@ const isoHoursAgo = (hours: number): string =>
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
+const getPreviewModCount = (): number | null => {
+  if (typeof window === "undefined") return null;
+
+  const raw = new URLSearchParams(window.location.search).get(
+    "nyxenPreviewMods",
+  );
+  if (!raw) return null;
+
+  const value = Number.parseInt(raw, 10);
+  if (!Number.isFinite(value)) return null;
+
+  return Math.max(0, Math.min(value, 2_000));
+};
+
 const makeDirectories = (): LauncherDirectories => ({
   assets: `${previewRoot}/assets`,
   downloads: `${previewRoot}/downloads`,
@@ -144,6 +158,7 @@ const createPreviewInstance = ({
 const previewProfile: LauncherProfile = {
   accountId: "00000000-0000-4000-8000-preview000001",
   authExpiresAt: isoHoursAgo(-12),
+  authRefreshable: true,
   createdAt: isoHoursAgo(24 * 8),
   displayName: "PreviewPlayer",
   entitlements: ["game_minecraft", "product_minecraft"],
@@ -245,31 +260,37 @@ const makeContent = (instance: LauncherInstance): InstanceContent => {
       sizeBytes: 228_412,
     }),
   ];
+  const previewModCount = getPreviewModCount();
   const mods =
     instance.loader === "vanilla"
       ? []
-      : [
+      : Array.from({ length: previewModCount ?? 2 }, (_, index) =>
           previewFile({
-            displayName: "Sodium",
-            enabled: true,
-            fileName: "sodium-fabric.jar",
+            displayName:
+              index === 0
+                ? "Sodium"
+                : index === 1
+                  ? "Debug HUD"
+                  : `Local Mod ${String(index + 1).padStart(3, "0")}`,
+            enabled: index % 7 !== 1,
+            fileName:
+              index === 0
+                ? "sodium-fabric.jar"
+                : index === 1
+                  ? "debug-hud.disabled"
+                  : `local-mod-${String(index + 1).padStart(3, "0")}.jar`,
             instance,
             kind: "mod",
-            modifiedAt: isoHoursAgo(6),
-            relativePath: "mods/sodium-fabric.jar",
-            sizeBytes: 1_746_992,
+            modifiedAt: isoHoursAgo(6 + index),
+            relativePath:
+              index === 0
+                ? "mods/sodium-fabric.jar"
+                : index === 1
+                  ? "mods/debug-hud.disabled"
+                  : `mods/local-mod-${String(index + 1).padStart(3, "0")}.jar`,
+            sizeBytes: 320_000 + index * 24_117,
           }),
-          previewFile({
-            displayName: "Debug HUD",
-            enabled: false,
-            fileName: "debug-hud.disabled",
-            instance,
-            kind: "mod",
-            modifiedAt: isoHoursAgo(30),
-            relativePath: "mods/debug-hud.disabled",
-            sizeBytes: 376_144,
-          }),
-        ];
+        );
   const worlds = [
     previewFile({
       displayName: "Overworld QA Save",
@@ -376,6 +397,7 @@ let previewSettings: SettingsStatus = {
   updatedAt: isoHoursAgo(1),
   values: {
     "launcher.javaManagement": "app-controlled",
+    "launcher.lowEndMode": false,
     "launcher.showSnapshots": false,
     "ui.compactMode": false,
   },
@@ -839,6 +861,52 @@ const createPreviewRpc = (): ViewRpcClient => {
 
       previewDownloads = [job, ...previewDownloads];
       return clone(job);
+    },
+    exportInstanceRecipe: async ({ instanceId }) => {
+      const instance = previewInstances.find((item) => item.id === instanceId);
+      if (!instance) throw new Error("Launcher instance does not exist.");
+
+      const exportedAt = new Date().toISOString();
+      const recipe = {
+        app: {
+          name: "nyxen" as const,
+          schemaVersion: 1 as const,
+        },
+        checksum: {
+          algorithm: "sha256" as const,
+          covers: "recipe" as const,
+          value: "preview-checksum",
+        },
+        exportedAt,
+        recipe: {
+          createdAt: exportedAt,
+          files: [],
+          id: `preview-recipe-${instance.id}`,
+          overrides: [],
+          runtime: {
+            javaComponent: null,
+            javaMajorVersion: null,
+            loader: instance.loader,
+            loaderVersion: instance.loaderVersion,
+            minecraftVersionId: instance.versionId,
+          },
+          schemaVersion: 1 as const,
+          source: { kind: "manual" as const },
+        },
+        schemaVersion: 1 as const,
+        sourceInstance: {
+          loader: instance.loader,
+          loaderVersion: instance.loaderVersion,
+          name: instance.name,
+          versionId: instance.versionId,
+        },
+        warnings: [],
+      };
+
+      return {
+        path: `${instance.folders.metadata}/recipe-exports/${instance.id}-preview-recipe.json`,
+        recipe,
+      };
     },
     getCurseForgeStatus: async () =>
       ({

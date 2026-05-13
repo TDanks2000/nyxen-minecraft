@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { DashboardHero } from "@/views/main/features/dashboard/components/dashboard-hero";
 import { DashboardInstanceGrid } from "@/views/main/features/dashboard/components/dashboard-instance-grid";
 import { StatusStrip } from "@/views/main/features/dashboard/components/status-strip";
+import { useDownloadQueueStore } from "@/views/main/features/downloads/download-queue-store";
 import { LaunchPlanSheet } from "@/views/main/features/instances/components/launch-plan-sheet";
 import { NewInstanceDialog } from "@/views/main/features/instances/components/new-instance-dialog";
 import { useLaunchPlan } from "@/views/main/features/instances/hooks/use-launch-plan";
@@ -12,6 +13,7 @@ export function DashboardPage() {
   const instancesHook = useInstances();
   const launchPlan = useLaunchPlan();
   const statusHook = useLauncherStatus();
+  const downloadJobs = useDownloadQueueStore((state) => state.jobs);
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const instances = instancesHook.data ?? [];
@@ -34,10 +36,10 @@ export function DashboardPage() {
   const playInstance = (instanceId: string) => {
     void launchPlan.createLaunchPlan(instanceId);
   };
-  const refreshDashboardData = () => {
+  const refreshDashboardData = useCallback(() => {
     instancesHook.refresh();
     statusHook.refresh();
-  };
+  }, [instancesHook.refresh, statusHook.refresh]);
   const initialInstancesLoading =
     instancesHook.loading && instancesHook.data === null;
 
@@ -63,12 +65,14 @@ export function DashboardPage() {
       />
 
       <DashboardInstanceGrid
+        downloadJobs={downloadJobs}
         featuredInstanceId={heroInstance?.id ?? null}
         instanceCount={instances.length}
         instances={instances}
         launchLoadingId={launchPlan.loadingInstanceId}
         loading={initialInstancesLoading}
         onCreateInstance={openNewInstanceDialog}
+        onInstallCompleted={refreshDashboardData}
         onPlayInstance={playInstance}
       />
 

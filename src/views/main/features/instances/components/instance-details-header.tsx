@@ -152,7 +152,7 @@ export function InstanceDetailsHeader({
         aria-hidden="true"
       />
 
-      <div className="relative mx-auto grid max-w-[90rem] gap-4 px-4 py-4 sm:px-5 lg:grid-cols-[minmax(0,1fr)_minmax(22rem,30rem)]">
+      <div className="relative grid w-full gap-4 px-4 py-4 sm:px-5 2xl:grid-cols-[minmax(0,1fr)_minmax(22rem,30rem)]">
         <div className="flex min-w-0 flex-col justify-between gap-5">
           <div className="flex flex-col gap-3">
             <Button

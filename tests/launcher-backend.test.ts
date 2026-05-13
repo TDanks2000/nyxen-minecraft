@@ -834,6 +834,7 @@ describe("launcher backend", () => {
       "game_minecraft",
       "product_minecraft",
     ]);
+    expect(profile.authRefreshable).toBe(true);
     expect(profile.kind).toBe("microsoft");
     expect(profile.ownershipCheckedAt).toBe("2099-01-04T00:00:00.000Z");
     expect(profile.skinUrl).toBe("https://textures.minecraft.net/texture/test");
@@ -1428,6 +1429,54 @@ describe("launcher backend", () => {
     expect(missingJavaPlan.java.detectionError).toBe("ENOENT");
     expect(missingJavaPlan.warnings).toContain(
       "Instance Java executable is user-managed; 1.20.4 requires Java 17, but Java version could not be detected: ENOENT",
+    );
+  });
+
+  test("warns when launch memory exceeds sensible system limits", async () => {
+    const { createLauncherInstance } = await import(
+      "../src/bun/launcher/instances"
+    );
+    const { createLaunchPlan } = await import(
+      "../src/bun/launcher/launch-plan"
+    );
+    const { upsertVerifiedMicrosoftProfile } = await import(
+      "../src/bun/launcher/profiles"
+    );
+    const { getMinecraftVersionDetails, refreshMinecraftVersionManifest } =
+      await import("../src/bun/launcher/versions");
+
+    await refreshMinecraftVersionManifest({ fetcher: fakeFetch });
+    await getMinecraftVersionDetails(
+      { versionId: "1.20.4" },
+      { fetcher: fakeFetch },
+    );
+
+    const profile = upsertVerifiedMicrosoftProfile({
+      accountId: "memory-warning-account",
+      displayName: "MemoryWarn",
+      entitlements: ["game_minecraft", "product_minecraft"],
+      minecraftAccessToken: "memory-warning-token",
+      minecraftAccessTokenExpiresAt: "2099-01-04T00:00:00.000Z",
+      microsoftRefreshToken: "memory-warning-refresh",
+      ownershipCheckedAt: "2026-05-12T12:00:00.000Z",
+      skinUrl: null,
+    });
+    const instance = createLauncherInstance({
+      memoryMaxMb: 7000,
+      name: "High Memory",
+      profileId: profile.id,
+      versionId: "1.20.4",
+    });
+    const plan = await createLaunchPlan(
+      { instanceId: instance.id },
+      {
+        fetcher: fakeFetch,
+        systemMemoryTotalMb: 8192,
+      },
+    );
+
+    expect(plan.warnings).toContain(
+      "Instance max memory is set to 7000 MB, which is more than 75% of detected system memory (8192 MB).",
     );
   });
 
@@ -5030,6 +5079,49 @@ describe("launcher backend", () => {
     expect(maxActive).toBeLessThanOrEqual(2);
   });
 
+  test("low-end mode lowers default artifact download concurrency", async () => {
+    const { downloadArtifacts } = await import("../src/bun/launcher/download");
+    const { getLauncherDirectories } = await import(
+      "../src/bun/launcher/paths"
+    );
+    const { updateSetting } = await import("../src/bun/settings/store");
+    const directories = getLauncherDirectories();
+    let active = 0;
+    let maxActive = 0;
+    const plan = createTestLaunchPlan(directories, {
+      missingArtifacts: Array.from({ length: 5 }, (_, index) => ({
+        id: `low-end-artifact-${index}`,
+        kind: "library",
+        path: join(
+          directories.libraries,
+          "low-end-mode",
+          `artifact-${index}.jar`,
+        ),
+        url: `https://example.com/low-end-artifact-${index}.jar`,
+      })),
+    });
+
+    updateSetting({ key: "launcher.lowEndMode", value: true });
+
+    try {
+      const result = await downloadArtifacts(plan, {
+        fetcher: async () => {
+          active += 1;
+          maxActive = Math.max(maxActive, active);
+          await wait(10);
+          active -= 1;
+
+          return new Response("artifact");
+        },
+      });
+
+      expect(result).toEqual({ failed: [], succeeded: 5 });
+      expect(maxActive).toBeLessThanOrEqual(2);
+    } finally {
+      updateSetting({ key: "launcher.lowEndMode", value: false });
+    }
+  });
+
   test("marks downloaded managed Java executables as runnable", async () => {
     const { existsSync, statSync } = await import("node:fs");
     const { downloadArtifacts } = await import("../src/bun/launcher/download");
@@ -5380,9 +5472,11 @@ describe("launcher backend", () => {
     const { createLaunchPlan } = await import(
       "../src/bun/launcher/launch-plan"
     );
-    const { classifyLaunchAttempt, readLaunchAttemptRecords } = await import(
-      "../src/bun/launcher/launch-diagnostics"
-    );
+    const {
+      classifyLaunchAttempt,
+      readLaunchAttemptRecords,
+      summarizeLaunchPlan,
+    } = await import("../src/bun/launcher/launch-diagnostics");
     const { launchInstance } = await import("../src/bun/rpc/handlers");
     const { getMinecraftVersionDetails, refreshMinecraftVersionManifest } =
       await import("../src/bun/launcher/versions");
@@ -5504,6 +5598,75 @@ describe("launcher backend", () => {
       category: "wrongJava",
       confidence: "high",
       safeToAutomate: false,
+    });
+
+    const authPlanSummary = summarizeLaunchPlan(plan);
+
+    expect(
+      classifyLaunchAttempt({
+        outcome: {
+          message:
+            "Authentication servers are unavailable: invalid session token.",
+          reason: "launchError",
+          status: "failed",
+        },
+        planSummary: {
+          ...authPlanSummary,
+          counts: {
+            ...authPlanSummary.counts,
+            warnings: 1,
+          },
+          warnings: ["This Microsoft profile needs to be signed in again."],
+        },
+      }),
+    ).toMatchObject({
+      actionId: "signInMicrosoft",
+      category: "staleAuth",
+      confidence: "high",
+      safeToAutomate: false,
+    });
+
+    expect(
+      classifyLaunchAttempt({
+        outcome: {
+          message:
+            "java.lang.UnsatisfiedLinkError: no lwjgl in java.library.path",
+          reason: "launchError",
+          status: "failed",
+        },
+        planSummary: {
+          ...authPlanSummary,
+          counts: {
+            ...authPlanSummary.counts,
+            nativeArtifacts: 1,
+          },
+        },
+      }),
+    ).toMatchObject({
+      actionId: "reextractNatives",
+      category: "nativeExtraction",
+      confidence: "medium",
+      safeToAutomate: true,
+    });
+
+    expect(
+      classifyLaunchAttempt({
+        outcome: {
+          message:
+            "java.util.zip.ZipException: zip END header not found in library artifact",
+          reason: "launchError",
+          status: "failed",
+        },
+        planSummary: {
+          ...authPlanSummary,
+          warnings: ["Checksum mismatch for org.lwjgl:lwjgl:3.3.3"],
+        },
+      }),
+    ).toMatchObject({
+      actionId: "redownloadCorruptArtifacts",
+      category: "corruptFiles",
+      confidence: "medium",
+      safeToAutomate: true,
     });
   });
 

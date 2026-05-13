@@ -261,6 +261,7 @@ export {
   getModrinthStatus,
   searchModrinthProjects,
 } from "../../launcher/modrinth";
+export { exportInstanceRecipe } from "../../launcher/recipe-export";
 export { getLauncherStatus } from "../../launcher/status";
 export {
   clearLauncherCache,

@@ -56,4 +56,18 @@ describe("generated project manifest", () => {
     expect(workflow).toContain("bun test");
     expect(workflow).toContain("bun run build");
   });
+
+  test("main view RPC registers roadmap feature requests", async () => {
+    const router = await Bun.file("src/bun/rpc/router.ts").text();
+    const countOccurrences = (needle: string) =>
+      router.match(new RegExp(needle, "g"))?.length ?? 0;
+
+    expect(
+      countOccurrences("getInstanceModpackUpdate,"),
+    ).toBeGreaterThanOrEqual(2);
+    expect(countOccurrences("updateInstanceModpack,")).toBeGreaterThanOrEqual(
+      2,
+    );
+    expect(countOccurrences("exportInstanceRecipe,")).toBeGreaterThanOrEqual(2);
+  });
 });

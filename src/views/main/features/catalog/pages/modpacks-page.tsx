@@ -324,7 +324,7 @@ export function ModpacksPage() {
   };
 
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-5 p-5">
+    <div className="flex min-h-full w-full flex-col gap-5 p-4 sm:p-6">
       <LibraryPageHeader
         eyebrow="Discover"
         title="Modpacks"
@@ -345,7 +345,7 @@ export function ModpacksPage() {
         }
       />
 
-      <section className="grid grid-cols-3 gap-3 max-lg:grid-cols-1">
+      <section className="grid grid-cols-[repeat(auto-fit,minmax(16rem,1fr))] gap-3">
         <MetricCard
           icon={BoxesIcon}
           label="Live Catalog"
@@ -405,7 +405,7 @@ export function ModpacksPage() {
               }
             />
           ) : (
-            <div className="grid grid-cols-3 gap-3 max-xl:grid-cols-2 max-md:grid-cols-1">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(18rem,1fr))] gap-3">
               {filteredCards.map((card) => {
                 const isFavorite = favorites.has(card.id);
                 const installing =

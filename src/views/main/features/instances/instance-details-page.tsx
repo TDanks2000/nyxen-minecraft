@@ -328,7 +328,7 @@ export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
         warningCount={catalog.disabledMods.length}
       />
 
-      <div className="mx-auto flex w-full max-w-[90rem] min-w-0 flex-col gap-4 px-4 pt-4 pb-8 sm:px-5">
+      <div className="flex w-full min-w-0 flex-col gap-4 px-4 pt-4 pb-8 sm:px-5">
         <InstanceCatalogTabs
           activeTab={activeTab}
           content={catalog.content}

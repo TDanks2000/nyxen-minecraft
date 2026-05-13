@@ -7,10 +7,10 @@ import {
   ShieldCheckIcon,
   TerminalSquareIcon,
 } from "lucide-react";
-import type { ElementType, ReactNode } from "react";
 import { toast } from "sonner";
 import type { LauncherInstance } from "@/shared/types";
 import { Button } from "@/views/main/components/ui/button";
+import { InstanceSummaryStatCell } from "@/views/main/features/instances/components/instance-summary-stat-cell";
 
 type InstanceSummaryProps = {
   enabledModsCount: number;
@@ -22,36 +22,6 @@ type InstanceSummaryProps = {
 
 function formatMemory(mb: number): string {
   return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb} MB`;
-}
-
-function StatCell({
-  action,
-  icon: Icon,
-  label,
-  value,
-  detail,
-}: {
-  action?: ReactNode;
-  icon: ElementType;
-  label: string;
-  value: string;
-  detail: string;
-}) {
-  return (
-    <div className="flex min-w-0 items-center gap-3 bg-card/70 px-4 py-3">
-      <Icon className="size-5 shrink-0 text-primary" />
-      <div className="min-w-0 flex-1">
-        <div className="text-xs text-muted-foreground">{label}</div>
-        <div className="mt-1 truncate font-heading text-lg font-black leading-none">
-          {value}
-        </div>
-        <div className="mt-1 truncate text-xs text-muted-foreground">
-          {detail}
-        </div>
-      </div>
-      {action}
-    </div>
-  );
 }
 
 export function InstanceSummary({
@@ -73,31 +43,31 @@ export function InstanceSummary({
   return (
     <section className="overflow-hidden rounded-lg border border-border bg-card/70 shadow-[0_20px_70px_-58px_black]">
       <div className="grid grid-cols-1 gap-px bg-border/70 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
-        <StatCell
+        <InstanceSummaryStatCell
           detail={`${instance.memoryMinMb} MB - ${instance.memoryMaxMb} MB`}
           icon={MemoryStickIcon}
           label="Memory"
           value={formatMemory(instance.memoryMaxMb)}
         />
-        <StatCell
+        <InstanceSummaryStatCell
           detail={instance.javaExecutable ?? "Managed by Nyxen"}
           icon={TerminalSquareIcon}
           label="Java Runtime"
           value={instance.javaExecutable ? "Custom Java" : "Managed Java"}
         />
-        <StatCell
+        <InstanceSummaryStatCell
           detail={`${totalModsCount} total`}
           icon={PuzzleIcon}
           label="Mods"
           value={`${enabledModsCount} Enabled`}
         />
-        <StatCell
+        <InstanceSummaryStatCell
           detail={`${shaderPackCount} shader pack${shaderPackCount === 1 ? "" : "s"}`}
           icon={ScrollTextIcon}
           label="Packs"
           value={`${resourcePackCount} Resources`}
         />
-        <StatCell
+        <InstanceSummaryStatCell
           detail={
             instance.profileId
               ? "Account selected"
@@ -107,7 +77,7 @@ export function InstanceSummary({
           label="Profile"
           value={instance.profileId ? "Linked" : "Automatic"}
         />
-        <StatCell
+        <InstanceSummaryStatCell
           action={
             <Button
               aria-label="Copy game directory path"

@@ -1,15 +1,6 @@
-import {
-  AlertTriangleIcon,
-  CalendarDaysIcon,
-  CheckIcon,
-  DownloadIcon,
-  ExternalLinkIcon,
-  PackageIcon,
-  RefreshCcwIcon,
-  UserRoundIcon,
-} from "lucide-react";
+import { ExternalLinkIcon, InfoIcon } from "lucide-react";
+import type { KeyboardEvent, MouseEvent } from "react";
 import type { ModrinthCategory, ModrinthProjectSummary } from "@/shared/types";
-import { Badge } from "@/views/main/components/ui/badge";
 import { Button } from "@/views/main/components/ui/button";
 import {
   Card,
@@ -20,19 +11,15 @@ import {
   CardHeader,
   CardTitle,
 } from "@/views/main/components/ui/card";
-import {
-  formatCurseForgeDate,
-  formatCurseForgeDownloads,
-} from "@/views/main/features/curseforge/curseforge-browser-model";
 import type {
   ContentBrowserActionState,
   CurseForgeBrowserViewMode,
 } from "@/views/main/features/curseforge/curseforge-browser-types";
-import {
-  getModrinthCategoryLabel,
-  getVisibleModrinthMinecraftVersions,
-  type InstalledModrinthItem,
-} from "@/views/main/features/modrinth/modrinth-browser-model";
+import { ModrinthProjectBadges } from "@/views/main/features/modrinth/components/modrinth-project-badges";
+import { ModrinthProjectImage } from "@/views/main/features/modrinth/components/modrinth-project-image";
+import { ModrinthProjectMetadataLine } from "@/views/main/features/modrinth/components/modrinth-project-metadata-line";
+import { ModrinthResultActionIcon } from "@/views/main/features/modrinth/components/modrinth-result-action-icon";
+import type { InstalledModrinthItem } from "@/views/main/features/modrinth/modrinth-browser-model";
 import { cn } from "@/views/main/lib/utils";
 
 type ModrinthResultCardProps = {
@@ -47,6 +34,9 @@ type ModrinthResultCardProps = {
   selected: boolean;
   viewMode: CurseForgeBrowserViewMode;
 };
+
+const CARD_ACTION_SELECTOR =
+  "a,button,input,select,textarea,[data-card-action]";
 
 const actionLabelByState: Record<ContentBrowserActionState, string> = {
   failed: "Retry",
@@ -70,111 +60,6 @@ function getActionLabel(
   return actionLabelByState[state];
 }
 
-function ActionIcon({
-  category,
-  state,
-}: {
-  category: ModrinthCategory;
-  state: ContentBrowserActionState;
-}) {
-  if (state === "installed") return <CheckIcon data-icon="inline-start" />;
-  if (state === "installing") {
-    return <RefreshCcwIcon className="animate-spin" data-icon="inline-start" />;
-  }
-  if (state === "update-available") {
-    return <RefreshCcwIcon data-icon="inline-start" />;
-  }
-  if (state === "failed" || state === "incompatible") {
-    return <AlertTriangleIcon data-icon="inline-start" />;
-  }
-  if (state === "managed") {
-    return <PackageIcon data-icon="inline-start" />;
-  }
-  if (category === "modpacks") return <PackageIcon data-icon="inline-start" />;
-
-  return <DownloadIcon data-icon="inline-start" />;
-}
-
-function ProjectImage({
-  category,
-  item,
-}: {
-  category: ModrinthCategory;
-  item: ModrinthProjectSummary;
-}) {
-  if (item.logoUrl) {
-    return (
-      <img
-        alt=""
-        className="size-14 rounded-md object-cover ring-1 ring-border"
-        src={item.logoUrl}
-      />
-    );
-  }
-
-  return (
-    <div
-      aria-hidden="true"
-      className="flex size-14 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground ring-1 ring-border"
-    >
-      <PackageIcon />
-      <span className="sr-only">{getModrinthCategoryLabel(category)}</span>
-    </div>
-  );
-}
-
-function MetadataLine({ item }: { item: ModrinthProjectSummary }) {
-  return (
-    <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground text-xs">
-      <span className="inline-flex min-w-0 items-center gap-1">
-        <UserRoundIcon className="size-3.5 shrink-0" />
-        <span className="truncate">
-          {item.authors.length > 0 ? item.authors.join(", ") : "Unknown author"}
-        </span>
-      </span>
-      <span className="inline-flex items-center gap-1">
-        <DownloadIcon className="size-3.5 shrink-0" />
-        {formatCurseForgeDownloads(item.downloadCount)}
-      </span>
-      <span className="inline-flex items-center gap-1">
-        <CalendarDaysIcon className="size-3.5 shrink-0" />
-        {formatCurseForgeDate(item.dateModified)}
-      </span>
-    </div>
-  );
-}
-
-function ProjectBadges({
-  category,
-  installedItem,
-  item,
-}: {
-  category: ModrinthCategory;
-  installedItem: InstalledModrinthItem | null;
-  item: ModrinthProjectSummary;
-}) {
-  const versions = getVisibleModrinthMinecraftVersions(item, 3);
-  const loaders = item.modLoaders.slice(0, 3);
-
-  return (
-    <div className="flex flex-wrap gap-1.5">
-      <Badge variant="secondary">{getModrinthCategoryLabel(category)}</Badge>
-      <Badge variant="outline">Modrinth</Badge>
-      {installedItem ? <Badge variant="default">Installed</Badge> : null}
-      {versions.map((version) => (
-        <Badge key={version} variant="outline">
-          {version}
-        </Badge>
-      ))}
-      {loaders.map((loader) => (
-        <Badge key={loader} variant="outline">
-          {loader}
-        </Badge>
-      ))}
-    </div>
-  );
-}
-
 export function ModrinthResultCard({
   actionDisabledReason,
   actionState,
@@ -191,16 +76,44 @@ export function ModrinthResultCard({
   const primaryDisabled =
     installActionsConfigured &&
     (!canRunPrimary || actionDisabledReason !== null);
+  const shouldIgnoreCardActivation = (
+    event: MouseEvent<HTMLDivElement>,
+  ): boolean => {
+    const target = event.target;
+
+    return (
+      target instanceof Element &&
+      target !== event.currentTarget &&
+      Boolean(target.closest(CARD_ACTION_SELECTOR))
+    );
+  };
+  const handleCardClick = (event: MouseEvent<HTMLDivElement>) => {
+    if (shouldIgnoreCardActivation(event)) return;
+
+    onDetails();
+  };
+  const handleCardKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.currentTarget !== event.target) return;
+    if (event.key !== "Enter" && event.key !== " ") return;
+
+    event.preventDefault();
+    onDetails();
+  };
 
   return (
     <Card
+      aria-label={`View details for ${item.name}`}
+      role="button"
       size="sm"
+      tabIndex={0}
       className={cn(
-        "min-w-0 border-border/80 bg-card/80 transition-colors hover:border-primary/45 hover:bg-card",
+        "min-w-0 cursor-pointer border-border/80 bg-card/80 transition-colors outline-none hover:border-primary/45 hover:bg-card focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
         selected && "border-primary/70 bg-primary/10 ring-1 ring-primary/25",
         viewMode === "list" &&
           "md:grid md:grid-cols-[auto_minmax(0,1fr)] md:gap-0",
       )}
+      onClick={handleCardClick}
+      onKeyDown={handleCardKeyDown}
     >
       <CardHeader
         className={cn(
@@ -210,7 +123,7 @@ export function ModrinthResultCard({
         )}
       >
         <div className="flex min-w-0 gap-3">
-          <ProjectImage category={category} item={item} />
+          <ModrinthProjectImage category={category} item={item} />
           <div className="min-w-0">
             <CardTitle className="truncate">{item.name}</CardTitle>
             <CardDescription className="mt-1 line-clamp-2">
@@ -218,21 +131,21 @@ export function ModrinthResultCard({
             </CardDescription>
           </div>
         </div>
-        <CardAction>
+        <CardAction data-card-action>
           <Button
             aria-label={`View details for ${item.name}`}
             onClick={onDetails}
             size="icon-sm"
             variant={selected ? "secondary" : "ghost"}
           >
-            <ExternalLinkIcon />
+            <InfoIcon />
           </Button>
         </CardAction>
       </CardHeader>
 
       <CardContent className="flex min-w-0 flex-col gap-3">
-        <MetadataLine item={item} />
-        <ProjectBadges
+        <ModrinthProjectMetadataLine item={item} />
+        <ModrinthProjectBadges
           category={category}
           installedItem={installedItem}
           item={item}
@@ -249,7 +162,7 @@ export function ModrinthResultCard({
             <span className="block truncate">No file metadata</span>
           )}
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2" data-card-action>
           {installActionsConfigured ? (
             <Button
               disabled={primaryDisabled}
@@ -258,7 +171,10 @@ export function ModrinthResultCard({
               title={actionDisabledReason ?? undefined}
               variant={actionState === "failed" ? "destructive" : "default"}
             >
-              <ActionIcon category={category} state={actionState} />
+              <ModrinthResultActionIcon
+                category={category}
+                state={actionState}
+              />
               {getActionLabel(actionState, category)}
             </Button>
           ) : (

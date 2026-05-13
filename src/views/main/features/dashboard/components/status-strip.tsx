@@ -2,11 +2,9 @@ import {
   ActivityIcon,
   BoxesIcon,
   CheckCircle2Icon,
-  CloudIcon,
   CpuIcon,
   DatabaseIcon,
   RefreshCwIcon,
-  ShieldCheckIcon,
 } from "lucide-react";
 import type { ElementType } from "react";
 import type { LauncherStatus } from "@/shared/types";
@@ -29,12 +27,6 @@ type StatusItem = {
   ready: boolean | null;
   value: string;
 };
-
-const getCapability = (
-  status: LauncherStatus | null,
-  id: string,
-): LauncherStatus["capabilities"][number] | null =>
-  status?.capabilities.find((capability) => capability.id === id) ?? null;
 
 const formatRefreshedAt = (value: string | null | undefined): string => {
   if (!value) return "Manifest has not been refreshed";
@@ -61,8 +53,6 @@ export function StatusStrip({
   onRefresh,
   status,
 }: StatusStripProps) {
-  const microsoftAuth = getCapability(status, "microsoft-auth");
-  const modrinthApi = getCapability(status, "modrinth-api");
   const readyCapabilities =
     status?.capabilities.filter((capability) => capability.ready).length ?? 0;
   const totalCapabilities = status?.capabilities.length ?? 0;
@@ -109,26 +99,6 @@ export function StatusStrip({
         ? `Latest release ${status.manifest.latestRelease}`
         : "Refresh Minecraft versions before creating instances",
       ready: status ? status.counts.versions > 0 : null,
-    },
-    {
-      id: "microsoft-auth",
-      icon: ShieldCheckIcon,
-      label: "Microsoft Auth",
-      value: microsoftAuth?.ready ? "Ready" : "Needs setup",
-      detail: microsoftAuth?.ready
-        ? "Ownership verification can run"
-        : "Add NYXEN_MICROSOFT_CLIENT_ID before sign-in",
-      ready: microsoftAuth?.ready ?? null,
-    },
-    {
-      id: "modrinth-api",
-      icon: CloudIcon,
-      label: "Modrinth",
-      value: modrinthApi?.ready ? "Connected" : "Unavailable",
-      detail: modrinthApi?.ready
-        ? "Public catalog search is available"
-        : "Catalog search is currently unavailable",
-      ready: modrinthApi?.ready ?? null,
     },
     {
       id: "storage",

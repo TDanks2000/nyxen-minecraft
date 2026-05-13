@@ -5,14 +5,6 @@ import { Avatar, AvatarFallback } from "@/views/main/components/ui/avatar";
 import { Badge } from "@/views/main/components/ui/badge";
 import { Button } from "@/views/main/components/ui/button";
 import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/views/main/components/ui/card";
-import {
   Empty,
   EmptyContent,
   EmptyDescription,
@@ -22,10 +14,13 @@ import {
 } from "@/views/main/components/ui/empty";
 import { Skeleton } from "@/views/main/components/ui/skeleton";
 import { AddProfileDialog } from "@/views/main/features/profiles/components/add-profile-dialog";
+import { MinecraftCharacterPlaceholder } from "@/views/main/features/profiles/components/minecraft-character-placeholder";
 import {
   MinecraftSkinCharacter,
   MinecraftSkinHead,
 } from "@/views/main/features/profiles/components/minecraft-skin";
+import { ProfileHealthPanel } from "@/views/main/features/profiles/components/profile-health-panel";
+import { hasMinecraftOwnership } from "@/views/main/features/profiles/profile-health-model";
 import { useLauncherStatus } from "@/views/main/hooks/use-launcher-status";
 import { useProfiles } from "@/views/main/hooks/use-profiles";
 import { cn } from "@/views/main/lib/utils";
@@ -41,22 +36,10 @@ const PROFILE_SKELETON_IDS = [
   "profile-skeleton-three",
 ];
 
-const isVerifiedMinecraftProfile = (profile: LauncherProfile): boolean => {
-  const entitlements = new Set(profile.entitlements);
-
-  return (
-    profile.kind === "microsoft" &&
-    Boolean(profile.accountId) &&
-    Boolean(profile.ownershipCheckedAt) &&
-    entitlements.has("game_minecraft") &&
-    entitlements.has("product_minecraft")
-  );
-};
-
 const getProfileStatus = (
   profile: LauncherProfile,
 ): { label: string; tone: "default" | "destructive" | "outline" } => {
-  if (isVerifiedMinecraftProfile(profile)) {
+  if (hasMinecraftOwnership(profile)) {
     return { label: "Verified", tone: "default" };
   }
 
@@ -73,26 +56,6 @@ const formatAccountId = (accountId: string | null): string =>
 const getProfileKindLabel = (profile: LauncherProfile): string =>
   profile.kind === "offline" ? "Unavailable" : profile.kind;
 
-function MinecraftCharacterPlaceholder() {
-  return (
-    <div className="flex flex-col items-center gap-0" aria-hidden="true">
-      {/* Head */}
-      <div className="size-16 rounded-sm border bg-[var(--chart-3)]" />
-      {/* Torso + arms */}
-      <div className="flex items-start">
-        <div className="h-20 w-7 rounded-sm border bg-[var(--chart-3)]/70" />
-        <div className="h-20 w-14 border bg-[color-mix(in_oklch,var(--chart-3)_70%,var(--primary))]" />
-        <div className="h-20 w-7 rounded-sm border bg-[var(--chart-3)]/70" />
-      </div>
-      {/* Legs */}
-      <div className="flex items-start gap-0.5">
-        <div className="h-24 w-7 rounded-b-sm border bg-[var(--chart-3)]/55" />
-        <div className="h-24 w-7 rounded-b-sm border bg-[var(--chart-3)]/55" />
-      </div>
-    </div>
-  );
-}
-
 export function ProfilesPage() {
   const profilesHook = useProfiles();
   const statusHook = useLauncherStatus();
@@ -101,10 +64,10 @@ export function ProfilesPage() {
   const profiles = profilesHook.data;
   const loading = profilesHook.loading;
   const primaryProfile =
-    profiles?.find(isVerifiedMinecraftProfile) ?? profiles?.[0] ?? null;
+    profiles?.find(hasMinecraftOwnership) ?? profiles?.[0] ?? null;
 
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-5 p-5">
+    <div className="flex min-h-full w-full flex-col gap-5 p-4 sm:p-6">
       <section className="flex items-end justify-between gap-4 max-sm:flex-col max-sm:items-start">
         <div>
           <span className="text-muted-foreground text-xs font-black uppercase">
@@ -133,24 +96,27 @@ export function ProfilesPage() {
         </div>
       )}
 
-      <section className="grid grid-cols-[20rem_minmax(0,1fr)] gap-3 max-lg:grid-cols-1">
+      <section className="grid grid-cols-[minmax(16rem,24rem)_minmax(0,1fr)] gap-4 max-lg:grid-cols-1">
         {/* Profile list */}
         <div className="flex flex-col gap-3">
           {loading ? (
             PROFILE_SKELETON_IDS.map((skeletonId) => (
-              <Card key={skeletonId}>
-                <CardContent className="grid grid-cols-[3.25rem_minmax(0,1fr)_minmax(4rem,auto)] items-center gap-3">
+              <div
+                key={skeletonId}
+                className="rounded-lg bg-card/70 p-3 shadow-sm ring-1 ring-border/45"
+              >
+                <div className="grid grid-cols-[3.25rem_minmax(0,1fr)_minmax(4rem,auto)] items-center gap-3">
                   <Skeleton className="size-12 rounded-md" />
                   <div className="flex flex-col gap-1.5">
                     <Skeleton className="h-4 w-24" />
                     <Skeleton className="h-3 w-16" />
                   </div>
                   <Skeleton className="h-6 w-14 rounded-full" />
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             ))
           ) : !profiles || profiles.length === 0 ? (
-            <Empty className="py-12">
+            <Empty className="rounded-lg border border-dashed border-border/60 bg-card/55 py-12">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
                   <ShieldCheckIcon />
@@ -175,14 +141,14 @@ export function ProfilesPage() {
               const status = getProfileStatus(profile);
               const isActive = profile.id === primaryProfile?.id;
               return (
-                <Card
+                <article
                   key={profile.id}
                   className={cn(
-                    "transition",
-                    isActive && "border-primary/50 bg-primary/10",
+                    "rounded-lg bg-card/70 p-3 shadow-sm ring-1 ring-border/45 transition-colors",
+                    isActive && "bg-primary/10 ring-primary/35",
                   )}
                 >
-                  <CardContent className="grid grid-cols-[3.25rem_minmax(0,1fr)_minmax(4rem,auto)] items-center gap-3">
+                  <div className="grid grid-cols-[3.25rem_minmax(0,1fr)_minmax(4rem,auto)] items-center gap-3">
                     <Avatar
                       size="lg"
                       className={cn("rounded-md", toneClass)}
@@ -201,75 +167,83 @@ export function ProfilesPage() {
                         {profile.displayName}
                       </strong>
                       <small className="block truncate text-muted-foreground text-sm font-semibold capitalize">
-                        {isVerifiedMinecraftProfile(profile)
+                        {hasMinecraftOwnership(profile)
                           ? formatAccountId(profile.accountId)
                           : getProfileKindLabel(profile)}
                       </small>
                     </div>
                     <Badge variant={status.tone}>{status.label}</Badge>
-                  </CardContent>
-                </Card>
+                  </div>
+                </article>
               );
             })
           )}
         </div>
 
-        {/* Player preview */}
-        <Card className="relative min-h-[24rem] overflow-hidden">
-          {primaryProfile ? (
-            <>
-              <div className="absolute inset-x-0 top-16 flex justify-center">
-                {primaryProfile.skinUrl ? (
-                  <MinecraftSkinCharacter
-                    displayName={primaryProfile.displayName}
-                    fallback={<MinecraftCharacterPlaceholder />}
-                    skinUrl={primaryProfile.skinUrl}
-                  />
-                ) : (
-                  <MinecraftCharacterPlaceholder />
-                )}
-              </div>
-              <CardHeader>
-                <div>
-                  <CardDescription>Selected player</CardDescription>
-                  <CardTitle>{primaryProfile.displayName}</CardTitle>
+        <div className="flex min-w-0 flex-col gap-3">
+          {/* Player preview */}
+          <section className="relative min-h-[24rem] overflow-hidden rounded-lg bg-card/80 shadow-[0_22px_70px_-56px_black] ring-1 ring-border/45">
+            {primaryProfile ? (
+              <>
+                <div className="absolute inset-x-0 top-16 flex justify-center">
+                  {primaryProfile.skinUrl ? (
+                    <MinecraftSkinCharacter
+                      displayName={primaryProfile.displayName}
+                      fallback={<MinecraftCharacterPlaceholder />}
+                      skinUrl={primaryProfile.skinUrl}
+                    />
+                  ) : (
+                    <MinecraftCharacterPlaceholder />
+                  )}
                 </div>
-                <CardAction>
-                  <CrownIcon className="size-5 text-[var(--chart-2)]" />
-                </CardAction>
-              </CardHeader>
-              <CardContent className="absolute right-4 bottom-4 left-4 flex flex-wrap gap-2">
-                <Badge variant="outline" className="capitalize">
-                  {getProfileKindLabel(primaryProfile)}
-                </Badge>
-                {isVerifiedMinecraftProfile(primaryProfile) ? (
-                  <Badge>
-                    <ShieldCheckIcon />
-                    Verified owner
+                <div className="grid grid-cols-[1fr_auto] items-start gap-3 px-4 pt-4">
+                  <div>
+                    <p className="text-muted-foreground text-sm">
+                      Selected player
+                    </p>
+                    <h2 className="font-heading text-base font-medium leading-snug">
+                      {primaryProfile.displayName}
+                    </h2>
+                  </div>
+                  <div>
+                    <CrownIcon className="size-5 text-[var(--chart-2)]" />
+                  </div>
+                </div>
+                <div className="absolute right-4 bottom-4 left-4 flex flex-wrap gap-2">
+                  <Badge variant="outline" className="capitalize">
+                    {getProfileKindLabel(primaryProfile)}
                   </Badge>
-                ) : (
-                  <Badge variant="destructive">
-                    <BanIcon />
-                    Not launchable
-                  </Badge>
-                )}
-              </CardContent>
-            </>
-          ) : (
-            <div className="flex h-full flex-col items-center justify-center gap-3 py-16">
-              <p className="text-muted-foreground text-sm">
-                No profile selected
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setDialogOpen(true)}
-              >
-                Add your first profile
-              </Button>
-            </div>
-          )}
-        </Card>
+                  {hasMinecraftOwnership(primaryProfile) ? (
+                    <Badge>
+                      <ShieldCheckIcon data-icon="inline-start" />
+                      Verified owner
+                    </Badge>
+                  ) : (
+                    <Badge variant="destructive">
+                      <BanIcon data-icon="inline-start" />
+                      Not launchable
+                    </Badge>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="flex h-full flex-col items-center justify-center gap-3 py-16">
+                <p className="text-muted-foreground text-sm">
+                  No profile selected
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setDialogOpen(true)}
+                >
+                  <PlusIcon data-icon="inline-start" />
+                  Add your first profile
+                </Button>
+              </div>
+            )}
+          </section>
+          <ProfileHealthPanel profile={primaryProfile} />
+        </div>
       </section>
 
       <AddProfileDialog

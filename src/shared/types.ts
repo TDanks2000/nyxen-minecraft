@@ -347,6 +347,7 @@ export type LauncherProfileKind = "microsoft" | "offline";
 export type LauncherProfile = {
   accountId: string | null;
   authExpiresAt: string | null;
+  authRefreshable?: boolean;
   createdAt: string;
   displayName: string;
   entitlements: Array<string>;
@@ -1049,9 +1050,11 @@ export type LaunchAttemptOutcome = {
 };
 
 export type LaunchRepairCategory =
+  | "corruptFiles"
   | "javaLaunch"
   | "missingFiles"
   | "missingModpackDependency"
+  | "nativeExtraction"
   | "staleAuth"
   | "unknown"
   | "wrongJava";
@@ -1059,6 +1062,8 @@ export type LaunchRepairCategory =
 export type LaunchRepairActionId =
   | "downloadMissingArtifacts"
   | "inspectLaunchLog"
+  | "redownloadCorruptArtifacts"
+  | "reextractNatives"
   | "reinstallModpack"
   | "selectJavaRuntime"
   | "signInMicrosoft";
