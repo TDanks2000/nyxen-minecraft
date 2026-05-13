@@ -84,7 +84,7 @@ Goal: make failure states understandable.
   failures.
 - Add repair actions for missing files, corrupt files, wrong Java, missing mod
   dependency, stale auth, and failed native extraction.
-- Add redacted support bundle export.
+- [x] Add redacted support bundle export.
 
 Exit criteria:
 

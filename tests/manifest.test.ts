@@ -69,5 +69,8 @@ describe("generated project manifest", () => {
       2,
     );
     expect(countOccurrences("exportInstanceRecipe,")).toBeGreaterThanOrEqual(2);
+    expect(
+      countOccurrences("exportInstanceSupportBundle,"),
+    ).toBeGreaterThanOrEqual(2);
   });
 });

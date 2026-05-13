@@ -22,6 +22,8 @@ import type {
   EnqueueDownloadJobInput,
   ExportInstanceRecipeInput,
   ExportInstanceRecipeResult,
+  ExportInstanceSupportBundleInput,
+  ExportInstanceSupportBundleResult,
   GetInstanceContentInput,
   GetInstanceLogFileInput,
   GetInstanceModpackUpdateInput,
@@ -178,6 +180,10 @@ export type MainViewRPC = {
       exportInstanceRecipe: {
         params: ExportInstanceRecipeInput;
         response: ExportInstanceRecipeResult;
+      };
+      exportInstanceSupportBundle: {
+        params: ExportInstanceSupportBundleInput;
+        response: ExportInstanceSupportBundleResult;
       };
       createLaunchPlan: {
         params: CreateLaunchPlanInput;

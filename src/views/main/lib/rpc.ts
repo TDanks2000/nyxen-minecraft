@@ -908,6 +908,56 @@ const createPreviewRpc = (): ViewRpcClient => {
         recipe,
       };
     },
+    exportInstanceSupportBundle: async ({ instanceId }) => {
+      const instance = previewInstances.find((item) => item.id === instanceId);
+      if (!instance) throw new Error("Launcher instance does not exist.");
+
+      const createdAt = new Date().toISOString();
+      const content = makeContent(instance);
+      const bundle = {
+        content: {
+          counts: content.counts,
+          logs: content.logs.map(
+            ({ displayName, fileName, modifiedAt, sizeBytes }) => ({
+              displayName,
+              fileName,
+              modifiedAt,
+              sizeBytes,
+            }),
+          ),
+          recipe: content.recipe
+            ? {
+                counts: content.recipe.counts,
+                revisionId: content.recipe.revision.id,
+                source: content.recipe.revision.source.kind,
+                status: content.recipe.status,
+              }
+            : null,
+        },
+        createdAt,
+        instance: {
+          id: instance.id,
+          loader: instance.loader,
+          loaderVersion: instance.loaderVersion,
+          name: instance.name,
+          versionId: instance.versionId,
+        },
+        launchAttempts: [],
+        launchPlanSummary: null,
+        logs: [],
+        redacted: true as const,
+        redactions: {
+          count: 0,
+          kinds: [],
+        },
+        schemaVersion: 1 as const,
+      };
+
+      return {
+        bundle,
+        path: `${instance.folders.metadata}/support-bundles/${instance.id}-preview-support-bundle.json`,
+      };
+    },
     getCurseForgeStatus: async () =>
       ({
         baseUrl: "https://api.curseforge.com/v1",

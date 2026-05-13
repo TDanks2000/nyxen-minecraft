@@ -31,6 +31,7 @@ import { useInstanceCatalog } from "@/views/main/features/instances/hooks/use-in
 import { useLaunchPlan } from "@/views/main/features/instances/hooks/use-launch-plan";
 import { useModrinthInstall } from "@/views/main/features/modrinth/use-modrinth-install";
 import { useInstances } from "@/views/main/hooks/use-instances";
+import { openLocalPath } from "@/views/main/lib/open-local-path";
 import { rpc } from "@/views/main/lib/rpc";
 
 type LaunchActionState =
@@ -49,6 +50,7 @@ export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
     useState<InstanceModpackUpdate | null>(null);
   const [modpackUpdateChecking, setModpackUpdateChecking] = useState(false);
   const [updatingModpack, setUpdatingModpack] = useState(false);
+  const [exportingSupportBundle, setExportingSupportBundle] = useState(false);
   const [missingArtifactsDialogOpen, setMissingArtifactsDialogOpen] =
     useState(false);
   const [pendingMissingPlan, setPendingMissingPlan] =
@@ -246,6 +248,36 @@ export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
     })();
   };
 
+  const exportSupportBundle = () => {
+    if (exportingSupportBundle) return;
+
+    void (async () => {
+      setExportingSupportBundle(true);
+
+      try {
+        const result = await rpc.requestProxy.exportInstanceSupportBundle({
+          instanceId: instance.id,
+        });
+
+        await openLocalPath(result.path, {
+          failureMessage:
+            "Support bundle exported, but the file could not be opened.",
+          successMessage: `Support bundle exported with ${result.bundle.redactions.count} redaction${
+            result.bundle.redactions.count === 1 ? "" : "s"
+          }`,
+        });
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Failed to export support bundle",
+        );
+      } finally {
+        setExportingSupportBundle(false);
+      }
+    })();
+  };
+
   const downloadMissingArtifactsAndLaunch = () => {
     const plan = pendingMissingPlan;
     setMissingArtifactsDialogOpen(false);
@@ -316,6 +348,7 @@ export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
         launchActionState={launchActionState}
         modpackUpdateAvailable={modpackUpdate?.updateAvailable ?? false}
         modpackUpdateChecking={modpackUpdateChecking}
+        onExportSupportBundle={exportSupportBundle}
         onOpenSettings={openSettings}
         onPlay={playInstance}
         onStop={stopInstance}
@@ -324,6 +357,7 @@ export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
         planLoading={planLoading}
         resourcePackCount={catalog.resourcePacks.length}
         shaderPackCount={catalog.shaderPacks.length}
+        supportBundleExporting={exportingSupportBundle}
         updatingModpack={updatingModpack}
         warningCount={catalog.disabledMods.length}
       />

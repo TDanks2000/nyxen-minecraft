@@ -3,6 +3,7 @@ import {
   ArrowLeftIcon,
   ChevronDownIcon,
   DownloadIcon,
+  FileArchiveIcon,
   FileTextIcon,
   FolderOpenIcon,
   HammerIcon,
@@ -41,6 +42,7 @@ type InstanceDetailsHeaderProps = {
   modpackUpdateAvailable: boolean;
   modpackUpdateChecking: boolean;
   onOpenSettings: () => void;
+  onExportSupportBundle: () => void;
   onPlay: () => void;
   onStop: () => void;
   onUpdateModpack: () => void;
@@ -48,6 +50,7 @@ type InstanceDetailsHeaderProps = {
   planLoading: boolean;
   resourcePackCount: number;
   shaderPackCount: number;
+  supportBundleExporting: boolean;
   updatingModpack: boolean;
   warningCount: number;
 };
@@ -94,6 +97,7 @@ export function InstanceDetailsHeader({
   launchActionState,
   modpackUpdateAvailable,
   modpackUpdateChecking,
+  onExportSupportBundle,
   onOpenSettings,
   onPlay,
   onStop,
@@ -102,6 +106,7 @@ export function InstanceDetailsHeader({
   planLoading,
   resourcePackCount,
   shaderPackCount,
+  supportBundleExporting,
   updatingModpack,
   warningCount,
 }: InstanceDetailsHeaderProps) {
@@ -291,6 +296,23 @@ export function InstanceDetailsHeader({
             >
               <FolderOpenIcon data-icon="inline-start" />
               Folder
+            </Button>
+            <Button
+              className="w-full sm:w-auto"
+              disabled={supportBundleExporting}
+              onClick={onExportSupportBundle}
+              size="lg"
+              variant="outline"
+            >
+              {supportBundleExporting ? (
+                <Loader2Icon
+                  className="animate-spin"
+                  data-icon="inline-start"
+                />
+              ) : (
+                <FileArchiveIcon data-icon="inline-start" />
+              )}
+              {supportBundleExporting ? "Exporting..." : "Support Bundle"}
             </Button>
             <Button
               aria-label="Open instance metadata"

@@ -267,6 +267,7 @@ export {
   clearLauncherCache,
   clearLauncherData,
 } from "../../launcher/storage";
+export { exportInstanceSupportBundle } from "../../launcher/support-bundle";
 export {
   getMinecraftVersionDetails,
   listMinecraftVersions,
