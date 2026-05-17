@@ -1,5 +1,5 @@
 import { AlertTriangleIcon, PlusIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   Alert,
   AlertAction,
@@ -20,6 +20,13 @@ export function InstancesPage() {
   const launchPlan = useLaunchPlan();
   const downloadJobs = useDownloadQueueStore((state) => state.jobs);
   const [dialogOpen, setDialogOpen] = useState(false);
+
+  const onPlayInstance = useCallback(
+    (instanceId: string) => {
+      void launchPlan.createLaunchPlan(instanceId);
+    },
+    [launchPlan.createLaunchPlan],
+  );
 
   const instances = instancesHook.data ?? [];
   const loading = instancesHook.loading && instancesHook.data === null;
@@ -65,9 +72,7 @@ export function InstancesPage() {
         instance={featuredInstance}
         loading={loading}
         onCreateInstance={() => setDialogOpen(true)}
-        onPlayInstance={(instanceId) => {
-          void launchPlan.createLaunchPlan(instanceId);
-        }}
+        onPlayInstance={onPlayInstance}
       />
 
       {/* Error */}
@@ -92,9 +97,7 @@ export function InstancesPage() {
         launchLoadingId={launchPlan.loadingInstanceId}
         loading={loading}
         onInstallCompleted={instancesHook.refresh}
-        onPlayInstance={(instanceId) => {
-          void launchPlan.createLaunchPlan(instanceId);
-        }}
+        onPlayInstance={onPlayInstance}
       />
 
       <NewInstanceDialog

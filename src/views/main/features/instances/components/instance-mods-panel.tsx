@@ -6,8 +6,15 @@ import {
   RefreshCwIcon,
   SearchIcon,
   ShieldAlertIcon,
+  XIcon,
 } from "lucide-react";
-import { useDeferredValue, useMemo, useState } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import type {
   InstanceContent,
   InstanceFileEntry,
@@ -61,7 +68,11 @@ type InstanceModsPanelProps = {
   onRefreshContent: () => void;
   onSetActiveTab: (tab: string) => void;
   onSetAllModsEnabled: (enabled: boolean) => void;
-  onToggleMod: (fileName: string, name: string, enabled: boolean) => void;
+  onToggleMod: (
+    fileName: string,
+    name: string,
+    enabled: boolean,
+  ) => void | Promise<void>;
 };
 
 const MOD_RENDER_BATCH_SIZE = 96;
@@ -85,6 +96,9 @@ export function InstanceModsPanel({
   const [modStatusFilter, setModStatusFilter] =
     useState<ModStatusFilter>("all");
   const [modSortField, setModSortField] = useState<ModSortField>("name");
+  const [selectedModFileNames, setSelectedModFileNames] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [visibleModCount, setVisibleModCount] = useState(MOD_RENDER_BATCH_SIZE);
   const deferredModQuery = useDeferredValue(modQuery);
   const indexedMods = useMemo(
@@ -119,6 +133,10 @@ export function InstanceModsPanel({
     }
 
     filtered.sort((a, b) => {
+      const aEnabled = a.entry.enabled === true ? 0 : 1;
+      const bEnabled = b.entry.enabled === true ? 0 : 1;
+      if (aEnabled !== bEnabled) return aEnabled - bEnabled;
+
       if (modSortField === "modified") {
         return b.modifiedTime - a.modifiedTime;
       }
@@ -157,6 +175,53 @@ export function InstanceModsPanel({
     instance.modpack?.name ?? content?.curseForge.modpacks?.[0]?.name;
   const initialContentLoading = contentLoading && !content;
   const filteringPending = deferredModQuery !== modQuery;
+  const selectedMods = useMemo(
+    () => mods.filter((mod) => selectedModFileNames.has(mod.fileName)),
+    [mods, selectedModFileNames],
+  );
+  const selectedEnabledCount = selectedMods.filter(
+    (mod) => mod.enabled === true,
+  ).length;
+  const selectedDisabledCount = selectedMods.filter(
+    (mod) => mod.enabled === false,
+  ).length;
+  const canBulkChangeSelected =
+    selectedMods.length > 0 && !modManagement.controlsDisabled && !mutating;
+
+  useEffect(() => {
+    setSelectedModFileNames((current) => {
+      if (current.size === 0) return current;
+
+      const available = new Set(mods.map((mod) => mod.fileName));
+      const next = new Set(
+        [...current].filter((fileName) => available.has(fileName)),
+      );
+
+      return next.size === current.size ? current : next;
+    });
+  }, [mods]);
+
+  const setModSelected = useCallback((fileName: string, selected: boolean) => {
+    setSelectedModFileNames((current) => {
+      const next = new Set(current);
+      if (selected) {
+        next.add(fileName);
+      } else {
+        next.delete(fileName);
+      }
+      return next;
+    });
+  }, []);
+
+  const setSelectedModsEnabled = async (enabled: boolean) => {
+    if (!canBulkChangeSelected) return;
+
+    const targets = selectedMods.filter((mod) => mod.enabled !== enabled);
+
+    for (const mod of targets) {
+      await onToggleMod(mod.fileName, mod.displayName, enabled);
+    }
+  };
 
   return (
     <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
@@ -298,12 +363,61 @@ export function InstanceModsPanel({
                   ? "Mods are managed by the linked modpack."
                   : undefined
               }
+              variant="outline"
             >
               <FolderOpenIcon data-icon="inline-start" />
               Open Mods Folder
             </Button>
           </div>
         </div>
+
+        {selectedMods.length > 0 ? (
+          <div className="sticky top-0 z-10 flex flex-col gap-2 border-primary/25 border-y bg-background/95 px-3 py-2 shadow-[0_18px_45px_-38px_black] backdrop-blur sm:flex-row sm:items-center">
+            <div className="min-w-0 flex-1">
+              <div className="truncate font-semibold text-sm">
+                {selectedMods.length} selected
+              </div>
+              <div className="text-muted-foreground text-xs">
+                {selectedEnabledCount} enabled · {selectedDisabledCount}{" "}
+                disabled
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                disabled={
+                  !canBulkChangeSelected ||
+                  selectedEnabledCount === selectedMods.length
+                }
+                onClick={() => void setSelectedModsEnabled(true)}
+                size="sm"
+                variant="outline"
+              >
+                <PlugZapIcon data-icon="inline-start" />
+                Enable Selected
+              </Button>
+              <Button
+                disabled={
+                  !canBulkChangeSelected ||
+                  selectedDisabledCount === selectedMods.length
+                }
+                onClick={() => void setSelectedModsEnabled(false)}
+                size="sm"
+                variant="outline"
+              >
+                <CheckCircle2Icon data-icon="inline-start" />
+                Disable Selected
+              </Button>
+              <Button
+                onClick={() => setSelectedModFileNames(new Set())}
+                size="sm"
+                variant="ghost"
+              >
+                <XIcon data-icon="inline-start" />
+                Clear
+              </Button>
+            </div>
+          </div>
+        ) : null}
 
         {initialContentLoading ? (
           <div className="p-6 text-muted-foreground text-sm">
@@ -341,15 +455,42 @@ export function InstanceModsPanel({
           </div>
         ) : (
           <div className="grid gap-3 p-3 [grid-template-columns:repeat(auto-fit,minmax(min(100%,20rem),1fr))]">
-            {visibleMods.map((entry) => (
-              <InstanceCatalogModCard
-                entry={entry}
-                key={entry.id}
-                managedByModpack={modpackLocked}
-                mutating={mutating || modManagement.controlsDisabled}
-                onToggleMod={onToggleMod}
-              />
-            ))}
+            {visibleMods.map((entry, index) => {
+              const previous = visibleMods[index - 1];
+              const groupLabel =
+                modpackLocked && index === 0
+                  ? "Managed by modpack"
+                  : !modpackLocked &&
+                      entry.enabled === false &&
+                      previous?.enabled !== false
+                    ? "Disabled"
+                    : !modpackLocked &&
+                        entry.enabled !== false &&
+                        (index === 0 || previous?.enabled === false)
+                      ? "Added locally"
+                      : null;
+
+              return (
+                <div className="contents" key={entry.id}>
+                  {groupLabel ? (
+                    <div className="col-span-full flex items-center gap-2 pt-1">
+                      <span className="text-muted-foreground text-xs font-black uppercase tracking-widest">
+                        {groupLabel}
+                      </span>
+                      <span className="h-px flex-1 bg-border" />
+                    </div>
+                  ) : null}
+                  <InstanceCatalogModCard
+                    entry={entry}
+                    managedByModpack={modpackLocked}
+                    mutating={mutating || modManagement.controlsDisabled}
+                    onSelectedChange={setModSelected}
+                    onToggleMod={onToggleMod}
+                    selected={selectedModFileNames.has(entry.fileName)}
+                  />
+                </div>
+              );
+            })}
             {remainingModCount > 0 ? (
               <div className="col-span-full flex justify-center border-border border-t pt-3">
                 <Button

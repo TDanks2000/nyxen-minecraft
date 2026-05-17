@@ -2,7 +2,6 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import {
   BookOpenIcon,
   CameraIcon,
-  CheckIcon,
   GlobeIcon,
   HomeIcon,
   PackageIcon,
@@ -107,7 +106,7 @@ export function AppSidebar() {
                 "flex h-9 items-center justify-center gap-3 rounded-md px-0 text-sm font-medium no-underline transition-colors md:justify-start md:px-3",
                 "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground",
                 isActive &&
-                  "rounded-l-none border-primary border-l-[3px] bg-primary/[0.12] text-foreground md:pl-[10px]",
+                  "bg-primary/[0.13] text-primary ring-1 ring-primary/[0.22]",
               )}
             >
               <Icon className="size-4 shrink-0" />
@@ -118,8 +117,8 @@ export function AppSidebar() {
       </nav>
 
       {/* Quick Play */}
-      <div className="mt-4 mb-1.5 hidden px-3 md:block">
-        <span className="text-[0.58rem] font-bold tracking-[0.15em] text-muted-foreground/50 uppercase">
+      <div className="mt-5 mb-1.5 hidden px-3 md:block">
+        <span className="text-[0.68rem] font-bold uppercase tracking-wider text-muted-foreground/50">
           Quick Play
         </span>
       </div>
@@ -159,32 +158,29 @@ export function AppSidebar() {
 
       {/* Bottom – active game */}
       <div className="mt-auto hidden border-sidebar-border border-t md:block">
-        <div className="flex items-center gap-2 px-3 py-3 bg-primary/5">
+        <div className="flex items-center gap-2.5 px-3 py-3">
           {activeInstance ? (
-            <InstanceIcon
-              instance={activeInstance}
-              className="size-8 rounded-sm"
-            />
+            <div className="relative shrink-0">
+              <InstanceIcon
+                instance={activeInstance}
+                className="size-8 rounded-md [image-rendering:pixelated]"
+              />
+              <span className="absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full border border-sidebar bg-primary shadow-[0_0_6px_1px_var(--primary)]" />
+            </div>
           ) : (
-            <div className="flex size-8 shrink-0 items-center justify-center rounded-sm bg-muted">
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted">
               <PackageIcon className="size-4 text-muted-foreground" />
             </div>
           )}
-          <div className="flex-1 min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="truncate text-xs font-semibold text-foreground leading-none">
               {activeInstance?.name ?? "No active instance"}
             </div>
-            <div className="flex items-center mt-0.5 leading-none">
-              <span className="size-1.5 rounded-full bg-primary mr-1 shrink-0 inline-block" />
-              <span className="truncate text-[0.62rem] font-medium text-primary">
-                {activeInstance
-                  ? `${activeInstance.versionId} · ${LOADER_LABELS[activeInstance.loader]}`
-                  : "Create one to play"}
-              </span>
+            <div className="mt-1 truncate text-[0.62rem] font-medium text-muted-foreground leading-none">
+              {activeInstance
+                ? `${activeInstance.versionId} · ${LOADER_LABELS[activeInstance.loader]}`
+                : "Create one to play"}
             </div>
-          </div>
-          <div className="size-5 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
-            <CheckIcon className="size-3 text-primary" />
           </div>
         </div>
       </div>

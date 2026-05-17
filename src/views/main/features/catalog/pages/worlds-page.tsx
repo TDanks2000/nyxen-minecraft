@@ -3,8 +3,6 @@ import {
   FolderOpenIcon,
   GlobeIcon,
   RefreshCcwIcon,
-  ServerIcon,
-  TimerIcon,
 } from "lucide-react";
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -29,14 +27,11 @@ import {
   formatAbsoluteDate,
   formatEntrySize,
   formatRelativeDate,
-  getContentList,
-  getLatestContentRefresh,
   mapLocalWorlds,
   toFileMediaUrl,
 } from "@/views/main/features/catalog/catalog-model";
 import {
   LibraryPageHeader,
-  MetricCard,
   MiniStat,
   PageEmpty,
   SearchBox,
@@ -80,17 +75,9 @@ export function WorldsPage() {
     void refreshManyInstanceContents(instanceIds);
   }, [instanceIds, instancesHook.data, refreshManyInstanceContents]);
 
-  const contents = useMemo(
-    () => getContentList(instances, byInstanceId),
-    [byInstanceId, instances],
-  );
   const worlds = useMemo(
     () => mapLocalWorlds(instances, byInstanceId),
     [byInstanceId, instances],
-  );
-  const latestRefresh = useMemo(
-    () => getLatestContentRefresh(contents),
-    [contents],
   );
   const contentLoading =
     instances.some((instance) => loadingIds[instance.id]) ||
@@ -98,7 +85,6 @@ export function WorldsPage() {
       instances.some(
         (instance) => !byInstanceId[instance.id] && !errors[instance.id],
       ));
-  const errorCount = instances.filter((instance) => errors[instance.id]).length;
 
   const filteredWorlds = useMemo(() => {
     const needle = deferredQuery.trim().toLowerCase();
@@ -195,31 +181,6 @@ export function WorldsPage() {
           </Button>
         }
       />
-
-      <section className="grid grid-cols-[repeat(auto-fit,minmax(16rem,1fr))] gap-3">
-        <MetricCard
-          icon={GlobeIcon}
-          label="Worlds"
-          value={String(worlds.length)}
-          caption="Detected from managed instance save folders."
-        />
-        <MetricCard
-          icon={ServerIcon}
-          label="Instances"
-          value={String(instances.length)}
-          caption="Instances included in the latest save scan."
-        />
-        <MetricCard
-          icon={TimerIcon}
-          label="Last Scan"
-          value={latestRefresh ? formatRelativeDate(latestRefresh) : "Pending"}
-          caption={
-            errorCount > 0
-              ? `${errorCount} instance${errorCount === 1 ? "" : "s"} could not be scanned.`
-              : "Folder metadata comes from local disk."
-          }
-        />
-      </section>
 
       <Tabs
         value={filter}

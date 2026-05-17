@@ -314,6 +314,18 @@ const makeContent = (instance: LauncherInstance): InstanceContent => {
       sizeBytes: 812_432,
     }),
   ];
+  const resourcePacks = [
+    previewFile({
+      displayName: "High Contrast UI",
+      fileName: "high-contrast-ui.zip",
+      instance,
+      kind: "resourcePack",
+      modifiedAt: isoHoursAgo(20),
+      relativePath: "resourcepacks/high-contrast-ui.zip",
+      sizeBytes: 4_511_012,
+    }),
+  ];
+  const serverRoot = `${instance.folders.app}/servers`;
 
   return {
     counts: {
@@ -356,18 +368,69 @@ const makeContent = (instance: LauncherInstance): InstanceContent => {
     mods,
     refreshedAt: isoHoursAgo(0.2),
     recipe: null,
-    resourcePacks: [
-      previewFile({
-        displayName: "High Contrast UI",
-        fileName: "high-contrast-ui.zip",
-        instance,
-        kind: "resourcePack",
-        modifiedAt: isoHoursAgo(20),
-        relativePath: "resourcepacks/high-contrast-ui.zip",
-        sizeBytes: 4_511_012,
-      }),
-    ],
+    resourcePacks,
     screenshots,
+    serverManager: {
+      candidates: [
+        ...mods.map((entry) => ({
+          entry,
+          reason: entry.fileName.toLowerCase().includes("sodium")
+            ? "Sodium is a client renderer mod."
+            : "No client-only pattern detected. Copy this mod into the server pack.",
+          selectedByDefault: !entry.fileName.toLowerCase().includes("sodium"),
+          side: entry.fileName.toLowerCase().includes("sodium")
+            ? ("clientOnly" as const)
+            : ("unknown" as const),
+          source: "mod" as const,
+        })),
+        ...resourcePacks.map((entry) => ({
+          entry,
+          reason:
+            "Resource packs are client-facing and are listed for review only.",
+          selectedByDefault: false,
+          side: "optional" as const,
+          source: "resourcePack" as const,
+        })),
+      ],
+      defaultServerName: `${instance.name} Server`,
+      requirements: [
+        {
+          description:
+            "Create a server to generate an isolated folder for server files.",
+          id: "workspace",
+          path: serverRoot,
+          status: "missing",
+          title: "Server workspace",
+        },
+        {
+          description:
+            instance.loader === "vanilla"
+              ? "Vanilla servers can use the downloaded Mojang server jar."
+              : `${instance.loader} servers usually need a loader-specific server installer after the folder is created.`,
+          id: "serverJar",
+          path: null,
+          status: instance.loader === "vanilla" ? "missing" : "warning",
+          title: "Server runtime",
+        },
+        {
+          description: "Minecraft requires eula.txt before a server can start.",
+          id: "eula",
+          path: null,
+          status: "missing",
+          title: "Minecraft EULA",
+        },
+        {
+          description:
+            "Create a server to generate a readable server.properties file.",
+          id: "properties",
+          path: null,
+          status: "missing",
+          title: "Server settings",
+        },
+      ],
+      serverRoot,
+      workspaces: [],
+    },
     serverList: previewFile({
       displayName: "Servers",
       fileName: "servers.dat",
@@ -719,6 +782,113 @@ const createPreviewRpc = (): ViewRpcClient => {
       profile: previewProfile,
       status: "complete",
     }),
+    createInstanceServer: async (input) => {
+      const instance = previewInstances.find(
+        (item) => item.id === input.instanceId,
+      );
+      if (!instance) throw new Error("Launcher instance does not exist.");
+
+      const content = makeContent(instance);
+      const now = new Date().toISOString();
+      const serverName = input.name?.trim() || `${instance.name} Server`;
+      const serverPath = `${instance.folders.app}/servers/${serverName
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "")}`;
+      const server = {
+        createdAt: now,
+        eula: null,
+        id: serverPath.split("/").at(-1) ?? "server",
+        installScript: instance.loader === "vanilla" ? null : null,
+        loaderLauncher:
+          instance.loader === "vanilla"
+            ? null
+            : previewFile({
+                displayName:
+                  instance.loader === "fabric"
+                    ? "Fabric Server"
+                    : `${instance.loader} Installer`,
+                fileName:
+                  instance.loader === "fabric"
+                    ? "fabric-server-launch.jar"
+                    : `${instance.loader}-installer.jar`,
+                instance,
+                kind: "serverFile",
+                modifiedAt: now,
+                relativePath: `servers/${serverName}/loader.jar`,
+                sizeBytes: 2_048,
+              }),
+        mods: content.serverManager.candidates
+          .filter((candidate) => candidate.selectedByDefault)
+          .map((candidate) => ({
+            ...candidate.entry,
+            kind: "serverFile" as const,
+            path: `${serverPath}/mods/${candidate.entry.fileName}`,
+          })),
+        name: serverName,
+        path: serverPath,
+        properties: null,
+        runScript: previewFile({
+          displayName: "Start Server",
+          fileName: "start.sh",
+          instance,
+          kind: "serverFile",
+          modifiedAt: now,
+          relativePath: `servers/${serverName}/start.sh`,
+          sizeBytes: 128,
+        }),
+        serverJar: null,
+      };
+
+      const nextContent = {
+        ...content,
+        serverManager: {
+          ...content.serverManager,
+          requirements: content.serverManager.requirements.map((requirement) =>
+            requirement.id === "workspace"
+              ? {
+                  ...requirement,
+                  description: "A server folder exists for this instance.",
+                  path: serverPath,
+                  status: "ready" as const,
+                }
+              : requirement,
+          ),
+          workspaces: [server],
+        },
+      };
+
+      return {
+        content: clone(nextContent),
+        copiedFiles: clone(server.mods),
+        server: clone(server),
+        skippedFiles: clone(
+          content.serverManager.candidates.filter(
+            (candidate) => !candidate.selectedByDefault,
+          ),
+        ),
+      };
+    },
+    deleteInstanceServer: async ({ instanceId, serverId }) => {
+      const instance = previewInstances.find((item) => item.id === instanceId);
+      if (!instance) throw new Error("Launcher instance does not exist.");
+
+      const content = makeContent(instance);
+
+      return {
+        content: clone({
+          ...content,
+          serverManager: {
+            ...content.serverManager,
+            workspaces: content.serverManager.workspaces.filter(
+              (server) => server.id !== serverId,
+            ),
+          },
+        }),
+        deleted: true,
+        serverId,
+      };
+    },
     createLaunchPlan: async ({ instanceId }) => {
       const instance = previewInstances.find((item) => item.id === instanceId);
       if (!instance) throw new Error("Launcher instance does not exist.");

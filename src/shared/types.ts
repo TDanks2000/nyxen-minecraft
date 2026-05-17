@@ -452,6 +452,7 @@ export type InstanceFileKind =
   | "mod"
   | "resourcePack"
   | "screenshot"
+  | "serverFile"
   | "serverList"
   | "shaderPack"
   | "world";
@@ -531,6 +532,52 @@ export type InstanceLogFilePreview = {
   truncated: boolean;
 };
 
+export type InstanceServerFileSide =
+  | "clientOnly"
+  | "optional"
+  | "server"
+  | "unknown";
+
+export type InstanceServerFileCandidate = {
+  entry: InstanceFileEntry;
+  reason: string;
+  selectedByDefault: boolean;
+  side: InstanceServerFileSide;
+  source: "config" | "mod" | "resourcePack";
+};
+
+export type InstanceServerRequirementStatus = "missing" | "ready" | "warning";
+
+export type InstanceServerRequirement = {
+  description: string;
+  id: string;
+  path: string | null;
+  status: InstanceServerRequirementStatus;
+  title: string;
+};
+
+export type InstanceServerWorkspace = {
+  createdAt: string | null;
+  eula: InstanceFileEntry | null;
+  id: string;
+  installScript: InstanceFileEntry | null;
+  loaderLauncher: InstanceFileEntry | null;
+  mods: Array<InstanceFileEntry>;
+  name: string;
+  path: string;
+  properties: InstanceFileEntry | null;
+  runScript: InstanceFileEntry | null;
+  serverJar: InstanceFileEntry | null;
+};
+
+export type InstanceServerManager = {
+  candidates: Array<InstanceServerFileCandidate>;
+  defaultServerName: string;
+  requirements: Array<InstanceServerRequirement>;
+  serverRoot: string;
+  workspaces: Array<InstanceServerWorkspace>;
+};
+
 export type InstanceContent = {
   counts: {
     disabledMods: number;
@@ -554,6 +601,7 @@ export type InstanceContent = {
   recipe: InstanceRecipeSummary | null;
   resourcePacks: Array<InstanceFileEntry>;
   screenshots: Array<InstanceFileEntry>;
+  serverManager: InstanceServerManager;
   serverList: InstanceFileEntry | null;
   shaderPacks: Array<InstanceFileEntry>;
   worlds: Array<InstanceFileEntry>;
@@ -640,6 +688,31 @@ export type SetInstanceModEnabledInput = {
   enabled: boolean;
   fileName: string;
   instanceId: string;
+};
+
+export type CreateInstanceServerInput = {
+  acceptEula?: boolean;
+  includeClientOnlyMods?: boolean;
+  instanceId: string;
+  name?: string;
+};
+
+export type CreateInstanceServerResult = {
+  content: InstanceContent;
+  copiedFiles: Array<InstanceFileEntry>;
+  server: InstanceServerWorkspace;
+  skippedFiles: Array<InstanceServerFileCandidate>;
+};
+
+export type DeleteInstanceServerInput = {
+  instanceId: string;
+  serverId: string;
+};
+
+export type DeleteInstanceServerResult = {
+  content: InstanceContent;
+  deleted: boolean;
+  serverId: string;
 };
 
 export type InstalledCurseForgeFile = {

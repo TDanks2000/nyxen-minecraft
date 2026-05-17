@@ -208,7 +208,7 @@ export function Titlebar({
           <button
             type="button"
             onClick={() => setNewInstanceOpen(true)}
-            className="flex h-9 items-center gap-1.5 whitespace-nowrap rounded-md bg-primary px-2.5 font-semibold text-primary-foreground text-xs transition-colors hover:bg-primary/90 sm:px-3.5"
+            className="flex h-9 items-center gap-1.5 whitespace-nowrap rounded-md bg-primary px-2.5 font-semibold text-primary-foreground text-xs shadow-[0_0_14px_-4px_var(--primary)] transition-colors hover:bg-primary/90 sm:px-3.5"
             aria-label="Add instance"
             title="Add instance"
           >

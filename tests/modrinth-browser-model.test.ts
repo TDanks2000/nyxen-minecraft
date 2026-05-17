@@ -93,6 +93,13 @@ const createContent = (
   recipe: null,
   resourcePacks: [],
   screenshots: [],
+  serverManager: {
+    candidates: [],
+    defaultServerName: "Instance Server",
+    requirements: [],
+    serverRoot: "/instances/fabric/nyxen/servers",
+    workspaces: [],
+  },
   serverList: null,
   shaderPacks: [],
   worlds: [],

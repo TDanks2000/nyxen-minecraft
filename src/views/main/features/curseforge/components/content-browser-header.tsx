@@ -1,4 +1,5 @@
-import { XIcon } from "lucide-react";
+import { PackageCheckIcon, ShieldAlertIcon, XIcon } from "lucide-react";
+import { Badge } from "@/views/main/components/ui/badge";
 import { Button } from "@/views/main/components/ui/button";
 import {
   DialogClose,
@@ -15,6 +16,7 @@ import type {
   ContentBrowserSource,
   SelectedInstance,
 } from "@/views/main/features/curseforge/curseforge-browser-types";
+import { LOADER_LABELS } from "@/views/main/features/instances/components/instance-format";
 
 type ContentBrowserHeaderProps = {
   activeInstallActionsConfigured: boolean;
@@ -99,6 +101,36 @@ export function ContentBrowserHeader({
           <XIcon />
           <span className="sr-only">Close</span>
         </DialogClose>
+      </div>
+      <div className="mt-3 grid gap-2 rounded-md border border-border bg-background/55 p-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+        <div className="min-w-0">
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+            <PackageCheckIcon className="size-4 text-primary" />
+            <span className="font-semibold text-sm">
+              {activeInstance
+                ? `Installing into ${activeInstance.name}`
+                : "Browse global content"}
+            </span>
+            {activeInstance?.modpackLocked ? (
+              <Badge variant="outline">
+                <ShieldAlertIcon />
+                Modpack managed
+              </Badge>
+            ) : null}
+          </div>
+          <p className="mt-1 truncate text-muted-foreground text-xs">
+            {activeInstance
+              ? `Minecraft ${activeInstance.minecraftVersion} · ${
+                  activeInstance.loader
+                    ? LOADER_LABELS[activeInstance.loader]
+                    : "Loader varies"
+                }`
+              : "Select an instance when you want install actions and compatibility filters."}
+          </p>
+        </div>
+        <Badge className="w-fit self-center" variant="secondary">
+          {activeInstallActionsConfigured ? "Actions ready" : "Browse only"}
+        </Badge>
       </div>
     </DialogHeader>
   );

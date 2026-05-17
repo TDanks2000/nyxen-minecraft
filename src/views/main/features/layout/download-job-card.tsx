@@ -13,10 +13,17 @@ import { cn } from "@/views/main/lib/utils";
 type DownloadJobCardProps = {
   job: DownloadQueueJob;
   onClear: (jobId: string) => void;
+  targetInstanceName?: string | null;
 };
 
-export function DownloadJobCard({ job, onClear }: DownloadJobCardProps) {
+export function DownloadJobCard({
+  job,
+  onClear,
+  targetInstanceName,
+}: DownloadJobCardProps) {
   const groups = groupDownloadItems(job);
+  const targetInstanceId =
+    "targetInstanceId" in job.metadata ? job.metadata.targetInstanceId : null;
   const visibleItems = job.items.slice(0, 3);
   const hiddenArtifactCount = Math.max(
     0,
@@ -125,6 +132,18 @@ export function DownloadJobCard({ job, onClear }: DownloadJobCardProps) {
           </div>
 
           <div className="mt-2 flex flex-wrap gap-1">
+            <span className="rounded border border-border bg-muted/45 px-1.5 py-0.5 text-[0.58rem] text-muted-foreground">
+              {job.source === "curseforge"
+                ? "CurseForge"
+                : job.source === "modrinth"
+                  ? "Modrinth"
+                  : "Launch"}
+            </span>
+            {targetInstanceId ? (
+              <span className="rounded border border-border bg-muted/45 px-1.5 py-0.5 text-[0.58rem] text-muted-foreground">
+                {targetInstanceName ?? `Instance ${targetInstanceId}`}
+              </span>
+            ) : null}
             {groups.map((group) => (
               <span
                 className="rounded border border-border bg-muted/45 px-1.5 py-0.5 text-[0.58rem] text-muted-foreground"

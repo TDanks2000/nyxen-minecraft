@@ -175,6 +175,7 @@ export function useInstanceCatalog(instance: LauncherInstance | null) {
     refreshContent,
     resourcePacks: scopedContent?.resourcePacks ?? [],
     screenshots: scopedContent?.screenshots ?? [],
+    serverManager: scopedContent?.serverManager ?? null,
     serverList: scopedContent?.serverList ?? null,
     setAllModsEnabled,
     shaderPacks: scopedContent?.shaderPacks ?? [],

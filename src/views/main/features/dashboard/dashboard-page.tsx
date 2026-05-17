@@ -1,18 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { DashboardHero } from "@/views/main/features/dashboard/components/dashboard-hero";
 import { DashboardInstanceGrid } from "@/views/main/features/dashboard/components/dashboard-instance-grid";
-import { StatusStrip } from "@/views/main/features/dashboard/components/status-strip";
 import { useDownloadQueueStore } from "@/views/main/features/downloads/download-queue-store";
 import { LaunchPlanSheet } from "@/views/main/features/instances/components/launch-plan-sheet";
 import { NewInstanceDialog } from "@/views/main/features/instances/components/new-instance-dialog";
 import { useLaunchPlan } from "@/views/main/features/instances/hooks/use-launch-plan";
 import { useInstances } from "@/views/main/hooks/use-instances";
-import { useLauncherStatus } from "@/views/main/hooks/use-launcher-status";
 
 export function DashboardPage() {
   const instancesHook = useInstances();
   const launchPlan = useLaunchPlan();
-  const statusHook = useLauncherStatus();
   const downloadJobs = useDownloadQueueStore((state) => state.jobs);
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -33,19 +30,17 @@ export function DashboardPage() {
   }, [instances]);
 
   const openNewInstanceDialog = () => setDialogOpen(true);
-  const playInstance = (instanceId: string) => {
-    void launchPlan.createLaunchPlan(instanceId);
-  };
+  const playInstance = useCallback(
+    (instanceId: string) => {
+      void launchPlan.createLaunchPlan(instanceId);
+    },
+    [launchPlan.createLaunchPlan],
+  );
   const refreshDashboardData = useCallback(() => {
     instancesHook.refresh();
-    statusHook.refresh();
-  }, [instancesHook.refresh, statusHook.refresh]);
+  }, [instancesHook.refresh]);
   const initialInstancesLoading =
     instancesHook.loading && instancesHook.data === null;
-
-  useEffect(() => {
-    statusHook.refresh();
-  }, [statusHook.refresh]);
 
   return (
     <div className="flex flex-col">
@@ -55,13 +50,6 @@ export function DashboardPage() {
         loading={initialInstancesLoading}
         onCreateInstance={openNewInstanceDialog}
         onPlayInstance={playInstance}
-      />
-
-      <StatusStrip
-        error={statusHook.error}
-        status={statusHook.data}
-        loading={statusHook.loading}
-        onRefresh={statusHook.refresh}
       />
 
       <DashboardInstanceGrid

@@ -4,12 +4,16 @@ import type {
   ClearDownloadJobInput,
   ClearLauncherStorageResult,
   CompleteMicrosoftProfileLoginInput,
+  CreateInstanceServerInput,
+  CreateInstanceServerResult,
   CreateLauncherInstanceInput,
   CreateLauncherProfileInput,
   CreateLaunchPlanInput,
   CurseForgeSearchResult,
   CurseForgeStatus,
   DatabaseStatus,
+  DeleteInstanceServerInput,
+  DeleteInstanceServerResult,
   DeleteLauncherInstanceInput,
   DeleteLauncherInstanceResult,
   DownloadArtifactsInput,
@@ -144,6 +148,14 @@ export type MainViewRPC = {
       createLauncherInstance: {
         params: CreateLauncherInstanceInput;
         response: LauncherInstance;
+      };
+      createInstanceServer: {
+        params: CreateInstanceServerInput;
+        response: CreateInstanceServerResult;
+      };
+      deleteInstanceServer: {
+        params: DeleteInstanceServerInput;
+        response: DeleteInstanceServerResult;
       };
       updateLauncherInstance: {
         params: UpdateLauncherInstanceInput;

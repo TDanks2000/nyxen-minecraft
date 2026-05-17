@@ -1,6 +1,5 @@
 import { ActivityIcon, DownloadCloudIcon } from "lucide-react";
 import { useEffect, useMemo } from "react";
-import type { DownloadQueueJob } from "@/shared/types";
 import { Button } from "@/views/main/components/ui/button";
 import { formatRelativeDate } from "@/views/main/features/catalog/catalog-model";
 import { useDownloadQueueStore } from "@/views/main/features/downloads/download-queue-store";
@@ -29,22 +28,6 @@ const getInitials = (value: string): string => {
   return initials || "?";
 };
 
-const getDownloadActivityDescription = (job: DownloadQueueJob): string => {
-  if (job.status === "completed") return "Download completed";
-  if (job.status === "failed") return job.error ?? "Download failed";
-  if (job.status === "running") {
-    return job.activeLabel ?? "Download in progress";
-  }
-  return "Download queued";
-};
-
-const getDownloadTone = (job: DownloadQueueJob): ActivityItem["tone"] => {
-  if (job.status === "completed") return "primary";
-  if (job.status === "failed") return "destructive";
-  if (job.status === "running") return "warning";
-  return "muted";
-};
-
 type RightSidebarProps = {
   open: boolean;
 };
@@ -68,22 +51,32 @@ export function RightSidebar({ open }: RightSidebarProps) {
         .length,
     [jobs],
   );
+  const activeJobs = useMemo(
+    () =>
+      jobs.filter((job) => job.status === "queued" || job.status === "running"),
+    [jobs],
+  );
+  const finishedJobs = useMemo(
+    () =>
+      jobs.filter(
+        (job) => job.status === "completed" || job.status === "failed",
+      ),
+    [jobs],
+  );
   const hasActiveJobs = activeJobCount > 0;
   const finishedJobCount = jobs.length - activeJobCount;
+  const getTargetInstanceName = (job: (typeof jobs)[number]) => {
+    const targetInstanceId =
+      "targetInstanceId" in job.metadata ? job.metadata.targetInstanceId : null;
+
+    if (!targetInstanceId) return null;
+
+    return (
+      instances.find((instance) => instance.id === targetInstanceId)?.name ??
+      null
+    );
+  };
   const activityItems = useMemo<Array<ActivityItem>>(() => {
-    const downloadActivities = jobs.map((job) => ({
-      description: getDownloadActivityDescription(job),
-      id: `download:${job.id}`,
-      initials:
-        job.source === "curseforge"
-          ? "CF"
-          : job.source === "modrinth"
-            ? "MR"
-            : "DL",
-      time: job.updatedAt,
-      title: job.title,
-      tone: getDownloadTone(job),
-    }));
     const instanceActivities: Array<ActivityItem> = [];
 
     for (const instance of instances) {
@@ -114,10 +107,10 @@ export function RightSidebar({ open }: RightSidebarProps) {
       });
     }
 
-    return [...downloadActivities, ...instanceActivities]
+    return instanceActivities
       .sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
       .slice(0, 5);
-  }, [instances, jobs]);
+  }, [instances]);
 
   useEffect(() => {
     void refreshDownloadJobs().catch(() => undefined);
@@ -144,23 +137,27 @@ export function RightSidebar({ open }: RightSidebarProps) {
       {/* Download Queue */}
       <section className="p-4 border-b border-sidebar-border">
         <div className="flex items-center justify-between border-b border-sidebar-border/30 pb-2 mb-3">
-          <span className="text-sm font-semibold text-foreground">
-            Download Queue
-          </span>
-          {jobs.length > 0 ? (
+          <div className="flex items-center gap-1.5">
+            <DownloadCloudIcon className="size-3.5 text-muted-foreground" />
+            <span className="text-[0.68rem] font-bold uppercase tracking-wider text-muted-foreground">
+              Downloads
+            </span>
+          </div>
+          {activeJobs.length > 0 ? (
             <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[0.6rem] font-bold text-primary-foreground">
-              {activeJobCount || jobs.length}
+              {activeJobs.length}
             </span>
           ) : null}
         </div>
 
-        {jobs.length > 0 ? (
+        {activeJobs.length > 0 ? (
           <div className="flex flex-col gap-3">
-            {jobs.map((job) => (
+            {activeJobs.map((job) => (
               <DownloadJobCard
                 job={job}
                 key={job.id}
                 onClear={(jobId) => void clearDownloadJob({ jobId })}
+                targetInstanceName={getTargetInstanceName(job)}
               />
             ))}
           </div>
@@ -177,6 +174,29 @@ export function RightSidebar({ open }: RightSidebarProps) {
           </div>
         )}
 
+        {finishedJobs.length > 0 ? (
+          <div className="mt-4">
+            <div className="mb-3 flex items-center justify-between border-sidebar-border/30 border-b pb-2">
+              <span className="text-[0.68rem] font-bold uppercase tracking-wider text-muted-foreground">
+                Finished
+              </span>
+              <span className="rounded-full border border-border px-1.5 py-0.5 text-[0.58rem] text-muted-foreground">
+                {finishedJobs.length}
+              </span>
+            </div>
+            <div className="flex flex-col gap-3">
+              {finishedJobs.slice(0, 4).map((job) => (
+                <DownloadJobCard
+                  job={job}
+                  key={job.id}
+                  onClear={(jobId) => void clearDownloadJob({ jobId })}
+                  targetInstanceName={getTargetInstanceName(job)}
+                />
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         {finishedJobCount > 0 ? (
           <Button
             className="mt-3 w-full"
@@ -192,8 +212,11 @@ export function RightSidebar({ open }: RightSidebarProps) {
 
       {/* Recent Activity */}
       <section className="p-4">
-        <div className="text-sm font-semibold text-foreground border-b border-sidebar-border/30 pb-2 mb-3">
-          Recent Activity
+        <div className="flex items-center gap-1.5 border-b border-sidebar-border/30 pb-2 mb-3">
+          <ActivityIcon className="size-3.5 text-muted-foreground" />
+          <span className="text-[0.68rem] font-bold uppercase tracking-wider text-muted-foreground">
+            Recent Activity
+          </span>
         </div>
         {activityItems.length > 0 ? (
           <div className="flex flex-col gap-2.5">

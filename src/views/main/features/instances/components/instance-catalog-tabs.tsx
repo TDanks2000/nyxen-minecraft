@@ -1,11 +1,10 @@
 import {
   ArchiveIcon,
   CameraIcon,
-  FolderOpenIcon,
   GaugeIcon,
   HardDriveIcon,
+  MoreHorizontalIcon,
   SearchIcon,
-  ServerIcon,
 } from "lucide-react";
 import type {
   InstanceContent,
@@ -14,25 +13,26 @@ import type {
 } from "@/shared/types";
 import { Button } from "@/views/main/components/ui/button";
 import {
-  Card,
-  CardAction,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/views/main/components/ui/card";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/views/main/components/ui/dropdown-menu";
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
 } from "@/views/main/components/ui/tabs";
-import { InstanceCatalogEmptyPanel } from "@/views/main/features/instances/components/instance-catalog-empty-panel";
-import { InstanceCatalogFileCard } from "@/views/main/features/instances/components/instance-catalog-file-card";
 import { InstanceCatalogFileListPanel } from "@/views/main/features/instances/components/instance-catalog-file-list-panel";
-import { INSTANCE_TAB_ITEMS } from "@/views/main/features/instances/components/instance-catalog-options";
-import { openInstancePath } from "@/views/main/features/instances/components/instance-content-format";
+import {
+  INSTANCE_TAB_ITEMS,
+  PRIMARY_INSTANCE_TAB_VALUES,
+} from "@/views/main/features/instances/components/instance-catalog-options";
 import { InstanceLogsPanel } from "@/views/main/features/instances/components/instance-logs-panel";
+import { InstanceModpackPanel } from "@/views/main/features/instances/components/instance-modpack-panel";
 import { InstanceModsPanel } from "@/views/main/features/instances/components/instance-mods-panel";
+import { InstanceServerManagerPanel } from "@/views/main/features/instances/components/instance-server-manager-panel";
 import { InstanceSettingsPanel } from "@/views/main/features/instances/components/instance-settings-panel";
 import { InstanceVersionsPanel } from "@/views/main/features/instances/components/instance-versions-panel";
 
@@ -46,18 +46,23 @@ type InstanceCatalogTabsProps = {
   instance: LauncherInstance;
   logs: Array<InstanceFileEntry>;
   mods: Array<InstanceFileEntry>;
+  modpackUpdateAvailable: boolean;
+  modpackUpdateChecking: boolean;
   mutating: boolean;
   onInstanceDeleted: (instanceId: string) => void;
   onInstanceUpdated: (instance: LauncherInstance) => void;
+  onInstanceServerCreated: (content: InstanceContent) => void;
   onBrowseContent: () => void;
   onRefreshContent: () => void;
   onSetActiveTab: (tab: string) => void;
   onSetAllModsEnabled: (enabled: boolean) => void;
   onToggleMod: (fileName: string, name: string, enabled: boolean) => void;
+  onUpdateModpack: () => void;
   resourcePacks: Array<InstanceFileEntry>;
   screenshots: Array<InstanceFileEntry>;
   serverList: InstanceFileEntry | null;
   shaderPacks: Array<InstanceFileEntry>;
+  updatingModpack: boolean;
   worlds: Array<InstanceFileEntry>;
 };
 
@@ -71,18 +76,23 @@ export function InstanceCatalogTabs({
   instance,
   logs,
   mods,
+  modpackUpdateAvailable,
+  modpackUpdateChecking,
   mutating,
   onBrowseContent,
   onInstanceDeleted,
+  onInstanceServerCreated,
   onInstanceUpdated,
   onRefreshContent,
   onSetActiveTab,
   onSetAllModsEnabled,
   onToggleMod,
+  onUpdateModpack,
   resourcePacks,
   screenshots,
   serverList,
   shaderPacks,
+  updatingModpack,
   worlds,
 }: InstanceCatalogTabsProps) {
   const latestLog =
@@ -94,39 +104,39 @@ export function InstanceCatalogTabs({
   )
     ? activeTab
     : "mods";
+  const primaryTabs = INSTANCE_TAB_ITEMS.filter((item) =>
+    PRIMARY_INSTANCE_TAB_VALUES.includes(item.value),
+  );
+  const moreTabs = INSTANCE_TAB_ITEMS.filter(
+    (item) => !PRIMARY_INSTANCE_TAB_VALUES.includes(item.value),
+  );
+  const activeMoreTab = moreTabs.find(
+    (item) => item.value === activePanelValue,
+  );
   const activePanelContent = (() => {
     switch (activePanelValue) {
       case "servers":
         return (
-          <Card>
-            <CardHeader>
-              <CardTitle>Servers</CardTitle>
-              <CardAction>
-                <Button
-                  onClick={() => openInstancePath(instance.gameDirectory)}
-                  size="sm"
-                  variant="outline"
-                >
-                  <FolderOpenIcon data-icon="inline-start" />
-                  Open Game Folder
-                </Button>
-              </CardAction>
-            </CardHeader>
-            <CardContent>
-              {serverList ? (
-                <InstanceCatalogFileCard entry={serverList} />
-              ) : (
-                <InstanceCatalogEmptyPanel
-                  description="Minecraft stores saved multiplayer servers in servers.dat. This instance does not have one yet."
-                  icon={ServerIcon}
-                  title="No saved server list"
-                />
-              )}
-            </CardContent>
-          </Card>
+          <InstanceServerManagerPanel
+            content={content}
+            instance={instance}
+            onServerContentUpdated={onInstanceServerCreated}
+            serverList={serverList}
+          />
         );
       case "versions":
         return <InstanceVersionsPanel content={content} instance={instance} />;
+      case "modpack":
+        return (
+          <InstanceModpackPanel
+            content={content}
+            instance={instance}
+            modpackUpdateAvailable={modpackUpdateAvailable}
+            modpackUpdateChecking={modpackUpdateChecking}
+            onUpdateModpack={onUpdateModpack}
+            updatingModpack={updatingModpack}
+          />
+        );
       case "resource-packs":
         return (
           <InstanceCatalogFileListPanel
@@ -224,7 +234,7 @@ export function InstanceCatalogTabs({
             className="h-10 w-max gap-3 bg-transparent p-0"
             variant="line"
           >
-            {INSTANCE_TAB_ITEMS.map((item) => {
+            {primaryTabs.map((item) => {
               const Icon = item.icon;
 
               return (
@@ -240,14 +250,45 @@ export function InstanceCatalogTabs({
             })}
           </TabsList>
         </div>
-        <Button
-          className="w-full sm:w-auto"
-          onClick={onBrowseContent}
-          size="sm"
-        >
-          <SearchIcon data-icon="inline-start" />
-          Browse Content
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  className="w-full sm:w-auto"
+                  size="sm"
+                  variant={activeMoreTab ? "secondary" : "outline"}
+                />
+              }
+            >
+              <MoreHorizontalIcon data-icon="inline-start" />
+              {activeMoreTab?.label ?? "More"}
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {moreTabs.map((item) => {
+                const Icon = item.icon;
+
+                return (
+                  <DropdownMenuItem
+                    key={item.value}
+                    onClick={() => onSetActiveTab(item.value)}
+                  >
+                    <Icon />
+                    {item.label}
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button
+            className="w-full sm:w-auto"
+            onClick={onBrowseContent}
+            size="sm"
+          >
+            <SearchIcon data-icon="inline-start" />
+            Browse Content
+          </Button>
+        </div>
       </div>
 
       <TabsContent className="w-full min-w-0" value={activePanelValue}>

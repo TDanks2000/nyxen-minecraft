@@ -1,5 +1,6 @@
 export type InstanceTabValue =
   | "logs"
+  | "modpack"
   | "mods"
   | "resource-packs"
   | "screenshots"

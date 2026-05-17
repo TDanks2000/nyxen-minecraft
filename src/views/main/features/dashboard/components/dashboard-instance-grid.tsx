@@ -44,15 +44,16 @@ export function DashboardInstanceGrid({
         onPlayInstance={onPlayInstance}
         showViewToggle
         title="My Instances"
+        viewModeDefault={instances.length > 6 ? "list" : "grid"}
       />
 
       {instances.length > 5 && (
-        <div className="mt-4 flex justify-center">
+        <div className="mt-4 flex justify-center pb-1">
           <Link
             to="/instances"
-            className="flex items-center gap-1 text-muted-foreground text-xs transition-colors hover:text-foreground"
+            className="flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground ring-1 ring-border/50 transition-colors hover:bg-muted hover:text-foreground"
           >
-            View all instances
+            View all {instances.length} instances
             <ChevronRightIcon className="size-3.5" />
           </Link>
         </div>

@@ -2,9 +2,7 @@ import { Link } from "@tanstack/react-router";
 import {
   BoxesIcon,
   DownloadIcon,
-  FilterIcon,
-  Globe2Icon,
-  HardDriveDownloadIcon,
+  ExternalLinkIcon,
   Loader2Icon,
   PackageIcon,
   RefreshCcwIcon,
@@ -18,7 +16,11 @@ import {
   useState,
 } from "react";
 import { toast } from "sonner";
-import type { ModrinthProjectSummary, ModrinthStatus } from "@/shared/types";
+import type {
+  CurseForgeStatus,
+  ModrinthProjectSummary,
+  ModrinthStatus,
+} from "@/shared/types";
 import { Badge } from "@/views/main/components/ui/badge";
 import { Button, buttonVariants } from "@/views/main/components/ui/button";
 import {
@@ -44,7 +46,6 @@ import {
 } from "@/views/main/features/catalog/catalog-model";
 import {
   LibraryPageHeader,
-  MetricCard,
   PageEmpty,
   SearchBox,
 } from "@/views/main/features/catalog/page-primitives";
@@ -204,7 +205,8 @@ export function ModpacksPage() {
   const [modrinthStatus, setModrinthStatus] = useState<ModrinthStatus | null>(
     null,
   );
-  const [modrinthError, setModrinthError] = useState<string | null>(null);
+  const [curseForgeStatus, setCurseForgeStatus] =
+    useState<CurseForgeStatus | null>(null);
   const [favorites, setFavorites] = useState<Set<string>>(() => new Set());
   const [filter, setFilter] = useState<ModpackFilter>("all");
   const [installingProjectIds, setInstallingProjectIds] = useState<Set<string>>(
@@ -229,13 +231,17 @@ export function ModpacksPage() {
   const loadModrinthCatalog = useCallback(
     async ({ quiet = false }: { quiet?: boolean } = {}) => {
       setRefreshingModrinth(true);
-      setModrinthError(null);
 
       try {
-        const status = await rpc.requestProxy.getModrinthStatus(null);
-        setModrinthStatus(status);
+        const [curseForgeStatusResult, modrinthStatusResult] =
+          await Promise.all([
+            rpc.requestProxy.getCurseForgeStatus(null),
+            rpc.requestProxy.getModrinthStatus(null),
+          ]);
+        setCurseForgeStatus(curseForgeStatusResult);
+        setModrinthStatus(modrinthStatusResult);
 
-        if (!status.configured) {
+        if (!modrinthStatusResult.configured) {
           setModrinthProjects([]);
           if (!quiet) {
             toast.error("Modrinth catalog search is unavailable.");
@@ -258,7 +264,6 @@ export function ModpacksPage() {
           error instanceof Error
             ? error.message
             : "Failed to load Modrinth modpacks.";
-        setModrinthError(message);
         if (!quiet) toast.error(message);
       } finally {
         setRefreshingModrinth(false);
@@ -328,47 +333,44 @@ export function ModpacksPage() {
       <LibraryPageHeader
         eyebrow="Discover"
         title="Modpacks"
-        description="Browse installed modpacks and live Modrinth modpack results."
+        description="Manage installed modpack instances first, then install new packs. Sources: CurseForge and Modrinth."
         actions={
-          <Button
-            variant="outline"
-            onClick={() => void loadModrinthCatalog()}
-            disabled={refreshingModrinth}
-          >
-            {refreshingModrinth ? (
-              <Loader2Icon data-icon="inline-start" className="animate-spin" />
-            ) : (
-              <RefreshCcwIcon data-icon="inline-start" />
-            )}
-            {refreshingModrinth ? "Refreshing" : "Refresh"}
-          </Button>
+          <>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Badge
+                variant={curseForgeStatus?.configured ? "secondary" : "outline"}
+              >
+                CurseForge{" "}
+                {curseForgeStatus
+                  ? curseForgeStatus.configured
+                    ? "ready"
+                    : "needs key"
+                  : "checking"}
+              </Badge>
+              <Badge
+                variant={modrinthStatus?.configured ? "secondary" : "outline"}
+              >
+                Modrinth {modrinthStatus?.configured ? "ready" : "checking"}
+              </Badge>
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => void loadModrinthCatalog()}
+              disabled={refreshingModrinth}
+            >
+              {refreshingModrinth ? (
+                <Loader2Icon
+                  data-icon="inline-start"
+                  className="animate-spin"
+                />
+              ) : (
+                <RefreshCcwIcon data-icon="inline-start" />
+              )}
+              {refreshingModrinth ? "Refreshing" : "Refresh"}
+            </Button>
+          </>
         }
       />
-
-      <section className="grid grid-cols-[repeat(auto-fit,minmax(16rem,1fr))] gap-3">
-        <MetricCard
-          icon={BoxesIcon}
-          label="Live Catalog"
-          value={`${modrinthProjects.length} packs`}
-          caption={
-            modrinthStatus?.configured
-              ? "Loaded from Modrinth search."
-              : "Modrinth search is unavailable."
-          }
-        />
-        <MetricCard
-          icon={HardDriveDownloadIcon}
-          label="Installed"
-          value={String(installedModpacks.length)}
-          caption="Modpacks linked to local launcher instances."
-        />
-        <MetricCard
-          icon={modrinthStatus?.configured ? Globe2Icon : FilterIcon}
-          label="Modrinth"
-          value={modrinthStatus?.configured ? "Connected" : "Unavailable"}
-          caption={modrinthError ?? "Live results are loaded through RPC."}
-        />
-      </section>
 
       <Tabs
         value={filter}
@@ -416,7 +418,14 @@ export function ModpacksPage() {
                   <Card key={card.id} className="pt-0">
                     <ModpackArtwork imageUrl={card.imageUrl} />
                     <CardHeader>
-                      <CardTitle>{card.name}</CardTitle>
+                      <div className="flex min-w-0 items-start gap-2">
+                        <CardTitle className="min-w-0 flex-1 truncate">
+                          {card.name}
+                        </CardTitle>
+                        <Badge variant={card.installed ? "default" : "outline"}>
+                          {card.installed ? "Installed" : "Available"}
+                        </Badge>
+                      </div>
                       <CardDescription>
                         Minecraft {card.minecraft} · {card.loader} ·{" "}
                         {card.updatedLabel}
@@ -447,8 +456,13 @@ export function ModpacksPage() {
                           </Badge>
                         ))}
                       </div>
+                      {isFavorite ? (
+                        <p className="text-muted-foreground text-xs">
+                          Favorite is saved for this session only.
+                        </p>
+                      ) : null}
                     </CardContent>
-                    <CardFooter className="justify-between gap-3">
+                    <CardFooter className="flex-wrap justify-between gap-3">
                       <div className="min-w-0">
                         <div className="text-xs font-semibold">
                           {card.kind === "installed"
@@ -467,28 +481,44 @@ export function ModpacksPage() {
                           params={{ instanceId: card.entry.instanceId }}
                           className={buttonVariants({ size: "sm" })}
                         >
-                          Open
+                          Manage Instance
                         </Link>
                       ) : (
-                        <Button
-                          size="sm"
-                          onClick={() => void installProject(card.project)}
-                          disabled={
-                            installing ||
-                            !card.project.latestFile ||
-                            card.project.isAvailable === false
-                          }
-                        >
-                          {installing ? (
-                            <Loader2Icon
-                              data-icon="inline-start"
-                              className="animate-spin"
-                            />
-                          ) : (
-                            <DownloadIcon data-icon="inline-start" />
-                          )}
-                          {installing ? "Installing" : "Install"}
-                        </Button>
+                        <div className="flex flex-wrap gap-2">
+                          {card.project.websiteUrl ? (
+                            <a
+                              className={buttonVariants({
+                                size: "sm",
+                                variant: "outline",
+                              })}
+                              href={card.project.websiteUrl}
+                              rel="noreferrer"
+                              target="_blank"
+                            >
+                              <ExternalLinkIcon data-icon="inline-start" />
+                              Source
+                            </a>
+                          ) : null}
+                          <Button
+                            size="sm"
+                            onClick={() => void installProject(card.project)}
+                            disabled={
+                              installing ||
+                              !card.project.latestFile ||
+                              card.project.isAvailable === false
+                            }
+                          >
+                            {installing ? (
+                              <Loader2Icon
+                                data-icon="inline-start"
+                                className="animate-spin"
+                              />
+                            ) : (
+                              <DownloadIcon data-icon="inline-start" />
+                            )}
+                            {installing ? "Installing" : "Install as Instance"}
+                          </Button>
+                        </div>
                       )}
                     </CardFooter>
                   </Card>

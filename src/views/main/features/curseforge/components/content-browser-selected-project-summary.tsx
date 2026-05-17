@@ -34,7 +34,9 @@ import {
 } from "@/views/main/features/modrinth/modrinth-browser-model";
 
 type ContentBrowserSelectedProjectSummaryProps = {
+  actionDisabledReason?: string | null;
   category: BrowserCategory;
+  installStateLabel?: string;
   item: BrowserProjectSummary;
   onClear: () => void;
   selectedInstance: SelectedInstance | null;
@@ -42,7 +44,9 @@ type ContentBrowserSelectedProjectSummaryProps = {
 };
 
 export function ContentBrowserSelectedProjectSummary({
+  actionDisabledReason,
   category,
+  installStateLabel,
   item,
   onClear,
   selectedInstance,
@@ -111,10 +115,19 @@ export function ContentBrowserSelectedProjectSummary({
             value={targetLabel}
           />
           <ContentBrowserDetailItem
+            label="Install status"
+            value={installStateLabel ?? "Ready to evaluate"}
+          />
+          <ContentBrowserDetailItem
             label="Project page"
             value={formatProjectHost(item.websiteUrl)}
           />
         </div>
+        {actionDisabledReason ? (
+          <div className="mt-2 rounded-md border border-border bg-background/60 px-2 py-1.5 text-muted-foreground text-xs">
+            {actionDisabledReason}
+          </div>
+        ) : null}
       </div>
       <Button
         aria-label="Close project details"

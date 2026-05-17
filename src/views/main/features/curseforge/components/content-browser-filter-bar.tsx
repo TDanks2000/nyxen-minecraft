@@ -148,6 +148,13 @@ export function ContentBrowserFilterBar({
             <div className="truncate font-heading font-semibold">
               {activeCategoryInfo.label}
             </div>
+            <div className="mt-0.5 truncate text-muted-foreground text-xs">
+              {activeInstance
+                ? isActiveCategoryAvailable(activeCategory, activeInstance)
+                  ? `Compatible with ${activeInstance.name}`
+                  : `Not installable into ${activeInstance.name}`
+                : "Browse first, select an instance for install filters"}
+            </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <Button
@@ -281,7 +288,9 @@ export function ContentBrowserFilterBar({
             <div className="flex h-9 min-w-0 items-center justify-between gap-2 rounded-lg border border-input px-2.5">
               <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
                 <SlidersHorizontalIcon className="size-3.5" />
-                Installed
+                {activeInstance
+                  ? `Installed in ${activeInstance.name}`
+                  : "Installed"}
               </div>
               <Switch
                 checked={installedOnly}

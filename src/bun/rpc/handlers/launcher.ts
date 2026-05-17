@@ -242,6 +242,8 @@ export {
   listDownloadJobs,
 } from "../../launcher/download-queue";
 export {
+  createInstanceServer,
+  deleteInstanceServer,
   getInstanceContent,
   getInstanceLogFile,
   getInstanceModpackUpdate,

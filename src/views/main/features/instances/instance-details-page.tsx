@@ -85,7 +85,19 @@ export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
   const refreshRunningLaunches = useCallback(async () => {
     try {
       const launches = await rpc.requestProxy.listRunningLaunches(null);
-      setRunningLaunches(launches);
+      setRunningLaunches((current) => {
+        if (
+          launches.length === current.length &&
+          launches.every(
+            (l, i) =>
+              l.instanceId === current[i]?.instanceId &&
+              l.pid === current[i]?.pid,
+          )
+        ) {
+          return current;
+        }
+        return launches;
+      });
       return launches;
     } catch {
       return [];
@@ -336,8 +348,20 @@ export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
     }
   };
 
-  const openSettings = () => setActiveTab("settings");
   const selectedContentInstance = toSelectedInstance(instance);
+
+  const latestLaunchRepair =
+    [...(catalog.content?.launchAttempts ?? [])]
+      .reverse()
+      .find((attempt) => attempt.outcome.status !== "started" && attempt.repair)
+      ?.repair ?? null;
+  const recipe = catalog.content?.recipe ?? null;
+  const warningCount =
+    (catalog.error ? 1 : 0) +
+    (latestLaunchRepair ? 1 : 0) +
+    (recipe?.status === "drifted" ? 1 : 0) +
+    (recipe?.status === "incomplete" ? 1 : 0) +
+    (catalog.disabledMods.length > 0 ? 1 : 0);
 
   return (
     <div className="min-h-full bg-background">
@@ -347,19 +371,15 @@ export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
         isRunning={!!runningLaunch}
         launchActionState={launchActionState}
         modpackUpdateAvailable={modpackUpdate?.updateAvailable ?? false}
-        modpackUpdateChecking={modpackUpdateChecking}
         onExportSupportBundle={exportSupportBundle}
-        onOpenSettings={openSettings}
         onPlay={playInstance}
         onStop={stopInstance}
-        onUpdateModpack={updateModpack}
         onViewLaunchPlan={viewLaunchPlan}
         planLoading={planLoading}
         resourcePackCount={catalog.resourcePacks.length}
         shaderPackCount={catalog.shaderPacks.length}
         supportBundleExporting={exportingSupportBundle}
-        updatingModpack={updatingModpack}
-        warningCount={catalog.disabledMods.length}
+        warningCount={warningCount}
       />
 
       <div className="flex w-full min-w-0 flex-col gap-4 px-4 pt-4 pb-8 sm:px-5">
@@ -371,6 +391,8 @@ export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
           disabledModsCount={catalog.disabledMods.length}
           enabledModsCount={catalog.enabledMods.length}
           instance={instance}
+          modpackUpdateAvailable={modpackUpdate?.updateAvailable ?? false}
+          modpackUpdateChecking={modpackUpdateChecking}
           mutating={catalog.mutating}
           mods={catalog.mods}
           onBrowseContent={() => setContentBrowserOpen(true)}
@@ -381,6 +403,7 @@ export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
           onInstanceUpdated={(updatedInstance) => {
             instancesHook.upsertInstance(updatedInstance);
           }}
+          onInstanceServerCreated={catalog.replaceContent}
           onRefreshContent={() => {
             void catalog.refreshContent();
           }}
@@ -389,11 +412,13 @@ export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
             void catalog.setAllModsEnabled(enabled);
           }}
           onToggleMod={catalog.toggleMod}
+          onUpdateModpack={updateModpack}
           resourcePacks={catalog.resourcePacks}
           screenshots={catalog.screenshots}
           serverList={catalog.serverList}
           shaderPacks={catalog.shaderPacks}
           logs={catalog.logs}
+          updatingModpack={updatingModpack}
           worlds={catalog.worlds}
         />
       </div>

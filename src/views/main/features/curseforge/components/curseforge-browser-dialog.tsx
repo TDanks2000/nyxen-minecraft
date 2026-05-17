@@ -626,6 +626,107 @@ export function ContentBrowserDialog({
       ? isCurseForgeCategoryAvailable(category as CurseForgeCategory, instance)
       : category !== "worlds" &&
         isModrinthCategoryAvailable(category as ModrinthCategory, instance);
+  const selectedProjectSummary = (() => {
+    if (!selectedProject) return null;
+
+    if (selectedProject.source === "curseforge") {
+      const category = selectedProject.category as CurseForgeCategory;
+      const item = selectedProject.item as CurseForgeProjectSummary;
+      const installedItem = findInstalledCurseForgeItem(
+        item,
+        category,
+        installedContent,
+      );
+      const key = getCurseForgeItemKey(category, item);
+      const actionState = getCurseForgeActionState({
+        category,
+        failed: failedKeys.has(key),
+        installedItem,
+        item,
+        pending: pendingKeys.has(key),
+        selectedInstance: activeInstance,
+      });
+      const manualDownloadRequired = requiresManualCurseForgeDownload(item);
+
+      return {
+        actionDisabledReason: getDisabledReason({
+          actionState,
+          category,
+          hasFile: Boolean(item.latestFile),
+          hasInstallCallback:
+            category === "modpacks"
+              ? Boolean(onInstallModpack)
+              : Boolean(onInstall),
+          hasManualInstallCallback: Boolean(
+            onOpenManualDownload && onCompleteManualInstall,
+          ),
+          hasUpdateCallback:
+            category === "modpacks" ? false : Boolean(onUpdate),
+          manualDownloadRequired,
+          source: "curseforge",
+        }),
+        installStateLabel:
+          actionState === "installed"
+            ? "Installed"
+            : actionState === "update-available"
+              ? "Update available"
+              : actionState === "select-instance"
+                ? "Select an instance"
+                : actionState === "managed"
+                  ? "Managed by modpack"
+                  : actionState === "incompatible"
+                    ? "Incompatible"
+                    : actionState === "installing"
+                      ? "Installing"
+                      : "Ready to install",
+      };
+    }
+
+    const category = selectedProject.category as ModrinthCategory;
+    const item = selectedProject.item as ModrinthProjectSummary;
+    const installedItem = findInstalledModrinthItem(
+      item,
+      category,
+      instanceContent,
+    );
+    const key = getModrinthItemKey(category, item);
+    const actionState = getModrinthActionState({
+      category,
+      failed: failedKeys.has(key),
+      installedItem,
+      item,
+      pending: pendingKeys.has(key),
+      selectedInstance: activeInstance,
+    });
+
+    return {
+      actionDisabledReason: getDisabledReason({
+        actionState,
+        category,
+        hasFile: Boolean(item.latestFile),
+        hasInstallCallback:
+          category === "modpacks"
+            ? Boolean(onInstallModrinthModpack)
+            : Boolean(onInstallModrinth),
+        hasManualInstallCallback: false,
+        hasUpdateCallback: false,
+        manualDownloadRequired: false,
+        source: "modrinth",
+      }),
+      installStateLabel:
+        actionState === "installed"
+          ? "Installed"
+          : actionState === "select-instance"
+            ? "Select an instance"
+            : actionState === "managed"
+              ? "Managed by modpack"
+              : actionState === "incompatible"
+                ? "Incompatible"
+                : actionState === "installing"
+                  ? "Installing"
+                  : "Ready to install",
+    };
+  })();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -883,7 +984,11 @@ export function ContentBrowserDialog({
             {selectedProject ? (
               <div className="absolute inset-x-0 bottom-0 z-20 border-t border-border bg-background/95 px-4 py-3 shadow-[0_-24px_48px_-36px_black] sm:px-5">
                 <ContentBrowserSelectedProjectSummary
+                  actionDisabledReason={
+                    selectedProjectSummary?.actionDisabledReason
+                  }
                   category={selectedProject.category}
+                  installStateLabel={selectedProjectSummary?.installStateLabel}
                   item={selectedProject.item}
                   onClear={() => setSelectedProject(null)}
                   selectedInstance={activeInstance}

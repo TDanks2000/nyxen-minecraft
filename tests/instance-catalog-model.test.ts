@@ -67,6 +67,13 @@ const createContent = (
   recipe: null,
   resourcePacks: [],
   screenshots: [],
+  serverManager: {
+    candidates: [],
+    defaultServerName: "Fabric Client Server",
+    requirements: [],
+    serverRoot: "/instances/one/app/servers",
+    workspaces: [],
+  },
   serverList: null,
   shaderPacks: [],
   worlds: [],

@@ -1,5 +1,5 @@
 import { LayoutGridIcon, ListIcon, PlusIcon, SearchIcon } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DownloadQueueJob, LauncherInstance } from "@/shared/types";
 import { Button } from "@/views/main/components/ui/button";
 import {
@@ -35,6 +35,57 @@ import {
   isCompletedModpackDownloadJob,
 } from "@/views/main/features/instances/modpack-install-jobs";
 import { cn } from "@/views/main/lib/utils";
+
+type InstanceCardWrapperProps = {
+  density: InstanceCardDensity;
+  featured: boolean;
+  installJob: DownloadQueueJob | undefined;
+  instance: LauncherInstance;
+  launchDisabled: boolean;
+  launchLoading: boolean;
+  onPlayInstance: (instanceId: string) => void;
+  viewMode: InstanceCollectionViewMode;
+};
+
+const InstanceCardWrapper = memo(function InstanceCardWrapper({
+  density,
+  featured,
+  installJob,
+  instance,
+  launchDisabled,
+  launchLoading,
+  onPlayInstance,
+  viewMode,
+}: InstanceCardWrapperProps) {
+  const onPlay = useCallback(() => {
+    onPlayInstance(instance.id);
+  }, [onPlayInstance, instance.id]);
+
+  if (viewMode === "list") {
+    return (
+      <InstanceListItem
+        featured={featured}
+        installJob={installJob}
+        instance={instance}
+        launchDisabled={launchDisabled}
+        launchLoading={launchLoading}
+        onPlay={onPlay}
+      />
+    );
+  }
+
+  return (
+    <InstanceCard
+      density={density}
+      featured={featured}
+      installJob={installJob}
+      instance={instance}
+      launchDisabled={launchDisabled}
+      launchLoading={launchLoading}
+      onPlay={onPlay}
+    />
+  );
+});
 
 type InstanceCollectionProps = {
   cardDensity?: InstanceCardDensity;
@@ -283,7 +334,7 @@ export function InstanceCollection({
             <InstanceCard density={cardDensity} installJob={job} key={job.id} />
           ))}
           {filteredInstances.map((instance) => (
-            <InstanceCard
+            <InstanceCardWrapper
               density={cardDensity}
               featured={instance.id === featuredInstanceId}
               installJob={activeInstallJobByInstanceId.get(instance.id)}
@@ -291,7 +342,8 @@ export function InstanceCollection({
               key={instance.id}
               launchDisabled={launchLoadingId !== null}
               launchLoading={launchLoadingId === instance.id}
-              onPlay={() => onPlayInstance(instance.id)}
+              onPlayInstance={onPlayInstance}
+              viewMode={viewMode}
             />
           ))}
         </div>
@@ -301,14 +353,16 @@ export function InstanceCollection({
             <InstallingInstanceListItem installJob={job} key={job.id} />
           ))}
           {filteredInstances.map((instance) => (
-            <InstanceListItem
+            <InstanceCardWrapper
+              density={cardDensity}
               featured={instance.id === featuredInstanceId}
               installJob={activeInstallJobByInstanceId.get(instance.id)}
               instance={instance}
               key={instance.id}
               launchDisabled={launchLoadingId !== null}
               launchLoading={launchLoadingId === instance.id}
-              onPlay={() => onPlayInstance(instance.id)}
+              onPlayInstance={onPlayInstance}
+              viewMode={viewMode}
             />
           ))}
         </div>

@@ -4,6 +4,7 @@ import {
   FileTextIcon,
   GaugeIcon,
   HardDriveIcon,
+  PackageCheckIcon,
   PuzzleIcon,
   ServerIcon,
   Settings2Icon,
@@ -22,14 +23,25 @@ export const INSTANCE_TAB_ITEMS: Array<{
   value: InstanceTabValue;
 }> = [
   { icon: PuzzleIcon, label: "Mods", value: "mods" },
-  { icon: ZapIcon, label: "Versions", value: "versions" },
+  { icon: PackageCheckIcon, label: "Modpack", value: "modpack" },
   { icon: ArchiveIcon, label: "Resource Packs", value: "resource-packs" },
-  { icon: GaugeIcon, label: "Shader Packs", value: "shader-packs" },
-  { icon: ServerIcon, label: "Servers", value: "servers" },
+  { icon: GaugeIcon, label: "Shaders", value: "shader-packs" },
   { icon: HardDriveIcon, label: "Worlds", value: "worlds" },
-  { icon: CameraIcon, label: "Screenshots", value: "screenshots" },
   { icon: FileTextIcon, label: "Logs", value: "logs" },
   { icon: Settings2Icon, label: "Settings", value: "settings" },
+  { icon: ServerIcon, label: "Servers", value: "servers" },
+  { icon: CameraIcon, label: "Screenshots", value: "screenshots" },
+  { icon: ZapIcon, label: "Versions", value: "versions" },
+];
+
+export const PRIMARY_INSTANCE_TAB_VALUES: Array<InstanceTabValue> = [
+  "mods",
+  "modpack",
+  "resource-packs",
+  "shader-packs",
+  "worlds",
+  "logs",
+  "settings",
 ];
 
 export const MOD_STATUS_FILTERS: Array<{

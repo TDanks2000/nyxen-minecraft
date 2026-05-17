@@ -1,6 +1,7 @@
 import { memo } from "react";
 import type { InstanceFileEntry } from "@/shared/types";
 import { Badge } from "@/views/main/components/ui/badge";
+import { Checkbox } from "@/views/main/components/ui/checkbox";
 import { Switch } from "@/views/main/components/ui/switch";
 import { InstanceCatalogModIcon } from "@/views/main/features/instances/components/instance-catalog-mod-icon";
 import { InstanceCatalogStatusBadge } from "@/views/main/features/instances/components/instance-catalog-status-badge";
@@ -14,14 +15,22 @@ type InstanceCatalogModCardProps = {
   entry: InstanceFileEntry;
   managedByModpack: boolean;
   mutating: boolean;
-  onToggleMod: (fileName: string, name: string, enabled: boolean) => void;
+  onSelectedChange?: (fileName: string, selected: boolean) => void;
+  onToggleMod: (
+    fileName: string,
+    name: string,
+    enabled: boolean,
+  ) => void | Promise<void>;
+  selected?: boolean;
 };
 
 export const InstanceCatalogModCard = memo(function InstanceCatalogModCard({
   entry,
   managedByModpack,
   mutating,
+  onSelectedChange,
   onToggleMod,
+  selected = false,
 }: InstanceCatalogModCardProps) {
   const enabled = entry.enabled === true;
 
@@ -35,6 +44,17 @@ export const InstanceCatalogModCard = memo(function InstanceCatalogModCard({
       )}
     >
       <div className="flex min-w-0 items-start gap-3">
+        {onSelectedChange ? (
+          <Checkbox
+            aria-label={`Select ${entry.displayName}`}
+            checked={selected}
+            disabled={mutating || managedByModpack}
+            onCheckedChange={(checked) =>
+              onSelectedChange(entry.fileName, checked === true)
+            }
+            className="mt-1"
+          />
+        ) : null}
         <InstanceCatalogModIcon enabled={enabled} />
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-start gap-2">

@@ -1,6 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
+  chmodSync,
   closeSync,
+  copyFileSync,
+  cpSync,
   type Dirent,
   existsSync,
   mkdirSync,
@@ -9,6 +12,7 @@ import {
   readFileSync,
   readSync,
   renameSync,
+  rmSync,
   type Stats,
   statSync,
   unlinkSync,
@@ -27,7 +31,11 @@ import {
 import { pathToFileURL } from "node:url";
 import { gunzipSync } from "node:zlib";
 import type {
+  CreateInstanceServerInput,
+  CreateInstanceServerResult,
   CurseForgeCategory,
+  DeleteInstanceServerInput,
+  DeleteInstanceServerResult,
   DownloadCurseForgeFileInput,
   DownloadCurseForgeFileResult,
   DownloadModrinthFileInput,
@@ -47,6 +55,10 @@ import type {
   InstanceLogLineLevel,
   InstanceLogLineType,
   InstanceModpackUpdate,
+  InstanceServerFileCandidate,
+  InstanceServerManager,
+  InstanceServerRequirement,
+  InstanceServerWorkspace,
   LauncherInstance,
   LauncherInstanceModpack,
   ModrinthCategory,
@@ -69,8 +81,10 @@ import {
   updateLauncherInstance,
 } from "./instances";
 import { readLaunchAttemptRecords } from "./launch-diagnostics";
+import { resolveModLoader } from "./mod-loaders";
 import type { ModrinthOptions } from "./modrinth";
 import { ensurePrivateDirectory, getLauncherDirectories } from "./paths";
+import { getMinecraftVersionDetails } from "./versions";
 import { listZipEntries, readZipJson } from "./zip";
 
 const fileExtensions = {
@@ -95,6 +109,13 @@ const maxLogPreviewBytes = 1024 * 1024;
 const maxLogPreviewLines = 2000;
 const maxCompressedLogBytes = 2 * 1024 * 1024;
 const maxLaunchAttemptsInContent = 5;
+const serverWorkspaceFolderName = "servers";
+const serverMetadataFileName = "nyxen-server.json";
+const serverFileExtensions = {
+  config: new Set([".json", ".toml", ".cfg", ".conf", ".properties", ".txt"]),
+  mods: new Set([".jar"]),
+  resourcePacks: new Set([".jar", ".zip"]),
+};
 
 type DownloadCurseForgeFileOptions = CurseForgeOptions & {
   maxBytes?: number;
@@ -1489,6 +1510,648 @@ const getServerListEntry = (
     kind: "serverList",
     stats,
   });
+};
+
+const getServerWorkspaceRoot = (instance: LauncherInstance): string =>
+  join(instance.folders.app, serverWorkspaceFolderName);
+
+const normalizeServerName = (name: string | undefined): string => {
+  const normalized = (name ?? "").trim() || "Local Server";
+
+  if (normalized.length < 2 || normalized.length > 64) {
+    throw new Error("Server name must be between 2 and 64 characters.");
+  }
+
+  if (normalized.includes("\0")) {
+    throw new Error("Server name is invalid.");
+  }
+
+  return normalized;
+};
+
+const toServerFolderName = (name: string): string => {
+  const normalized = name
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+
+  return normalized || "server";
+};
+
+const getAvailableServerPath = (serverRoot: string, name: string): string => {
+  const base = toServerFolderName(name);
+  let candidate = join(serverRoot, base);
+  let index = 2;
+
+  while (existsSync(candidate)) {
+    candidate = join(serverRoot, `${base}-${index}`);
+    index += 1;
+  }
+
+  return candidate;
+};
+
+const createServerEntry = ({
+  displayName,
+  fileName,
+  folder,
+  isDirectory,
+  relativePath,
+  stats,
+}: {
+  displayName?: string;
+  fileName: string;
+  folder: string;
+  isDirectory: boolean;
+  relativePath?: string;
+  stats: Stats;
+}): InstanceFileEntry =>
+  createEntry({
+    displayName,
+    enabled: null,
+    fileName,
+    folder,
+    isDirectory,
+    kind: "serverFile",
+    relativePath,
+    stats,
+  });
+
+const getOptionalFileEntry = (
+  folder: string,
+  fileName: string,
+  displayName?: string,
+): InstanceFileEntry | null => {
+  const path = join(folder, fileName);
+
+  if (!existsSync(path)) return null;
+
+  const stats = statSync(path);
+
+  return createServerEntry({
+    displayName,
+    fileName,
+    folder,
+    isDirectory: stats.isDirectory(),
+    stats,
+  });
+};
+
+const likelyClientOnlyModPatterns: Array<[RegExp, string]> = [
+  [/^sodium/i, "Sodium is a client renderer mod."],
+  [/^iris/i, "Iris is a client shader mod."],
+  [/^modmenu/i, "Mod Menu only affects the client UI."],
+  [/^betterf3/i, "BetterF3 only changes the client debug screen."],
+  [/^dynamic[-_ ]?fps/i, "Dynamic FPS only changes client performance."],
+  [/^entity[-_ ]?culling/i, "Entity Culling only changes client rendering."],
+  [/^immediatelyfast/i, "ImmediatelyFast is a client rendering mod."],
+  [/^more[-_ ]?culling/i, "More Culling only changes client rendering."],
+  [/^reeses[-_ ]?sodium/i, "Reese's Sodium Options is a client UI mod."],
+  [/^lambdynamiclights/i, "Dynamic lights are a client visual feature."],
+  [/^mouse[-_ ]?tweaks/i, "Mouse Tweaks only changes inventory controls."],
+  [/^zoom/i, "Zoom mods are client-side controls."],
+  [/^xaero/i, "Map and minimap mods often need a client review first."],
+];
+
+const classifyServerCandidate = (
+  entry: InstanceFileEntry,
+  source: InstanceServerFileCandidate["source"],
+): Pick<
+  InstanceServerFileCandidate,
+  "reason" | "selectedByDefault" | "side"
+> => {
+  if (source === "config") {
+    return {
+      reason:
+        "Configuration files are copied so server-side mods keep their settings.",
+      selectedByDefault: true,
+      side: "server",
+    };
+  }
+
+  if (source === "resourcePack") {
+    return {
+      reason:
+        "Resource packs are client-facing and are listed for review only.",
+      selectedByDefault: false,
+      side: "optional",
+    };
+  }
+
+  const baseName = entry.fileName.replace(/\.jar(?:\.disabled)?$/i, "");
+  const clientOnlyMatch = likelyClientOnlyModPatterns.find(([pattern]) =>
+    pattern.test(baseName),
+  );
+
+  if (clientOnlyMatch) {
+    return {
+      reason: clientOnlyMatch[1],
+      selectedByDefault: false,
+      side: "clientOnly",
+    };
+  }
+
+  if (entry.enabled === false) {
+    return {
+      reason:
+        "Disabled mods are not copied unless you enable them in the instance first.",
+      selectedByDefault: false,
+      side: "unknown",
+    };
+  }
+
+  return {
+    reason:
+      "No client-only pattern detected. Copy this mod into the server pack.",
+    selectedByDefault: true,
+    side: "unknown",
+  };
+};
+
+const listServerFileCandidates = (
+  instance: LauncherInstance,
+  mods: Array<InstanceFileEntry>,
+  resourcePacks: Array<InstanceFileEntry>,
+): Array<InstanceServerFileCandidate> => {
+  const configFiles = listFolderEntries({
+    allowDirectories: true,
+    extensions: serverFileExtensions.config,
+    folder: instance.folders.config,
+    kind: "serverFile",
+  }).map((entry) => ({ ...entry, kind: "serverFile" as const }));
+
+  return [
+    ...mods,
+    ...configFiles,
+    ...resourcePacks.map((entry) => ({
+      ...entry,
+      kind: "serverFile" as const,
+    })),
+  ].map((entry) => {
+    const source: InstanceServerFileCandidate["source"] = entry.path.startsWith(
+      instance.folders.config,
+    )
+      ? "config"
+      : entry.path.startsWith(instance.folders.resourcePacks)
+        ? "resourcePack"
+        : "mod";
+    const classification = classifyServerCandidate(entry, source);
+
+    return {
+      entry,
+      source,
+      ...classification,
+    };
+  });
+};
+
+const listServerWorkspaceMods = (
+  serverPath: string,
+): Array<InstanceFileEntry> =>
+  listFolderEntries({
+    extensions: serverFileExtensions.mods,
+    folder: join(serverPath, "mods"),
+    kind: "serverFile",
+  }).map((entry) => ({ ...entry, kind: "serverFile" as const }));
+
+const getServerWorkspace = (
+  folder: string,
+  name: string,
+): InstanceServerWorkspace | null => {
+  let stats: Stats;
+
+  try {
+    stats = statSync(folder);
+  } catch {
+    return null;
+  }
+
+  if (!stats.isDirectory()) return null;
+
+  const metadataPath = join(folder, serverMetadataFileName);
+  let metadataName = name;
+
+  if (existsSync(metadataPath)) {
+    try {
+      const parsed = JSON.parse(readFileSync(metadataPath, "utf8"));
+      if (isRecord(parsed)) {
+        metadataName = optionalString(parsed.name) ?? metadataName;
+      }
+    } catch {
+      // Workspace metadata is helpful, but the folder itself is authoritative.
+    }
+  }
+
+  return {
+    createdAt: stats.birthtime.toISOString(),
+    eula: getOptionalFileEntry(folder, "eula.txt", "EULA"),
+    id: basename(folder),
+    installScript: getOptionalFileEntry(
+      folder,
+      "install-loader.sh",
+      "Install Loader",
+    ),
+    loaderLauncher:
+      getOptionalFileEntry(
+        folder,
+        "fabric-server-launch.jar",
+        "Fabric Server",
+      ) ??
+      getOptionalFileEntry(folder, "quilt-installer.jar", "Quilt Installer") ??
+      getOptionalFileEntry(folder, "forge-installer.jar", "Forge Installer") ??
+      getOptionalFileEntry(
+        folder,
+        "neoforge-installer.jar",
+        "NeoForge Installer",
+      ),
+    mods: listServerWorkspaceMods(folder),
+    name: metadataName,
+    path: folder,
+    properties: getOptionalFileEntry(
+      folder,
+      "server.properties",
+      "Server Properties",
+    ),
+    runScript: getOptionalFileEntry(folder, "start.sh", "Start Server"),
+    serverJar: getOptionalFileEntry(folder, "server.jar", "Minecraft Server"),
+  };
+};
+
+const listServerWorkspaces = (
+  instance: LauncherInstance,
+): Array<InstanceServerWorkspace> => {
+  const serverRoot = getServerWorkspaceRoot(instance);
+
+  if (!existsSync(serverRoot)) return [];
+
+  return readdirSync(serverRoot, { withFileTypes: true })
+    .flatMap((entry) => {
+      if (!entry.isDirectory() || !isSafeFileName(entry.name)) return [];
+
+      const workspace = getServerWorkspace(
+        join(serverRoot, entry.name),
+        entry.name,
+      );
+      return workspace ? [workspace] : [];
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+};
+
+const getServerRequirements = (
+  instance: LauncherInstance,
+  workspaces: Array<InstanceServerWorkspace>,
+): Array<InstanceServerRequirement> => {
+  const activeWorkspace = workspaces[0] ?? null;
+  const serverJarPath = activeWorkspace
+    ? join(activeWorkspace.path, "server.jar")
+    : null;
+  const eulaPath = activeWorkspace
+    ? join(activeWorkspace.path, "eula.txt")
+    : null;
+  const propertiesPath = activeWorkspace
+    ? join(activeWorkspace.path, "server.properties")
+    : null;
+
+  return [
+    {
+      description: activeWorkspace
+        ? "A server folder exists for this instance."
+        : "Create a server to generate an isolated folder for server files.",
+      id: "workspace",
+      path: activeWorkspace?.path ?? getServerWorkspaceRoot(instance),
+      status: activeWorkspace ? "ready" : "missing",
+      title: "Server workspace",
+    },
+    {
+      description:
+        instance.loader === "vanilla"
+          ? "Vanilla servers can use the downloaded Mojang server jar."
+          : `${instance.loader} servers need a matching loader launcher or installer.`,
+      id: "serverJar",
+      path: serverJarPath,
+      status:
+        activeWorkspace?.serverJar || activeWorkspace?.loaderLauncher
+          ? "ready"
+          : instance.loader === "vanilla"
+            ? "missing"
+            : "warning",
+      title: "Server runtime",
+    },
+    {
+      description: activeWorkspace?.eula
+        ? "EULA file is present. Review it before starting the server."
+        : "Minecraft requires eula.txt before a server can start.",
+      id: "eula",
+      path: eulaPath,
+      status: activeWorkspace?.eula ? "ready" : "missing",
+      title: "Minecraft EULA",
+    },
+    {
+      description: activeWorkspace?.properties
+        ? "Server properties are ready to edit."
+        : "Create a server to generate a readable server.properties file.",
+      id: "properties",
+      path: propertiesPath,
+      status: activeWorkspace?.properties ? "ready" : "missing",
+      title: "Server settings",
+    },
+  ];
+};
+
+const getInstanceServerManager = ({
+  instance,
+  mods,
+  resourcePacks,
+}: {
+  instance: LauncherInstance;
+  mods: Array<InstanceFileEntry>;
+  resourcePacks: Array<InstanceFileEntry>;
+}): InstanceServerManager => {
+  const workspaces = listServerWorkspaces(instance);
+
+  return {
+    candidates: listServerFileCandidates(instance, mods, resourcePacks),
+    defaultServerName: `${instance.name} Server`,
+    requirements: getServerRequirements(instance, workspaces),
+    serverRoot: getServerWorkspaceRoot(instance),
+    workspaces,
+  };
+};
+
+const copyCandidateToServer = (
+  candidate: InstanceServerFileCandidate,
+  serverPath: string,
+): InstanceFileEntry => {
+  const targetFolder =
+    candidate.source === "config"
+      ? join(serverPath, "config")
+      : candidate.source === "resourcePack"
+        ? join(serverPath, "resourcepacks")
+        : join(serverPath, "mods");
+  const targetPath = join(targetFolder, candidate.entry.fileName);
+
+  mkdirSync(targetFolder, { recursive: true });
+
+  if (candidate.entry.isDirectory) {
+    cpSync(candidate.entry.path, targetPath, { recursive: true });
+  } else {
+    copyFileSync(candidate.entry.path, targetPath);
+  }
+
+  const stats = statSync(targetPath);
+
+  return createServerEntry({
+    fileName: candidate.entry.fileName,
+    folder: targetFolder,
+    isDirectory: stats.isDirectory(),
+    stats,
+  });
+};
+
+const writeServerTextFile = (path: string, content: string): void => {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, content, { flag: "wx" });
+};
+
+const writeExecutableServerScript = (path: string, content: string): void => {
+  writeServerTextFile(path, content);
+  chmodSync(path, 0o755);
+};
+
+const fetchServerJson = async (url: string): Promise<unknown> => {
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    throw new Error(
+      `Server metadata request failed: ${response.status} ${response.statusText}`,
+    );
+  }
+
+  return response.json();
+};
+
+const getFabricInstallerVersion = async (): Promise<string> => {
+  const parsed = await fetchServerJson(
+    "https://meta.fabricmc.net/v2/versions/installer",
+  );
+
+  if (!Array.isArray(parsed)) {
+    throw new Error("Fabric installer metadata is invalid.");
+  }
+
+  for (const entry of parsed) {
+    if (!isRecord(entry)) continue;
+
+    const version = optionalString(entry.version);
+    if (version) return version;
+  }
+
+  throw new Error("No Fabric installer versions are available.");
+};
+
+const downloadUrlToFile = async (url: string, path: string): Promise<void> => {
+  const parsedUrl = new URL(url);
+
+  if (parsedUrl.protocol !== "https:") {
+    throw new Error("Server download URL must use HTTPS.");
+  }
+
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    throw new Error(
+      `Server download failed: ${response.status} ${response.statusText}`,
+    );
+  }
+
+  writeDownloadedFile(path, new Uint8Array(await response.arrayBuffer()));
+};
+
+const downloadFabricServerLauncher = async (
+  instance: LauncherInstance,
+  serverPath: string,
+): Promise<string> => {
+  const loaderVersion = instance.loaderVersion?.trim();
+
+  if (!loaderVersion) {
+    throw new Error("Select a Fabric loader version before creating a server.");
+  }
+
+  const installerVersion = await getFabricInstallerVersion();
+  const targetPath = join(serverPath, "fabric-server-launch.jar");
+  const url = `https://meta.fabricmc.net/v2/versions/loader/${encodeURIComponent(
+    instance.versionId,
+  )}/${encodeURIComponent(loaderVersion)}/${encodeURIComponent(
+    installerVersion,
+  )}/server/jar`;
+
+  await downloadUrlToFile(url, targetPath);
+
+  return "fabric-server-launch.jar";
+};
+
+const copyForgeLikeInstaller = async (
+  instance: LauncherInstance,
+  serverPath: string,
+): Promise<string> => {
+  const versionDetails = await getMinecraftVersionDetails({
+    refresh: false,
+    versionId: instance.versionId,
+  });
+  const modLoader = await resolveModLoader(instance, versionDetails);
+
+  if (!modLoader?.installerPath) {
+    throw new Error(`No ${instance.loader} server installer is available.`);
+  }
+
+  const fileName =
+    instance.loader === "neoforge"
+      ? "neoforge-installer.jar"
+      : "forge-installer.jar";
+
+  copyFileSync(modLoader.installerPath, join(serverPath, fileName));
+
+  return fileName;
+};
+
+const downloadQuiltInstaller = async (serverPath: string): Promise<string> => {
+  const fileName = "quilt-installer.jar";
+
+  await downloadUrlToFile(
+    "https://quiltmc.org/api/v1/download-latest-installer/java-universal",
+    join(serverPath, fileName),
+  );
+
+  return fileName;
+};
+
+const setupModLoaderServer = async (
+  instance: LauncherInstance,
+  serverPath: string,
+): Promise<string> => {
+  if (instance.loader === "vanilla") {
+    await downloadServerJar(instance, serverPath);
+    return "server.jar";
+  }
+
+  if (instance.loader === "fabric") {
+    return downloadFabricServerLauncher(instance, serverPath);
+  }
+
+  if (instance.loader === "quilt") {
+    return downloadQuiltInstaller(serverPath);
+  }
+
+  return copyForgeLikeInstaller(instance, serverPath);
+};
+
+const getServerRunCommand = (
+  instance: LauncherInstance,
+  launcherFileName: string,
+): string => {
+  if (instance.loader === "quilt") {
+    return "java -jar quilt-server-launch.jar nogui";
+  }
+
+  if (instance.loader === "forge" || instance.loader === "neoforge") {
+    return "java @user_jvm_args.txt @libraries/net/minecraftforge/forge/*/unix_args.txt nogui";
+  }
+
+  return `java -Xmx${instance.memoryMaxMb}M -Xms${instance.memoryMinMb}M -jar ${launcherFileName} nogui`;
+};
+
+const writeServerScripts = (
+  instance: LauncherInstance,
+  serverPath: string,
+  launcherFileName: string,
+): void => {
+  const runCommand = getServerRunCommand(instance, launcherFileName);
+
+  writeExecutableServerScript(
+    join(serverPath, "start.sh"),
+    [
+      "#!/usr/bin/env sh",
+      "set -eu",
+      `cd "$(dirname "$0")"`,
+      runCommand,
+      "",
+    ].join("\n"),
+  );
+
+  if (instance.loader === "forge" || instance.loader === "neoforge") {
+    writeExecutableServerScript(
+      join(serverPath, "install-loader.sh"),
+      [
+        "#!/usr/bin/env sh",
+        "set -eu",
+        `cd "$(dirname "$0")"`,
+        `java -jar ${launcherFileName} --installServer`,
+        "",
+      ].join("\n"),
+    );
+    writeExecutableServerScript(
+      join(serverPath, "start.sh"),
+      [
+        "#!/usr/bin/env sh",
+        "set -eu",
+        `cd "$(dirname "$0")"`,
+        'if [ ! -f "./run.sh" ]; then',
+        '  echo "Run ./install-loader.sh before starting this server."',
+        "  exit 1",
+        "fi",
+        "./run.sh",
+        "",
+      ].join("\n"),
+    );
+    writeServerTextFile(
+      join(serverPath, "user_jvm_args.txt"),
+      [`-Xms${instance.memoryMinMb}M`, `-Xmx${instance.memoryMaxMb}M`, ""].join(
+        "\n",
+      ),
+    );
+  }
+
+  if (instance.loader === "quilt") {
+    writeExecutableServerScript(
+      join(serverPath, "install-loader.sh"),
+      [
+        "#!/usr/bin/env sh",
+        "set -eu",
+        `cd "$(dirname "$0")"`,
+        `java -jar ${launcherFileName} install server ${instance.versionId} --download-server`,
+        "",
+      ].join("\n"),
+    );
+  }
+};
+
+const downloadServerJar = async (
+  instance: LauncherInstance,
+  serverPath: string,
+): Promise<void> => {
+  if (instance.loader !== "vanilla") return;
+
+  const details = await getMinecraftVersionDetails({
+    refresh: false,
+    versionId: instance.versionId,
+  });
+  const serverDownload = details.downloads?.server;
+
+  if (!serverDownload?.url) return;
+
+  const response = await fetch(serverDownload.url);
+
+  if (!response.ok) {
+    throw new Error(
+      `Server jar download failed: ${response.status} ${response.statusText}`,
+    );
+  }
+
+  writeDownloadedFile(
+    join(serverPath, "server.jar"),
+    new Uint8Array(await response.arrayBuffer()),
+  );
 };
 
 const getCurseForgeTargetFolder = (
@@ -3035,6 +3698,11 @@ export const getInstanceContent = ({
     folder: instance.folders.saves,
     kind: "world",
   });
+  const serverManager = getInstanceServerManager({
+    instance,
+    mods,
+    resourcePacks,
+  });
 
   return {
     counts: {
@@ -3059,9 +3727,155 @@ export const getInstanceContent = ({
     recipe: getInstanceRecipeSummary(instance),
     resourcePacks,
     screenshots,
+    serverManager,
     serverList: getServerListEntry(instance.gameDirectory),
     shaderPacks,
     worlds,
+  };
+};
+
+export const createInstanceServer = async (
+  input: CreateInstanceServerInput,
+): Promise<CreateInstanceServerResult> => {
+  const instance = getInstanceOrThrow(input.instanceId);
+  const name = normalizeServerName(input.name);
+  const serverRoot = getServerWorkspaceRoot(instance);
+  const serverPath = getAvailableServerPath(serverRoot, name);
+
+  mkdirSync(serverPath, { recursive: true });
+
+  try {
+    const content = getInstanceContent({ instanceId: instance.id });
+    const candidates = content.serverManager.candidates;
+    const selectedCandidates = candidates.filter(
+      (candidate) =>
+        candidate.selectedByDefault ||
+        (input.includeClientOnlyMods && candidate.side === "clientOnly"),
+    );
+    const skippedFiles = candidates.filter(
+      (candidate) => !selectedCandidates.includes(candidate),
+    );
+    const copiedFiles: Array<InstanceFileEntry> = [];
+
+    for (const candidate of selectedCandidates) {
+      copiedFiles.push(copyCandidateToServer(candidate, serverPath));
+    }
+
+    writeServerTextFile(
+      join(serverPath, "server.properties"),
+      [
+        `level-name=${instance.name.replace(/[=\r\n]/g, " ").trim() || "world"}`,
+        "motd=Nyxen local server",
+        "online-mode=true",
+        "enable-command-block=false",
+        "allow-flight=false",
+        "server-port=25565",
+        "",
+      ].join("\n"),
+    );
+    writeServerTextFile(
+      join(serverPath, "eula.txt"),
+      `# Review https://aka.ms/MinecraftEULA before changing this value.\neula=${
+        input.acceptEula ? "true" : "false"
+      }\n`,
+    );
+    writeServerTextFile(
+      join(serverPath, "README.txt"),
+      [
+        `${name}`,
+        "",
+        `Source instance: ${instance.name}`,
+        `Minecraft: ${instance.versionId}`,
+        `Loader: ${instance.loader}${instance.loaderVersion ? ` ${instance.loaderVersion}` : ""}`,
+        "",
+        instance.loader === "vanilla"
+          ? "Run start.sh after reviewing eula.txt."
+          : `Run install-loader.sh once to set up the ${instance.loader} server, then run start.sh.`,
+        "",
+      ].join("\n"),
+    );
+    writeServerTextFile(
+      join(serverPath, serverMetadataFileName),
+      `${JSON.stringify(
+        {
+          createdAt: new Date().toISOString(),
+          instanceId: instance.id,
+          loader: instance.loader,
+          loaderVersion: instance.loaderVersion,
+          name,
+          schemaVersion: 1,
+          sourceInstanceName: instance.name,
+          versionId: instance.versionId,
+        },
+        null,
+        2,
+      )}\n`,
+    );
+
+    const launcherFileName = await setupModLoaderServer(instance, serverPath);
+    writeServerScripts(instance, serverPath, launcherFileName);
+
+    const nextContent = getInstanceContent({ instanceId: instance.id });
+    const server =
+      nextContent.serverManager.workspaces.find(
+        (workspace) => workspace.path === serverPath,
+      ) ?? getServerWorkspace(serverPath, name);
+
+    if (!server) {
+      throw new Error("Server workspace could not be created.");
+    }
+
+    return {
+      content: nextContent,
+      copiedFiles,
+      server,
+      skippedFiles,
+    };
+  } catch (error) {
+    try {
+      if (existsSync(serverPath)) {
+        rmSync(serverPath, { force: true, recursive: true });
+      }
+    } catch {
+      // Ignore cleanup errors to surface the original creation error.
+    }
+    throw error;
+  }
+};
+
+export const deleteInstanceServer = ({
+  instanceId,
+  serverId,
+}: DeleteInstanceServerInput): DeleteInstanceServerResult => {
+  const instance = getInstanceOrThrow(instanceId);
+  const normalizedServerId = assertSafeFileName(serverId);
+  const serverRoot = getServerWorkspaceRoot(instance);
+  const serverPath = join(serverRoot, normalizedServerId);
+
+  if (!isPathInside(serverRoot, serverPath)) {
+    throw new Error("Server path is invalid.");
+  }
+
+  if (!existsSync(serverPath)) {
+    return {
+      content: getInstanceContent({ instanceId: instance.id }),
+      deleted: false,
+      serverId: normalizedServerId,
+    };
+  }
+
+  const stats = statSync(serverPath);
+
+  if (!stats.isDirectory()) {
+    throw new Error("Server path is not a folder.");
+  }
+
+  rmSync(serverPath, { force: true, recursive: true });
+
+  return {
+    content: getInstanceContent({ instanceId: instance.id }),
+    deleted: true,
+    serverId: normalizedServerId,
   };
 };
 

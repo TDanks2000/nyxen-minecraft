@@ -4,7 +4,6 @@ import {
   ImageIcon,
   ImagesIcon,
   RefreshCcwIcon,
-  ServerIcon,
   StarIcon,
 } from "lucide-react";
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
@@ -29,15 +28,12 @@ import {
 import {
   formatEntrySize,
   formatRelativeDate,
-  getContentList,
-  getLatestContentRefresh,
   type LocalScreenshotEntry,
   mapLocalScreenshots,
   toFileMediaUrl,
 } from "@/views/main/features/catalog/catalog-model";
 import {
   LibraryPageHeader,
-  MetricCard,
   PageEmpty,
   SearchBox,
 } from "@/views/main/features/catalog/page-primitives";
@@ -101,19 +97,10 @@ export function ScreenshotsPage() {
     void refreshManyInstanceContents(instanceIds);
   }, [instanceIds, instancesHook.data, refreshManyInstanceContents]);
 
-  const contents = useMemo(
-    () => getContentList(instances, byInstanceId),
-    [byInstanceId, instances],
-  );
   const screenshots = useMemo(
     () => mapLocalScreenshots(instances, byInstanceId),
     [byInstanceId, instances],
   );
-  const latestRefresh = useMemo(
-    () => getLatestContentRefresh(contents),
-    [contents],
-  );
-  const errorCount = instances.filter((instance) => errors[instance.id]).length;
   const contentLoading =
     instances.some((instance) => loadingIds[instance.id]) ||
     (instances.length > 0 &&
@@ -228,31 +215,6 @@ export function ScreenshotsPage() {
           </Button>
         }
       />
-
-      <section className="grid grid-cols-[repeat(auto-fit,minmax(16rem,1fr))] gap-3">
-        <MetricCard
-          icon={ImageIcon}
-          label="Screenshots"
-          value={String(screenshots.length)}
-          caption="Indexed from local screenshot folders."
-        />
-        <MetricCard
-          icon={StarIcon}
-          label="Favorites"
-          value={String(favorites.size)}
-          caption="Pinned in this launcher session."
-        />
-        <MetricCard
-          icon={ServerIcon}
-          label="Last Scan"
-          value={latestRefresh ? formatRelativeDate(latestRefresh) : "Pending"}
-          caption={
-            errorCount > 0
-              ? `${errorCount} instance${errorCount === 1 ? "" : "s"} could not be scanned.`
-              : "Image metadata stays on local disk."
-          }
-        />
-      </section>
 
       <Tabs
         value={filter}
