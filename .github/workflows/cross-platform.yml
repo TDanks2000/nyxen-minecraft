@@ -57,14 +57,22 @@ jobs:
         run: bun test
 
       - name: Build desktop app
-        run: bun run build
+        run: bun run build:release
 
-      - name: Upload desktop build
+      - name: Create Linux installers
+        if: runner.os == 'Linux'
+        run: bun scripts/package-linux-installers.mjs
+
+      - name: Upload desktop installers
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
-          name: nyxen-minecraft-${{ runner.os }}
-          path: build
+          name: nyxen-minecraft-${{ runner.os }}-installers
+          path: |
+            artifacts/*.AppImage
+            artifacts/*.deb
+            artifacts/*.dmg
+            artifacts/*.zip
           if-no-files-found: error
           retention-days: 14
 
@@ -84,7 +92,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: release-artifacts
-          pattern: nyxen-minecraft-*
+          pattern: nyxen-minecraft-*-installers
 
       - name: Prepare release assets
         id: release
@@ -101,17 +109,24 @@ jobs:
 
           mkdir -p release-assets
 
-          while IFS= read -r artifact_dir; do
-            artifact_name="$(basename "${artifact_dir}")"
-            tar -czf "release-assets/${artifact_name}.tar.gz" -C "${artifact_dir}" .
-          done < <(find release-artifacts -mindepth 1 -maxdepth 1 -type d | sort)
+          while IFS= read -r asset_path; do
+            cp "${asset_path}" "release-assets/$(basename "${asset_path}")"
+          done < <(find release-artifacts -type f \( -name '*.AppImage' -o -name '*.deb' -o -name '*.dmg' -o -name '*.zip' \) | sort)
 
           shopt -s nullglob
-          assets=(release-assets/*.tar.gz)
+          assets=(release-assets/*)
           if [ "${#assets[@]}" -eq 0 ]; then
             echo "No release assets were created." >&2
             exit 1
           fi
+
+          for required in '*.AppImage' '*.deb' '*.dmg' '*.zip'; do
+            matches=(release-assets/${required})
+            if [ "${#matches[@]}" -eq 0 ]; then
+              echo "Missing required release asset matching ${required}" >&2
+              exit 1
+            fi
+          done
 
           ls -lh release-assets
 
@@ -122,7 +137,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          gh release create "${{ steps.release.outputs.tag }}" release-assets/*.tar.gz \
+          gh release create "${{ steps.release.outputs.tag }}" release-assets/* \
             --repo "${GITHUB_REPOSITORY}" \
             --target "${GITHUB_SHA}" \
             --title "${{ steps.release.outputs.title }}" \

@@ -9,6 +9,7 @@
     "dev:app": "vite build && concurrently -k -n vite,electrobun \"vite build --watch\" \"cross-env CES_DEV_RELOAD=1 electrobun dev\"",
     "build": "bun --env-file=.env run build:app",
     "build:app": "vite build && electrobun build --env=dev --targets=all",
+    "build:release": "vite build && electrobun build --env=stable",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",

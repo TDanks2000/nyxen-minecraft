@@ -5,8 +5,10 @@
     "includes": [
       "**",
       "!.electrobun",
+      "!artifacts",
       "!build",
       "!data",
+      "!dist",
       "!.turbo",
       "!src/views/main/routeTree.gen.ts",
       "!src/views/main/components/ui"

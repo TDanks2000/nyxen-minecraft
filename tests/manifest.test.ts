@@ -54,7 +54,21 @@ describe("generated project manifest", () => {
     expect(workflow).toContain("bun run typecheck");
     expect(workflow).toContain("bun run lint");
     expect(workflow).toContain("bun test");
-    expect(workflow).toContain("bun run build");
+    expect(workflow).toContain("bun run build:release");
+  });
+
+  test("cross-platform workflow publishes installer release assets", async () => {
+    const workflow = await Bun.file(
+      ".github/workflows/cross-platform.yml",
+    ).text();
+
+    expect(workflow).toContain("bun scripts/package-linux-installers.mjs");
+    expect(workflow).toContain("artifacts/*.AppImage");
+    expect(workflow).toContain("artifacts/*.deb");
+    expect(workflow).toContain("artifacts/*.dmg");
+    expect(workflow).toContain("artifacts/*.zip");
+    expect(workflow).toContain("Missing required release asset matching");
+    expect(workflow).toContain("gh release create");
   });
 
   test("main view RPC registers roadmap feature requests", async () => {
