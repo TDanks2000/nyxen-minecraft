@@ -3,7 +3,7 @@
   "version": "0.2.0",
   "type": "module",
   "private": true,
-  "packageManager": "bun@1.3.0",
+  "packageManager": "bun@1.3.14",
   "scripts": {
     "dev": "bun --env-file=.env run dev:app",
     "dev:app": "vite build && concurrently -k -n vite,electrobun \"vite build --watch\" \"cross-env CES_DEV_RELOAD=1 electrobun dev\"",
