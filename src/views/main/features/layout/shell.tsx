@@ -4,6 +4,7 @@ import { Toaster } from "@/views/main/components/ui/sonner";
 import { AppSidebar } from "@/views/main/features/layout/app-sidebar";
 import { RightSidebar } from "@/views/main/features/layout/right-sidebar";
 import { Titlebar } from "@/views/main/features/layout/titlebar";
+import { WindowResizeHandles } from "@/views/main/features/layout/window-resize-handles";
 
 export function Shell() {
   const [rightSidebarOpen, setRightSidebarOpen] = useState(
@@ -14,6 +15,7 @@ export function Shell() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
+      <WindowResizeHandles />
       <Titlebar
         isRightSidebarOpen={rightSidebarOpen}
         onToggleRightSidebar={() => setRightSidebarOpen((open) => !open)}

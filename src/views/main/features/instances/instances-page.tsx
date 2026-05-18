@@ -6,26 +6,36 @@ import {
   AlertDescription,
   AlertTitle,
 } from "@/views/main/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/views/main/components/ui/alert-dialog";
 import { Button } from "@/views/main/components/ui/button";
 import { useDownloadQueueStore } from "@/views/main/features/downloads/download-queue-store";
 import { FeaturedInstancePanel } from "@/views/main/features/instances/components/featured-instance-panel";
 import { InstanceCollection } from "@/views/main/features/instances/components/instance-collection";
 import { LaunchPlanSheet } from "@/views/main/features/instances/components/launch-plan-sheet";
 import { NewInstanceDialog } from "@/views/main/features/instances/components/new-instance-dialog";
-import { useLaunchPlan } from "@/views/main/features/instances/hooks/use-launch-plan";
+import { usePlayInstance } from "@/views/main/features/instances/hooks/use-play-instance";
 import { useInstances } from "@/views/main/hooks/use-instances";
 
 export function InstancesPage() {
   const instancesHook = useInstances();
-  const launchPlan = useLaunchPlan();
+  const play = usePlayInstance({ onInstancesChanged: instancesHook.refresh });
   const downloadJobs = useDownloadQueueStore((state) => state.jobs);
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const onPlayInstance = useCallback(
     (instanceId: string) => {
-      void launchPlan.createLaunchPlan(instanceId);
+      play.playInstance(instanceId);
     },
-    [launchPlan.createLaunchPlan],
+    [play.playInstance],
   );
 
   const instances = instancesHook.data ?? [];
@@ -94,7 +104,7 @@ export function InstancesPage() {
         gridClassName="grid grid-cols-[repeat(auto-fill,minmax(17rem,1fr))] gap-3"
         hideWhenEmpty
         instances={instances}
-        launchLoadingId={launchPlan.loadingInstanceId}
+        launchLoadingId={play.activeInstanceId}
         loading={loading}
         onInstallCompleted={instancesHook.refresh}
         onPlayInstance={onPlayInstance}
@@ -106,10 +116,35 @@ export function InstancesPage() {
         onCreated={() => instancesHook.refresh()}
       />
       <LaunchPlanSheet
-        open={launchPlan.sheetOpen}
-        onOpenChange={launchPlan.setSheetOpen}
-        plan={launchPlan.activePlan}
+        open={play.launchPlan.sheetOpen}
+        onOpenChange={play.launchPlan.setSheetOpen}
+        plan={play.launchPlan.activePlan}
       />
+      <AlertDialog
+        open={play.missingArtifactsDialogOpen}
+        onOpenChange={play.closeMissingArtifactsDialog}
+      >
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Download missing files?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {play.pendingMissingPlan
+                ? `${play.pendingMissingPlan.missingArtifacts.length} required file${
+                    play.pendingMissingPlan.missingArtifacts.length === 1
+                      ? ""
+                      : "s"
+                  } missing. Download now and start Minecraft?`
+                : "Required files are missing. Download now and start Minecraft?"}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>No</AlertDialogCancel>
+            <AlertDialogAction onClick={play.downloadMissingArtifactsAndLaunch}>
+              Yes
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

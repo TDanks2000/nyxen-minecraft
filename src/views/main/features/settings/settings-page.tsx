@@ -1,6 +1,7 @@
 import {
   AlertTriangleIcon,
   CpuIcon,
+  DownloadIcon,
   FolderDownIcon,
   FolderIcon,
   GaugeIcon,
@@ -79,6 +80,30 @@ export function SettingsPage() {
   const keepOpen = !!settings?.["launcher.keepOpenAfterLaunch"];
   const lowEndMode = !!settings?.["launcher.lowEndMode"];
   const showSnapshots = !!settings?.["launcher.showSnapshots"];
+
+  const downloadConcurrency =
+    typeof settings?.["launcher.downloadConcurrency"] === "number"
+      ? String(settings["launcher.downloadConcurrency"])
+      : "auto";
+  const assetConcurrency =
+    typeof settings?.["launcher.assetConcurrency"] === "number"
+      ? String(settings["launcher.assetConcurrency"])
+      : "auto";
+  const downloadTimeout =
+    typeof settings?.["launcher.downloadTimeoutSeconds"] === "number"
+      ? String(settings["launcher.downloadTimeoutSeconds"])
+      : "auto";
+  const downloadRetries =
+    typeof settings?.["launcher.downloadRetries"] === "number"
+      ? String(settings["launcher.downloadRetries"])
+      : "auto";
+
+  function handleDownloadSetting(key: string, value: string) {
+    return settingsHook.updateSetting(
+      key,
+      value === "auto" ? null : Number(value),
+    );
+  }
 
   async function handleTheme(value: string) {
     setTheme(value as "system" | "light" | "dark");
@@ -214,6 +239,130 @@ export function SettingsPage() {
                     path={dirs.runtimes}
                   />
                 )}
+            </SettingGroup>
+
+            <SettingGroup icon={DownloadIcon} title="Downloads">
+              {settingsHook.loading ? (
+                ["concurrency", "assets", "timeout", "retries"].map((key) => (
+                  <div key={key} className="px-4 py-3">
+                    <Skeleton className="h-8 w-full rounded-md" />
+                  </div>
+                ))
+              ) : (
+                <>
+                  <SettingRow
+                    label="Download concurrency"
+                    description="Parallel downloads for JARs and libraries (auto adjusts for low-end mode)"
+                  >
+                    <Select
+                      value={downloadConcurrency}
+                      onValueChange={(v) =>
+                        v &&
+                        handleDownloadSetting(
+                          "launcher.downloadConcurrency",
+                          v,
+                        )
+                      }
+                    >
+                      <SelectTrigger className="h-8 w-24">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectItem value="auto">Auto</SelectItem>
+                          <SelectItem value="2">2</SelectItem>
+                          <SelectItem value="4">4</SelectItem>
+                          <SelectItem value="6">6</SelectItem>
+                          <SelectItem value="8">8</SelectItem>
+                          <SelectItem value="12">12</SelectItem>
+                          <SelectItem value="16">16</SelectItem>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </SettingRow>
+                  <SettingRow
+                    label="Asset concurrency"
+                    description="Parallel downloads for textures and sounds (auto adjusts for low-end mode)"
+                  >
+                    <Select
+                      value={assetConcurrency}
+                      onValueChange={(v) =>
+                        v &&
+                        handleDownloadSetting("launcher.assetConcurrency", v)
+                      }
+                    >
+                      <SelectTrigger className="h-8 w-24">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectItem value="auto">Auto</SelectItem>
+                          <SelectItem value="8">8</SelectItem>
+                          <SelectItem value="12">12</SelectItem>
+                          <SelectItem value="16">16</SelectItem>
+                          <SelectItem value="24">24</SelectItem>
+                          <SelectItem value="32">32</SelectItem>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </SettingRow>
+                  <SettingRow
+                    label="Request timeout"
+                    description="Seconds before an individual download is abandoned"
+                  >
+                    <Select
+                      value={downloadTimeout}
+                      onValueChange={(v) =>
+                        v &&
+                        handleDownloadSetting(
+                          "launcher.downloadTimeoutSeconds",
+                          v,
+                        )
+                      }
+                    >
+                      <SelectTrigger className="h-8 w-28">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectItem value="auto">Auto (60s)</SelectItem>
+                          <SelectItem value="30">30s</SelectItem>
+                          <SelectItem value="60">60s</SelectItem>
+                          <SelectItem value="120">120s</SelectItem>
+                          <SelectItem value="180">180s</SelectItem>
+                          <SelectItem value="300">300s</SelectItem>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </SettingRow>
+                  <SettingRow
+                    label="Retry attempts"
+                    description="How many times a failed download is retried with backoff"
+                  >
+                    <Select
+                      value={downloadRetries}
+                      onValueChange={(v) =>
+                        v &&
+                        handleDownloadSetting("launcher.downloadRetries", v)
+                      }
+                    >
+                      <SelectTrigger className="h-8 w-24">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectItem value="auto">Auto (3)</SelectItem>
+                          <SelectItem value="1">1</SelectItem>
+                          <SelectItem value="2">2</SelectItem>
+                          <SelectItem value="3">3</SelectItem>
+                          <SelectItem value="4">4</SelectItem>
+                          <SelectItem value="5">5</SelectItem>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </SettingRow>
+                </>
+              )}
             </SettingGroup>
 
             <SettingGroup icon={SlidersHorizontalIcon} title="Behavior">

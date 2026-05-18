@@ -279,6 +279,14 @@ export type MainViewRPC = {
           minimized: boolean;
         };
       };
+      getWindowFrame: {
+        params: null;
+        response: { x: number; y: number; width: number; height: number };
+      };
+      setWindowFrame: {
+        params: { x: number; y: number; width: number; height: number };
+        response: null;
+      };
       minimizeWindow: {
         params: null;
         response: {

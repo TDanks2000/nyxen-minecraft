@@ -1,7 +1,7 @@
-import { spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import {
   chmodSync,
+  createWriteStream,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -15,7 +15,13 @@ import type {
   LaunchPlan,
   LaunchPlanMissingArtifact,
 } from "../../shared/types";
-import { isLowEndModeEnabled } from "../settings/store";
+import {
+  getAssetConcurrencySetting,
+  getDownloadConcurrencySetting,
+  getDownloadRetriesSetting,
+  getDownloadTimeoutSecondsSetting,
+  isLowEndModeEnabled,
+} from "../settings/store";
 import { collectMissingAssetObjectArtifacts } from "./assets";
 import {
   assertArtifactStoragePath,
@@ -42,10 +48,11 @@ type DownloadOptions = {
 
 const DEFAULT_DOWNLOAD_CONCURRENCY = 6;
 const LOW_END_DOWNLOAD_CONCURRENCY = 2;
+const DEFAULT_ASSET_CONCURRENCY = 24;
+const LOW_END_ASSET_CONCURRENCY = 8;
 const DEFAULT_DOWNLOAD_TIMEOUT_MS = 60_000;
-
-const verifySha1 = (data: Uint8Array, expected: string): boolean =>
-  createHash("sha1").update(data).digest("hex") === expected;
+const DOWNLOAD_RETRY_ATTEMPTS = 3;
+const DOWNLOAD_RETRY_BASE_MS = 500;
 
 const normalizeDownloadConcurrency = (value: number): number | null => {
   if (!Number.isFinite(value) || value <= 0) {
@@ -67,13 +74,21 @@ const getDownloadConcurrency = (options: DownloadOptions): number => {
 
   if (envConcurrency) {
     const configured = normalizeDownloadConcurrency(Number(envConcurrency));
-
     if (configured !== null) return configured;
   }
+
+  const setting = getDownloadConcurrencySetting();
+  if (setting !== null) return setting;
 
   return isLowEndModeEnabled()
     ? LOW_END_DOWNLOAD_CONCURRENCY
     : DEFAULT_DOWNLOAD_CONCURRENCY;
+};
+
+const getAssetConcurrency = (): number => {
+  const setting = getAssetConcurrencySetting();
+  if (setting !== null) return setting;
+  return isLowEndModeEnabled() ? LOW_END_ASSET_CONCURRENCY : DEFAULT_ASSET_CONCURRENCY;
 };
 
 const getDownloadTimeoutMs = (options: DownloadOptions): number => {
@@ -81,15 +96,16 @@ const getDownloadTimeoutMs = (options: DownloadOptions): number => {
     return Math.max(1, Math.trunc(options.requestTimeoutMs));
   }
 
-  const configured = Number(
-    process.env.NYXEN_DOWNLOAD_REQUEST_TIMEOUT_MS ?? "",
-  );
+  const envMs = Number(process.env.NYXEN_DOWNLOAD_REQUEST_TIMEOUT_MS ?? "");
 
-  if (!Number.isFinite(configured) || configured <= 0) {
-    return DEFAULT_DOWNLOAD_TIMEOUT_MS;
+  if (Number.isFinite(envMs) && envMs > 0) {
+    return Math.max(1_000, Math.trunc(envMs));
   }
 
-  return Math.max(1_000, Math.trunc(configured));
+  const setting = getDownloadTimeoutSecondsSetting();
+  if (setting !== null) return setting * 1_000;
+
+  return DEFAULT_DOWNLOAD_TIMEOUT_MS;
 };
 
 const fetchArtifact = async (
@@ -157,7 +173,7 @@ const writeArtifactFile = (
   }
 };
 
-const downloadOne = async (
+const downloadAndWrite = async (
   artifact: LaunchPlanMissingArtifact,
   options: DownloadOptions,
 ): Promise<void> => {
@@ -171,13 +187,58 @@ const downloadOne = async (
     );
   }
 
-  const data = new Uint8Array(await response.arrayBuffer());
+  mkdirSync(dirname(artifact.path), { recursive: true });
 
-  if (artifact.sha1 && !verifySha1(data, artifact.sha1)) {
-    throw new Error(`Checksum mismatch for ${artifact.id}`);
+  const tempPath = `${artifact.path}.download-${process.pid}-${randomUUID()}.tmp`;
+
+  try {
+    const hash = artifact.sha1 ? createHash("sha1") : null;
+    const writer = createWriteStream(tempPath, { flags: "wx" });
+
+    if (response.body) {
+      for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
+        hash?.update(chunk);
+        const ok = writer.write(chunk);
+        if (!ok) await new Promise<void>((r) => writer.once("drain", r));
+      }
+    }
+
+    await new Promise<void>((resolve, reject) =>
+      writer.end((err?: Error | null) => (err ? reject(err) : resolve())),
+    );
+
+    if (hash && hash.digest("hex") !== artifact.sha1) {
+      throw new Error(`Checksum mismatch for ${artifact.id}`);
+    }
+
+    renameSync(tempPath, artifact.path);
+  } finally {
+    if (existsSync(tempPath)) unlinkSync(tempPath);
   }
 
-  writeArtifactFile(artifact.path, data, artifact.executable);
+  if (artifact.executable) makeExecutable(artifact.path);
+};
+
+const downloadOne = async (
+  artifact: LaunchPlanMissingArtifact,
+  options: DownloadOptions,
+): Promise<void> => {
+  let lastError: unknown;
+  const attempts = getDownloadRetriesSetting() ?? DOWNLOAD_RETRY_ATTEMPTS;
+
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      await downloadAndWrite(artifact, options);
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt < attempts - 1) {
+        await Bun.sleep(DOWNLOAD_RETRY_BASE_MS * 2 ** attempt);
+      }
+    }
+  }
+
+  throw lastError;
 };
 
 export const isNativeLibraryZipEntry = (
@@ -316,22 +377,27 @@ const runModLoaderInstaller = async (
     );
   }
 
-  const result = spawnSync(
-    plan.java.executable,
-    ["-jar", installerPath, "--installClient", plan.directories.root],
+  const proc = Bun.spawn(
+    [plan.java.executable, "-jar", installerPath, "--installClient", plan.directories.root],
     {
       cwd: plan.directories.root,
-      encoding: "utf8",
-      timeout: 10 * 60 * 1000,
+      stderr: "pipe",
+      stdout: "pipe",
     },
   );
 
-  if (result.error) {
-    throw result.error;
-  }
+  const timeoutId = setTimeout(() => proc.kill(), 10 * 60 * 1000);
 
-  if (result.status !== 0) {
-    const detail = (result.stderr || result.stdout || "").trim();
+  const [exitCode, stdout, stderr] = await Promise.all([
+    proc.exited,
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
+
+  clearTimeout(timeoutId);
+
+  if (exitCode !== 0) {
+    const detail = (stderr || stdout || "").trim();
 
     throw new Error(
       detail
@@ -411,7 +477,7 @@ export const downloadArtifacts = async (
 
   await runWithConcurrency(
     assetObjectArtifacts,
-    getDownloadConcurrency(options),
+    getAssetConcurrency(),
     downloadArtifact,
   );
 

@@ -191,7 +191,7 @@ export const launchInstance = async (
     throw new Error(message);
   }
 
-  if (plan.profile?.id && plan.profile.kind === "microsoft") {
+  if (plan.profile.id) {
     const secrets = getLauncherProfileAuthSecrets(plan.profile.id);
     accessToken = secrets?.minecraftAccessToken ?? undefined;
   }

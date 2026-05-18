@@ -14,6 +14,10 @@ import {
 
 export const JAVA_MANAGEMENT_SETTING_KEY = "launcher.javaManagement";
 export const LOW_END_MODE_SETTING_KEY = "launcher.lowEndMode";
+export const DOWNLOAD_CONCURRENCY_SETTING_KEY = "launcher.downloadConcurrency";
+export const ASSET_CONCURRENCY_SETTING_KEY = "launcher.assetConcurrency";
+export const DOWNLOAD_TIMEOUT_SETTING_KEY = "launcher.downloadTimeoutSeconds";
+export const DOWNLOAD_RETRIES_SETTING_KEY = "launcher.downloadRetries";
 
 const defaultSettings: AppSettings = {
   "app.theme": "system",
@@ -21,6 +25,10 @@ const defaultSettings: AppSettings = {
   [LOW_END_MODE_SETTING_KEY]: false,
   "launcher.keepOpenAfterLaunch": false,
   "launcher.showSnapshots": false,
+  [DOWNLOAD_CONCURRENCY_SETTING_KEY]: null,
+  [ASSET_CONCURRENCY_SETTING_KEY]: null,
+  [DOWNLOAD_TIMEOUT_SETTING_KEY]: null,
+  [DOWNLOAD_RETRIES_SETTING_KEY]: null,
 };
 
 export const isJavaManagementMode = (
@@ -62,13 +70,18 @@ const normalizeSettings = (value: unknown): AppSettings => {
   return normalized;
 };
 
+let settingsCache: AppSettings | null = null;
+
 const writeSettingsFile = (settings: AppSettings): void => {
   ensurePrivateDirectory(dirname(settingsPath));
   writeFileSync(settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
   ensurePrivateFile(settingsPath);
+  settingsCache = settings;
 };
 
 const readSettingsFile = (): AppSettings => {
+  if (settingsCache) return settingsCache;
+
   ensurePrivateDirectory(dirname(settingsPath));
 
   if (!existsSync(settingsPath)) {
@@ -78,7 +91,8 @@ const readSettingsFile = (): AppSettings => {
   }
 
   try {
-    return normalizeSettings(JSON.parse(readFileSync(settingsPath, "utf8")));
+    settingsCache = normalizeSettings(JSON.parse(readFileSync(settingsPath, "utf8")));
+    return settingsCache;
   } catch {
     const settings = { ...defaultSettings };
     writeSettingsFile(settings);
@@ -109,6 +123,44 @@ export const getSettingsStatus = (): SettingsStatus => {
     values,
   };
 };
+
+const clampedInt = (
+  value: unknown,
+  min: number,
+  max: number,
+): number | null => {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  const n = Math.trunc(value);
+  return n >= min && n <= max ? n : null;
+};
+
+export const getDownloadConcurrencySetting = (): number | null =>
+  clampedInt(
+    readSettingsFile()[DOWNLOAD_CONCURRENCY_SETTING_KEY],
+    1,
+    16,
+  );
+
+export const getAssetConcurrencySetting = (): number | null =>
+  clampedInt(
+    readSettingsFile()[ASSET_CONCURRENCY_SETTING_KEY],
+    1,
+    32,
+  );
+
+export const getDownloadTimeoutSecondsSetting = (): number | null =>
+  clampedInt(
+    readSettingsFile()[DOWNLOAD_TIMEOUT_SETTING_KEY],
+    10,
+    300,
+  );
+
+export const getDownloadRetriesSetting = (): number | null =>
+  clampedInt(
+    readSettingsFile()[DOWNLOAD_RETRIES_SETTING_KEY],
+    1,
+    5,
+  );
 
 export const updateSetting = ({
   key,

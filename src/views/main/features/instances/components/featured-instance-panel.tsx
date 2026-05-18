@@ -77,7 +77,7 @@ export function FeaturedInstancePanel({
           <div className="mt-4 flex flex-wrap gap-2">
             <Button onClick={() => onPlayInstance(instance.id)}>
               <PlayIcon className="fill-current" data-icon="inline-start" />
-              Prepare Launch
+              Play
             </Button>
             <Link
               className={buttonVariants({ variant: "outline" })}

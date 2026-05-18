@@ -1,11 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import type {
-  InstanceModpackUpdate,
-  LaunchPlan,
-  RunningLaunch,
-} from "@/shared/types";
+import type { InstanceModpackUpdate, RunningLaunch } from "@/shared/types";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,7 +15,6 @@ import {
 import { ContentBrowserDialog } from "@/views/main/features/curseforge/components/curseforge-browser-dialog";
 import { toSelectedInstance } from "@/views/main/features/curseforge/curseforge-browser-model";
 import { useCurseForgeInstall } from "@/views/main/features/curseforge/use-curseforge-install";
-import { useDownloadQueueStore } from "@/views/main/features/downloads/download-queue-store";
 import { InstanceCatalogTabs } from "@/views/main/features/instances/components/instance-catalog-tabs";
 import { InstanceDetailsHeader } from "@/views/main/features/instances/components/instance-details-header";
 import {
@@ -28,47 +23,40 @@ import {
 } from "@/views/main/features/instances/components/instance-details-states";
 import { LaunchPlanSheet } from "@/views/main/features/instances/components/launch-plan-sheet";
 import { useInstanceCatalog } from "@/views/main/features/instances/hooks/use-instance-catalog";
-import { useLaunchPlan } from "@/views/main/features/instances/hooks/use-launch-plan";
+import { usePlayInstance } from "@/views/main/features/instances/hooks/use-play-instance";
 import { useModrinthInstall } from "@/views/main/features/modrinth/use-modrinth-install";
 import { useInstances } from "@/views/main/hooks/use-instances";
 import { openLocalPath } from "@/views/main/lib/open-local-path";
 import { rpc } from "@/views/main/lib/rpc";
 
-type LaunchActionState =
-  | "idle"
-  | "preparing"
-  | "downloading"
-  | "launching"
-  | "stopping";
-
 export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
   const [activeTab, setActiveTab] = useState("mods");
   const [contentBrowserOpen, setContentBrowserOpen] = useState(false);
-  const [launchActionState, setLaunchActionState] =
-    useState<LaunchActionState>("idle");
+  const [isStopping, setIsStopping] = useState(false);
   const [modpackUpdate, setModpackUpdate] =
     useState<InstanceModpackUpdate | null>(null);
   const [modpackUpdateChecking, setModpackUpdateChecking] = useState(false);
   const [updatingModpack, setUpdatingModpack] = useState(false);
   const [exportingSupportBundle, setExportingSupportBundle] = useState(false);
-  const [missingArtifactsDialogOpen, setMissingArtifactsDialogOpen] =
-    useState(false);
-  const [pendingMissingPlan, setPendingMissingPlan] =
-    useState<LaunchPlan | null>(null);
   const [runningLaunches, setRunningLaunches] = useState<Array<RunningLaunch>>(
     [],
   );
+
   const navigate = useNavigate();
   const instancesHook = useInstances();
-  const launchPlan = useLaunchPlan();
-  const enqueueDownloadJob = useDownloadQueueStore(
-    (state) => state.enqueueDownloadJob,
-  );
-  const waitForDownloadJob = useDownloadQueueStore(
-    (state) => state.waitForDownloadJob,
-  );
   const instance =
     instancesHook.data?.find((item) => item.id === instanceId) ?? null;
+
+  const play = usePlayInstance({
+    onLaunched: (launch) => {
+      setRunningLaunches((current) => [
+        launch,
+        ...current.filter((item) => item.instanceId !== launch.instanceId),
+      ]);
+    },
+    onInstancesChanged: instancesHook.refresh,
+  });
+
   const catalog = useInstanceCatalog(instance);
   const curseForgeInstall = useCurseForgeInstall({
     onContentUpdated: catalog.replaceContent,
@@ -141,82 +129,29 @@ export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
     };
   }, [instance]);
 
-  const rememberRunningLaunch = (launch: RunningLaunch) => {
-    setRunningLaunches((current) => [
-      launch,
-      ...current.filter((item) => item.instanceId !== launch.instanceId),
-    ]);
-  };
-
-  const forgetRunningLaunch = (runningInstanceId: string) => {
-    setRunningLaunches((current) =>
-      current.filter((launch) => launch.instanceId !== runningInstanceId),
-    );
-  };
-
   if (instancesHook.loading && instancesHook.data === null) {
     return <InstanceDetailsLoadingState />;
   }
   if (!instance) return <InstanceDetailsNotFoundState />;
 
-  const planLoading = launchPlan.loadingInstanceId === instance.id;
-
-  const launchInstance = async (launchInstanceId: string) => {
-    setLaunchActionState("launching");
-
-    try {
-      const result = await rpc.requestProxy.launchInstance({
-        instanceId: launchInstanceId,
-      });
-      rememberRunningLaunch(result);
-      toast.success(`Minecraft started (PID ${result.pid})`);
-      instancesHook.refresh();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Launch failed");
-    } finally {
-      setLaunchActionState("idle");
-    }
-  };
-
-  const playInstance = () => {
-    if (launchActionState !== "idle") return;
-
-    void (async () => {
-      setLaunchActionState("preparing");
-
-      try {
-        const plan = await launchPlan.createLaunchPlan(instance.id, {
-          openSheet: false,
-        });
-
-        if (!plan) return;
-
-        if (plan.missingArtifacts.length > 0) {
-          setPendingMissingPlan(plan);
-          setMissingArtifactsDialogOpen(true);
-          return;
-        }
-
-        await launchInstance(plan.instance.id);
-      } finally {
-        setLaunchActionState((current) =>
-          current === "preparing" ? "idle" : current,
-        );
-      }
-    })();
-  };
+  const planLoading = play.loadingInstanceId === instance.id;
+  const launchActionState = isStopping ? "stopping" : play.playActionState;
 
   const stopInstance = () => {
-    if (!runningLaunch || launchActionState === "stopping") return;
+    if (!runningLaunch || isStopping) return;
 
     void (async () => {
-      setLaunchActionState("stopping");
+      setIsStopping(true);
 
       try {
         const result = await rpc.requestProxy.stopLaunchInstance({
           instanceId: runningLaunch.instanceId,
         });
-        forgetRunningLaunch(runningLaunch.instanceId);
+        setRunningLaunches((current) =>
+          current.filter(
+            (launch) => launch.instanceId !== runningLaunch.instanceId,
+          ),
+        );
         toast.message(
           result.stopped ? "Minecraft stopped" : "Minecraft is not running",
         );
@@ -225,14 +160,10 @@ export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
           e instanceof Error ? e.message : "Failed to stop Minecraft",
         );
       } finally {
-        setLaunchActionState("idle");
+        setIsStopping(false);
         void refreshRunningLaunches();
       }
     })();
-  };
-
-  const viewLaunchPlan = () => {
-    void launchPlan.createLaunchPlan(instance.id, { openSheet: true });
   };
 
   const updateModpack = () => {
@@ -290,64 +221,6 @@ export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
     })();
   };
 
-  const downloadMissingArtifactsAndLaunch = () => {
-    const plan = pendingMissingPlan;
-    setMissingArtifactsDialogOpen(false);
-    setPendingMissingPlan(null);
-
-    if (!plan) return;
-
-    void (async () => {
-      let shouldResetState = true;
-      setLaunchActionState("downloading");
-
-      try {
-        const job = await enqueueDownloadJob({
-          input: { plan },
-          kind: "launchArtifacts",
-        });
-        const finishedJob = await waitForDownloadJob(job.id);
-        const result =
-          finishedJob.result?.kind === "launchArtifacts"
-            ? finishedJob.result.result
-            : null;
-        const failed =
-          result?.failed ??
-          finishedJob.items
-            .filter((item) => item.status === "failed")
-            .map((item) => ({
-              error: item.error ?? "Download failed",
-              id: item.id,
-            }));
-
-        if (finishedJob.status === "failed" || failed.length > 0) {
-          toast.error(
-            `${Math.max(1, failed.length)} artifact${failed.length === 1 ? "" : "s"} failed to download`,
-          );
-          return;
-        }
-
-        toast.success("All required files downloaded");
-        shouldResetState = false;
-        await launchInstance(plan.instance.id);
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Download failed");
-      } finally {
-        if (shouldResetState) {
-          setLaunchActionState("idle");
-        }
-      }
-    })();
-  };
-
-  const closeMissingArtifactsDialog = (open: boolean) => {
-    setMissingArtifactsDialogOpen(open);
-
-    if (!open) {
-      setPendingMissingPlan(null);
-    }
-  };
-
   const selectedContentInstance = toSelectedInstance(instance);
 
   const latestLaunchRepair =
@@ -372,9 +245,9 @@ export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
         launchActionState={launchActionState}
         modpackUpdateAvailable={modpackUpdate?.updateAvailable ?? false}
         onExportSupportBundle={exportSupportBundle}
-        onPlay={playInstance}
+        onPlay={() => play.playInstance(instance.id)}
         onStop={stopInstance}
-        onViewLaunchPlan={viewLaunchPlan}
+        onViewLaunchPlan={() => play.viewLaunchPlan(instance.id)}
         planLoading={planLoading}
         resourcePackCount={catalog.resourcePacks.length}
         shaderPackCount={catalog.shaderPacks.length}
@@ -424,32 +297,37 @@ export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
       </div>
 
       <LaunchPlanSheet
-        open={launchPlan.sheetOpen}
-        onOpenChange={launchPlan.setSheetOpen}
+        open={play.launchPlan.sheetOpen}
+        onOpenChange={play.launchPlan.setSheetOpen}
         onLaunched={(launch) => {
-          rememberRunningLaunch(launch);
+          setRunningLaunches((current) => [
+            launch,
+            ...current.filter((item) => item.instanceId !== launch.instanceId),
+          ]);
           instancesHook.refresh();
         }}
-        plan={launchPlan.activePlan}
+        plan={play.launchPlan.activePlan}
       />
       <AlertDialog
-        open={missingArtifactsDialogOpen}
-        onOpenChange={closeMissingArtifactsDialog}
+        open={play.missingArtifactsDialogOpen}
+        onOpenChange={play.closeMissingArtifactsDialog}
       >
         <AlertDialogContent size="sm">
           <AlertDialogHeader>
             <AlertDialogTitle>Download missing files?</AlertDialogTitle>
             <AlertDialogDescription>
-              {pendingMissingPlan
-                ? `${pendingMissingPlan.missingArtifacts.length} required file${
-                    pendingMissingPlan.missingArtifacts.length === 1 ? "" : "s"
+              {play.pendingMissingPlan
+                ? `${play.pendingMissingPlan.missingArtifacts.length} required file${
+                    play.pendingMissingPlan.missingArtifacts.length === 1
+                      ? ""
+                      : "s"
                   } missing. Download now and start Minecraft?`
                 : "Required files are missing. Download now and start Minecraft?"}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>No</AlertDialogCancel>
-            <AlertDialogAction onClick={downloadMissingArtifactsAndLaunch}>
+            <AlertDialogAction onClick={play.downloadMissingArtifactsAndLaunch}>
               Yes
             </AlertDialogAction>
           </AlertDialogFooter>

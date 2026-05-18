@@ -8,7 +8,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, ne, notLike, sql } from "drizzle-orm";
 import { z } from "zod";
 import type {
   GetMinecraftVersionDetailsInput,
@@ -252,19 +252,18 @@ export const listMinecraftVersions = (
   const includeSnapshots = input?.includeSnapshots ?? true;
   const limit = normalizeLimit(input?.limit);
 
+  const where = and(
+    includeSnapshots ? undefined : ne(schema.minecraftVersions.type, "snapshot"),
+    includeHistorical ? undefined : notLike(schema.minecraftVersions.type, "old_%"),
+  );
+
   return db
     .select()
     .from(schema.minecraftVersions)
+    .where(where)
     .orderBy(desc(schema.minecraftVersions.releaseTime))
+    .limit(limit)
     .all()
-    .filter((version) => {
-      if (!includeSnapshots && version.type === "snapshot") {
-        return false;
-      }
-
-      return includeHistorical || !version.type.startsWith("old_");
-    })
-    .slice(0, limit)
     .map(toVersionSummary);
 };
 
@@ -299,6 +298,8 @@ export const refreshMinecraftVersionManifest = async (
   const parsed = versionManifestSchema.parse(received);
   const refreshedAt = (options.now?.() ?? new Date()).toISOString();
 
+  const versionChunkSize = 100;
+
   db.transaction((transaction) => {
     transaction
       .insert(schema.minecraftVersionManifests)
@@ -320,28 +321,32 @@ export const refreshMinecraftVersionManifest = async (
       })
       .run();
 
-    for (const version of parsed.versions) {
+    for (let i = 0; i < parsed.versions.length; i += versionChunkSize) {
+      const chunk = parsed.versions.slice(i, i + versionChunkSize);
+
       transaction
         .insert(schema.minecraftVersions)
-        .values({
-          complianceLevel: version.complianceLevel ?? null,
-          id: version.id,
-          manifestUpdatedAt: refreshedAt,
-          releaseTime: version.releaseTime,
-          sha1: version.sha1 ?? null,
-          time: version.time,
-          type: version.type,
-          url: version.url,
-        })
-        .onConflictDoUpdate({
-          set: {
+        .values(
+          chunk.map((version) => ({
             complianceLevel: version.complianceLevel ?? null,
+            id: version.id,
             manifestUpdatedAt: refreshedAt,
             releaseTime: version.releaseTime,
             sha1: version.sha1 ?? null,
             time: version.time,
             type: version.type,
             url: version.url,
+          })),
+        )
+        .onConflictDoUpdate({
+          set: {
+            complianceLevel: sql`excluded.compliance_level`,
+            manifestUpdatedAt: sql`excluded.manifest_updated_at`,
+            releaseTime: sql`excluded.release_time`,
+            sha1: sql`excluded.sha1`,
+            time: sql`excluded.time`,
+            type: sql`excluded.type`,
+            url: sql`excluded.url`,
           },
           target: schema.minecraftVersions.id,
         })

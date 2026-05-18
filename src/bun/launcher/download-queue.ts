@@ -33,6 +33,7 @@ let jobs: Array<DownloadQueueJob> = [];
 let processing = false;
 
 const runners = new Map<string, DownloadQueueRunner>();
+const jobListeners = new Map<string, Set<() => void>>();
 const maxJobs = 40;
 
 type QueueItemInput = {
@@ -147,6 +148,13 @@ const getString = (value: unknown): string | undefined =>
   typeof value === "string" ? value : undefined;
 
 const nowIso = (): string => new Date().toISOString();
+
+const notifyJobListeners = (jobId: string): void => {
+  const listeners = jobListeners.get(jobId);
+  if (!listeners) return;
+  for (const notify of listeners) notify();
+  jobListeners.delete(jobId);
+};
 
 const createJobId = (): string => crypto.randomUUID();
 
@@ -646,6 +654,8 @@ const completeJob = (jobId: string, result: DownloadQueueJobResult): void => {
       updatedAt: timestamp,
     };
   });
+
+  notifyJobListeners(jobId);
 };
 
 const failJob = (jobId: string, error: unknown): void => {
@@ -677,6 +687,8 @@ const failJob = (jobId: string, error: unknown): void => {
       progress: deriveJobProgress(nextJob),
     };
   });
+
+  notifyJobListeners(jobId);
 };
 
 const processQueue = async (): Promise<void> => {
@@ -736,34 +748,62 @@ export const enqueueDownloadJob = async (
 
 export const listDownloadJobs = (): Array<DownloadQueueJob> => snapshotJobs();
 
-const wait = (ms: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, ms));
-
-export const waitForDownloadJob = async (
+export const waitForDownloadJob = (
   jobId: string,
   options: { pollMs?: number; timeoutMs?: number } = {},
 ): Promise<DownloadQueueJob> => {
-  const pollMs = Math.max(50, options.pollMs ?? 100);
   const timeoutMs = Math.max(1_000, options.timeoutMs ?? 5 * 60_000);
-  const startedAt = Date.now();
 
-  for (;;) {
+  const checkDone = (): DownloadQueueJob | null => {
     const job = jobs.find((item) => item.id === jobId);
+    if (!job) throw new Error("Download job no longer exists.");
+    if (job.status === "completed" || job.status === "failed") return snapshotJob(job);
+    return null;
+  };
 
-    if (!job) {
-      throw new Error("Download job no longer exists.");
+  const immediate = checkDone();
+  if (immediate) return Promise.resolve(immediate);
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+
+    const settle = (fn: () => void): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutId);
+      const listeners = jobListeners.get(jobId);
+      if (listeners) {
+        listeners.delete(onNotify);
+        if (!listeners.size) jobListeners.delete(jobId);
+      }
+      fn();
+    };
+
+    const onNotify = (): void => {
+      try {
+        const result = checkDone();
+        if (result) settle(() => resolve(result));
+      } catch (err) {
+        settle(() => reject(err as Error));
+      }
+    };
+
+    const timeoutId = setTimeout(
+      () => settle(() => reject(new Error("Timed out waiting for download to finish."))),
+      timeoutMs,
+    );
+
+    if (!jobListeners.has(jobId)) jobListeners.set(jobId, new Set());
+    jobListeners.get(jobId)!.add(onNotify);
+
+    // Re-check in case job completed between the initial check and listener registration
+    try {
+      const recheck = checkDone();
+      if (recheck) settle(() => resolve(recheck));
+    } catch (err) {
+      settle(() => reject(err as Error));
     }
-
-    if (job.status === "completed" || job.status === "failed") {
-      return snapshotJob(job);
-    }
-
-    if (Date.now() - startedAt > timeoutMs) {
-      throw new Error("Timed out waiting for download to finish.");
-    }
-
-    await wait(pollMs);
-  }
+  });
 };
 
 export const clearDownloadJob = ({

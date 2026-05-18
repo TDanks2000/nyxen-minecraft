@@ -180,8 +180,15 @@ export const resolveMediaUrl = ({
     throw new Error("Media file URL must stay inside launcher storage.");
   }
 
-  const realPath = realpathSync(path);
-  const realDataRoot = realpathSync(dataRoot);
+  let realPath: string;
+  let realDataRoot: string;
+
+  try {
+    realPath = realpathSync(path);
+    realDataRoot = realpathSync(dataRoot);
+  } catch {
+    throw new Error("Media file URL must point to an existing launcher path.");
+  }
 
   if (!isPathInsideDirectory(realPath, realDataRoot)) {
     throw new Error("Media file URL must stay inside launcher storage.");
@@ -209,7 +216,9 @@ export { getDatabaseStatus } from "../../db/client";
 export { getSettingsStatus, updateSetting } from "../../settings/store";
 export {
   closeWindow,
+  getWindowFrame,
   getWindowState,
   minimizeWindow,
+  setWindowFrame,
   toggleMaximizeWindow,
 } from "../../window-controls";

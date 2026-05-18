@@ -34,7 +34,7 @@ export function InstanceActionMenu({
         <DropdownMenuGroup>
           <DropdownMenuItem disabled={launchDisabled} onClick={onPlay}>
             <PlayIcon />
-            Prepare launch
+            Play
           </DropdownMenuItem>
           <DropdownMenuItem
             render={

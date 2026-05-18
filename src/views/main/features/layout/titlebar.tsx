@@ -2,6 +2,8 @@ import { useNavigate } from "@tanstack/react-router";
 import {
   ChevronDownIcon,
   CopyIcon,
+  Maximize2Icon,
+  Minimize2Icon,
   MinusIcon,
   PanelRightCloseIcon,
   PanelRightOpenIcon,
@@ -9,7 +11,6 @@ import {
   RefreshCwIcon,
   SearchIcon,
   SettingsIcon,
-  SquareIcon,
   UserPlusIcon,
   UserRoundIcon,
   XIcon,
@@ -116,6 +117,12 @@ export function Titlebar({
 
   useEffect(() => {
     syncWindowState().catch(console.error);
+
+    const interval = setInterval(() => {
+      syncWindowState().catch(console.error);
+    }, 2_000);
+
+    return () => clearInterval(interval);
   }, [syncWindowState]);
 
   useEffect(() => {
@@ -359,7 +366,11 @@ export function Titlebar({
               handleToggleMaximize().catch(console.error);
             }}
           >
-            <SquareIcon className="size-3" />
+            {isMaximized ? (
+              <Minimize2Icon className="size-3" />
+            ) : (
+              <Maximize2Icon className="size-3" />
+            )}
           </button>
           <button
             type="button"

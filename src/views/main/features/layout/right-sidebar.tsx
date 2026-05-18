@@ -1,5 +1,5 @@
 import { ActivityIcon, DownloadCloudIcon } from "lucide-react";
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { Button } from "@/views/main/components/ui/button";
 import { formatRelativeDate } from "@/views/main/features/catalog/catalog-model";
 import { useDownloadQueueStore } from "@/views/main/features/downloads/download-queue-store";
@@ -45,37 +45,32 @@ export function RightSidebar({ open }: RightSidebarProps) {
     (state) => state.refreshDownloadJobs,
   );
   const instances = instancesHook.data ?? [];
-  const activeJobCount = useMemo(
-    () =>
-      jobs.filter((job) => job.status === "queued" || job.status === "running")
-        .length,
-    [jobs],
-  );
-  const activeJobs = useMemo(
-    () =>
-      jobs.filter((job) => job.status === "queued" || job.status === "running"),
-    [jobs],
-  );
-  const finishedJobs = useMemo(
-    () =>
-      jobs.filter(
-        (job) => job.status === "completed" || job.status === "failed",
-      ),
-    [jobs],
-  );
-  const hasActiveJobs = activeJobCount > 0;
-  const finishedJobCount = jobs.length - activeJobCount;
-  const getTargetInstanceName = (job: (typeof jobs)[number]) => {
-    const targetInstanceId =
-      "targetInstanceId" in job.metadata ? job.metadata.targetInstanceId : null;
-
-    if (!targetInstanceId) return null;
-
-    return (
-      instances.find((instance) => instance.id === targetInstanceId)?.name ??
-      null
+  const { activeJobs, finishedJobs } = useMemo(() => {
+    const active = jobs.filter(
+      (job) => job.status === "queued" || job.status === "running",
     );
-  };
+    const finished = jobs.filter(
+      (job) => job.status === "completed" || job.status === "failed",
+    );
+    return { activeJobs: active, finishedJobs: finished };
+  }, [jobs]);
+  const hasActiveJobs = activeJobs.length > 0;
+  const getTargetInstanceName = useCallback(
+    (job: (typeof jobs)[number]) => {
+      const targetInstanceId =
+        "targetInstanceId" in job.metadata
+          ? job.metadata.targetInstanceId
+          : null;
+
+      if (!targetInstanceId) return null;
+
+      return (
+        instances.find((instance) => instance.id === targetInstanceId)?.name ??
+        null
+      );
+    },
+    [instances],
+  );
   const activityItems = useMemo<Array<ActivityItem>>(() => {
     const instanceActivities: Array<ActivityItem> = [];
 
@@ -193,11 +188,16 @@ export function RightSidebar({ open }: RightSidebarProps) {
                   targetInstanceName={getTargetInstanceName(job)}
                 />
               ))}
+              {finishedJobs.length > 4 ? (
+                <p className="text-center text-[0.6rem] text-muted-foreground">
+                  +{finishedJobs.length - 4} more finished
+                </p>
+              ) : null}
             </div>
           </div>
         ) : null}
 
-        {finishedJobCount > 0 ? (
+        {finishedJobs.length > 0 ? (
           <Button
             className="mt-3 w-full"
             onClick={() => void clearFinishedDownloadJobs()}

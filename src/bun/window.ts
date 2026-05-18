@@ -1,15 +1,13 @@
 import { existsSync, watch } from "node:fs";
 import { join } from "node:path";
 import { BrowserWindow, Screen, Utils } from "electrobun/bun";
-import { APP_NAME } from "../shared/constants";
+import { APP_NAME, MIN_WINDOW_HEIGHT, MIN_WINDOW_WIDTH } from "../shared/constants";
 import { mainViewRPC } from "./rpc/router";
 import { setMainWindow } from "./window-controls";
 
 const WINDOW_PADDING = 48;
 const MAX_WINDOW_WIDTH = 1280;
 const MAX_WINDOW_HEIGHT = 860;
-const MIN_WINDOW_WIDTH = 960;
-const MIN_WINDOW_HEIGHT = 640;
 const MAIN_VIEW_URL = "views://main/index.html";
 const DEV_VIEW_DIRECTORY = join(process.cwd(), ".electrobun", "views", "main");
 const DEV_RELOAD_DELAY_MS = 120;
