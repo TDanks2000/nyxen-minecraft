@@ -17,6 +17,17 @@ export default {
   build: {
     bun: {
       entrypoint: "src/bun/index.ts",
+      define: {
+        "process.env.NYXEN_MICROSOFT_CLIENT_ID": JSON.stringify(
+          process.env.NYXEN_MICROSOFT_CLIENT_ID ?? "",
+        ),
+        "Bun.env.NYXEN_CURSEFORGE_API_KEY": JSON.stringify(
+          Bun.env.NYXEN_CURSEFORGE_API_KEY ?? "",
+        ),
+        "Bun.env.CURSEFORGE_API_KEY": JSON.stringify(
+          Bun.env.CURSEFORGE_API_KEY ?? "",
+        ),
+      },
     },
     mac: {
       icons: "assets/icon.iconset",

@@ -57,6 +57,13 @@ jobs:
         run: bun test
 
       - name: Build desktop app
+        env:
+          ELECTROBUN_DEVELOPER_ID: ${{ secrets.ELECTROBUN_DEVELOPER_ID }}
+          ELECTROBUN_APPLEID: ${{ secrets.ELECTROBUN_APPLEID }}
+          ELECTROBUN_APPLEIDPASS: ${{ secrets.ELECTROBUN_APPLEIDPASS }}
+          ELECTROBUN_TEAMID: ${{ secrets.ELECTROBUN_TEAMID }}
+          NYXEN_MICROSOFT_CLIENT_ID: ${{ secrets.NYXEN_MICROSOFT_CLIENT_ID }}
+          NYXEN_CURSEFORGE_API_KEY: ${{ secrets.NYXEN_CURSEFORGE_API_KEY }}
         run: bun run build:release
 
       - name: Create Linux installers
