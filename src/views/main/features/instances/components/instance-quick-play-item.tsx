@@ -29,7 +29,7 @@ export function InstanceQuickPlayItem({
           <div className="truncate font-semibold text-sidebar-foreground text-xs leading-none">
             {instance.name}
           </div>
-          <div className="mt-0.5 truncate text-[0.62rem] text-muted-foreground leading-none">
+          <div className="mt-0.5 truncate text-[11px] text-muted-foreground leading-none">
             Minecraft {instance.versionId} · {LOADER_LABELS[instance.loader]}
           </div>
         </div>

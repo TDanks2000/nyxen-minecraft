@@ -5,7 +5,11 @@ import { useDownloadQueueStore } from "@/views/main/features/downloads/download-
 import { useLaunchPlan } from "@/views/main/features/instances/hooks/use-launch-plan";
 import { rpc } from "@/views/main/lib/rpc";
 
-export type PlayActionState = "idle" | "preparing" | "downloading" | "launching";
+export type PlayActionState =
+  | "idle"
+  | "preparing"
+  | "downloading"
+  | "launching";
 
 type UsePlayInstanceOptions = {
   onLaunched?: (launch: RunningLaunch) => void;

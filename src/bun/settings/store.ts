@@ -91,7 +91,9 @@ const readSettingsFile = (): AppSettings => {
   }
 
   try {
-    settingsCache = normalizeSettings(JSON.parse(readFileSync(settingsPath, "utf8")));
+    settingsCache = normalizeSettings(
+      JSON.parse(readFileSync(settingsPath, "utf8")),
+    );
     return settingsCache;
   } catch {
     const settings = { ...defaultSettings };
@@ -135,32 +137,16 @@ const clampedInt = (
 };
 
 export const getDownloadConcurrencySetting = (): number | null =>
-  clampedInt(
-    readSettingsFile()[DOWNLOAD_CONCURRENCY_SETTING_KEY],
-    1,
-    16,
-  );
+  clampedInt(readSettingsFile()[DOWNLOAD_CONCURRENCY_SETTING_KEY], 1, 16);
 
 export const getAssetConcurrencySetting = (): number | null =>
-  clampedInt(
-    readSettingsFile()[ASSET_CONCURRENCY_SETTING_KEY],
-    1,
-    32,
-  );
+  clampedInt(readSettingsFile()[ASSET_CONCURRENCY_SETTING_KEY], 1, 32);
 
 export const getDownloadTimeoutSecondsSetting = (): number | null =>
-  clampedInt(
-    readSettingsFile()[DOWNLOAD_TIMEOUT_SETTING_KEY],
-    10,
-    300,
-  );
+  clampedInt(readSettingsFile()[DOWNLOAD_TIMEOUT_SETTING_KEY], 10, 300);
 
 export const getDownloadRetriesSetting = (): number | null =>
-  clampedInt(
-    readSettingsFile()[DOWNLOAD_RETRIES_SETTING_KEY],
-    1,
-    5,
-  );
+  clampedInt(readSettingsFile()[DOWNLOAD_RETRIES_SETTING_KEY], 1, 5);
 
 export const updateSetting = ({
   key,

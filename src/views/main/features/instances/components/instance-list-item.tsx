@@ -44,7 +44,7 @@ export function InstanceListItem({
         <div className="truncate font-semibold text-foreground text-xs">
           {instance.name}
         </div>
-        <div className="truncate text-[0.6rem] text-muted-foreground">
+        <div className="truncate text-[11px] text-muted-foreground">
           {installing
             ? installDetail
             : `Minecraft ${instance.versionId} · ${LOADER_LABELS[instance.loader]}`}
@@ -57,7 +57,7 @@ export function InstanceListItem({
           />
         ) : null}
       </Link>
-      <span className="hidden shrink-0 text-[0.58rem] text-muted-foreground/70 sm:block">
+      <span className="hidden shrink-0 text-[11px] text-muted-foreground sm:block">
         {installing
           ? `${Math.round(installProgress)}%`
           : formatInstanceLastPlayed(instance.lastLaunchedAt)}

@@ -34,7 +34,7 @@ export function TitlebarProfileFace({
         ) : null}
         <span
           className={cn(
-            "select-none font-black text-[0.55rem] text-white",
+            "select-none font-black text-[10px] text-white",
             initialsClassName,
           )}
         >

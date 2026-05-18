@@ -1276,6 +1276,8 @@ const createPreviewRpc = (): ViewRpcClient => {
     getSettingsStatus: async () => clone(previewSettings),
     getSystemMemory: async () => ({ totalMb: 16_384 }),
     getWindowState: async () => ({ maximized: false, minimized: false }),
+    getWindowFrame: async () => ({ x: 0, y: 0, width: 1280, height: 800 }),
+    setWindowFrame: async () => null,
     greet: async ({ name }) => ({ greeting: `Hello ${name}` }),
     installDownloadedCurseForgeFile: async (input) => ({
       category: input.category,

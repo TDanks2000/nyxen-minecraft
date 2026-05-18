@@ -73,7 +73,7 @@ export function InstanceCard(props: InstanceCardRenderProps) {
         to="/instances/$instanceId"
       >
         <InstanceArtwork
-          className="h-full transition-transform duration-500 group-hover:scale-[1.03]"
+          className="h-full transition-transform duration-300 group-hover:scale-[1.03]"
           instance={instance}
           showBadge={!compact}
         />
@@ -94,7 +94,7 @@ export function InstanceCard(props: InstanceCardRenderProps) {
         >
           {instance.name}
         </CardTitle>
-        <CardDescription className={cn("truncate", compact && "text-[0.6rem]")}>
+        <CardDescription className={cn("truncate", compact && "text-[11px]")}>
           Minecraft {instance.versionId} · {LOADER_LABELS[instance.loader]}
         </CardDescription>
       </CardHeader>
@@ -136,7 +136,7 @@ export function InstanceCard(props: InstanceCardRenderProps) {
             </span>
           </div>
         ) : compact ? (
-          <span className="min-w-0 truncate text-[0.58rem] text-muted-foreground/70">
+          <span className="min-w-0 truncate text-[11px] text-muted-foreground">
             {formatInstanceLastPlayed(instance.lastLaunchedAt)}
           </span>
         ) : (

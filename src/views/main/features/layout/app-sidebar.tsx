@@ -9,12 +9,18 @@ import {
   UserRoundIcon,
 } from "lucide-react";
 import { type ComponentType, type SVGProps, useMemo } from "react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/views/main/components/ui/tooltip";
 import { InstanceIcon } from "@/views/main/features/instances/components/instance-artwork";
 import { InstanceQuickPlayItem } from "@/views/main/features/instances/components/instance-card";
 import { LOADER_LABELS } from "@/views/main/features/instances/components/instance-format";
 import { LaunchPlanSheet } from "@/views/main/features/instances/components/launch-plan-sheet";
 import { useLaunchPlan } from "@/views/main/features/instances/hooks/use-launch-plan";
 import { useInstances } from "@/views/main/hooks/use-instances";
+import { useIsMobile } from "@/views/main/hooks/use-mobile";
 import { cn } from "@/views/main/lib/utils";
 
 type NavItem = {
@@ -63,6 +69,7 @@ export function AppSidebar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const instancesHook = useInstances();
   const launchPlan = useLaunchPlan();
+  const isCollapsed = useIsMobile();
 
   const quickPlayInstances = useMemo(() => {
     return [...(instancesHook.data ?? [])]
@@ -97,28 +104,44 @@ export function AppSidebar() {
                 pathname.startsWith(`${item.activeOn}/`)
             : false;
 
-          return (
+          const link = (
             <Link
               key={item.label}
               to={item.to}
-              title={item.label}
               className={cn(
-                "flex h-9 items-center justify-center gap-3 rounded-md px-0 text-sm font-medium no-underline transition-colors md:justify-start md:px-3",
+                "relative flex h-9 items-center justify-center gap-3 rounded-md px-0 text-sm font-medium no-underline transition-colors md:justify-start md:px-3",
                 "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground",
-                isActive &&
-                  "bg-primary/[0.13] text-primary ring-1 ring-primary/[0.22]",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+                isActive && "bg-sidebar-accent/60 text-foreground",
               )}
             >
+              {isActive ? (
+                <span
+                  aria-hidden="true"
+                  className="absolute top-1.5 bottom-1.5 left-0 w-0.5 rounded-r-full bg-primary"
+                />
+              ) : null}
               <Icon className="size-4 shrink-0" />
               <span className="hidden md:inline">{item.label}</span>
             </Link>
+          );
+
+          if (!isCollapsed) {
+            return link;
+          }
+
+          return (
+            <Tooltip key={item.label}>
+              <TooltipTrigger render={link} />
+              <TooltipContent side="right">{item.label}</TooltipContent>
+            </Tooltip>
           );
         })}
       </nav>
 
       {/* Quick Play */}
       <div className="mt-5 mb-1.5 hidden px-3 md:block">
-        <span className="text-[0.68rem] font-bold uppercase tracking-wider text-muted-foreground/50">
+        <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
           Quick Play
         </span>
       </div>
@@ -138,7 +161,7 @@ export function AppSidebar() {
             </div>
           ))
         ) : quickPlayInstances.length === 0 ? (
-          <p className="px-2 text-[0.65rem] text-muted-foreground/60">
+          <p className="px-2 text-xs text-muted-foreground">
             No instances yet.
           </p>
         ) : (
@@ -176,7 +199,7 @@ export function AppSidebar() {
             <div className="truncate text-xs font-semibold text-foreground leading-none">
               {activeInstance?.name ?? "No active instance"}
             </div>
-            <div className="mt-1 truncate text-[0.62rem] font-medium text-muted-foreground leading-none">
+            <div className="mt-1 truncate text-[11px] font-medium text-muted-foreground leading-none">
               {activeInstance
                 ? `${activeInstance.versionId} · ${LOADER_LABELS[activeInstance.loader]}`
                 : "Create one to play"}

@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { PageHeader } from "@/views/main/components/page-header";
 import { useTheme } from "@/views/main/components/theme-provider";
 import {
   AlertDialog,
@@ -158,14 +159,11 @@ export function SettingsPage() {
   return (
     <>
       <div className="flex min-h-full w-full flex-col gap-6 p-4 sm:p-6">
-        <section>
-          <span className="text-muted-foreground text-xs font-black uppercase tracking-widest">
-            Preferences
-          </span>
-          <h1 className="mt-2 font-heading font-black text-4xl leading-none">
-            Settings
-          </h1>
-        </section>
+        <PageHeader
+          eyebrow="Preferences"
+          title="Settings"
+          description="Tune launcher behavior, downloads, and storage paths."
+        />
 
         <div className="grid grid-cols-2 gap-5 max-lg:grid-cols-1">
           {/* Left column: launcher settings */}
@@ -223,7 +221,7 @@ export function SettingsPage() {
                       <SelectGroup>
                         <SelectItem value="auto">System Java</SelectItem>
                         <SelectItem value="app-controlled">
-                          App controlled
+                          App-controlled
                         </SelectItem>
                       </SelectGroup>
                     </SelectContent>
@@ -258,10 +256,7 @@ export function SettingsPage() {
                       value={downloadConcurrency}
                       onValueChange={(v) =>
                         v &&
-                        handleDownloadSetting(
-                          "launcher.downloadConcurrency",
-                          v,
-                        )
+                        handleDownloadSetting("launcher.downloadConcurrency", v)
                       }
                     >
                       <SelectTrigger className="h-8 w-24">
@@ -460,7 +455,7 @@ export function SettingsPage() {
               ) : null}
             </SettingGroup>
 
-            <SettingGroup icon={AlertTriangleIcon} title="Maintenance">
+            <SettingGroup icon={HardDriveIcon} title="Maintenance">
               <SettingRow
                 label="Clear cache"
                 description="Remove downloaded artifacts, runtimes, temp files, and instance cache without deleting instances"
@@ -475,9 +470,16 @@ export function SettingsPage() {
                   Clear cache
                 </Button>
               </SettingRow>
+            </SettingGroup>
+
+            <SettingGroup
+              icon={AlertTriangleIcon}
+              title="Danger zone"
+              tone="destructive"
+            >
               <SettingRow
-                label="Clear data"
-                description="Remove instances, profiles, saved worlds, mods, logs, and downloaded launcher files"
+                label="Clear launcher data"
+                description="Permanently removes instances, profiles, saved worlds, mods, logs, and downloaded launcher files. Settings are kept."
               >
                 <Button
                   disabled={clearingStorage !== null}

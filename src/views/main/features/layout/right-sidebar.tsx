@@ -134,12 +134,12 @@ export function RightSidebar({ open }: RightSidebarProps) {
         <div className="flex items-center justify-between border-b border-sidebar-border/30 pb-2 mb-3">
           <div className="flex items-center gap-1.5">
             <DownloadCloudIcon className="size-3.5 text-muted-foreground" />
-            <span className="text-[0.68rem] font-bold uppercase tracking-wider text-muted-foreground">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
               Downloads
             </span>
           </div>
           {activeJobs.length > 0 ? (
-            <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[0.6rem] font-bold text-primary-foreground">
+            <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-bold text-primary-foreground">
               {activeJobs.length}
             </span>
           ) : null}
@@ -162,7 +162,7 @@ export function RightSidebar({ open }: RightSidebarProps) {
             <div className="mt-2 font-semibold text-foreground text-xs">
               No downloads running
             </div>
-            <p className="mt-1 text-[0.62rem] text-muted-foreground">
+            <p className="mt-1 text-[11px] text-muted-foreground">
               Downloads appear here when Nyxen is preparing launch files or
               installing catalog content.
             </p>
@@ -172,10 +172,10 @@ export function RightSidebar({ open }: RightSidebarProps) {
         {finishedJobs.length > 0 ? (
           <div className="mt-4">
             <div className="mb-3 flex items-center justify-between border-sidebar-border/30 border-b pb-2">
-              <span className="text-[0.68rem] font-bold uppercase tracking-wider text-muted-foreground">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                 Finished
               </span>
-              <span className="rounded-full border border-border px-1.5 py-0.5 text-[0.58rem] text-muted-foreground">
+              <span className="rounded-full border border-border px-1.5 py-0.5 text-[11px] text-muted-foreground">
                 {finishedJobs.length}
               </span>
             </div>
@@ -189,7 +189,7 @@ export function RightSidebar({ open }: RightSidebarProps) {
                 />
               ))}
               {finishedJobs.length > 4 ? (
-                <p className="text-center text-[0.6rem] text-muted-foreground">
+                <p className="text-center text-xs text-muted-foreground">
                   +{finishedJobs.length - 4} more finished
                 </p>
               ) : null}
@@ -214,7 +214,7 @@ export function RightSidebar({ open }: RightSidebarProps) {
       <section className="p-4">
         <div className="flex items-center gap-1.5 border-b border-sidebar-border/30 pb-2 mb-3">
           <ActivityIcon className="size-3.5 text-muted-foreground" />
-          <span className="text-[0.68rem] font-bold uppercase tracking-wider text-muted-foreground">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
             Recent Activity
           </span>
         </div>
@@ -224,9 +224,9 @@ export function RightSidebar({ open }: RightSidebarProps) {
               <div key={item.id} className="flex items-start gap-2.5">
                 <div
                   className={cn(
-                    "flex size-7 shrink-0 items-center justify-center rounded text-[0.5rem] font-bold",
+                    "flex size-7 shrink-0 items-center justify-center rounded text-[11px] font-bold",
                     item.tone === "primary" && "bg-primary/15 text-primary",
-                    item.tone === "warning" && "bg-amber-500/15 text-amber-500",
+                    item.tone === "warning" && "bg-warning/15 text-warning",
                     item.tone === "destructive" &&
                       "bg-destructive/15 text-destructive",
                     item.tone === "muted" && "bg-muted text-muted-foreground",
@@ -238,11 +238,11 @@ export function RightSidebar({ open }: RightSidebarProps) {
                   <div className="truncate font-semibold text-foreground text-xs leading-none">
                     {item.title}
                   </div>
-                  <div className="mt-0.5 truncate text-[0.62rem] text-muted-foreground">
+                  <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
                     {item.description}
                   </div>
                 </div>
-                <span className="mt-0.5 shrink-0 text-[0.6rem] text-muted-foreground">
+                <span className="mt-0.5 shrink-0 text-[11px] text-muted-foreground">
                   {formatRelativeDate(item.time)}
                 </span>
               </div>
@@ -254,7 +254,7 @@ export function RightSidebar({ open }: RightSidebarProps) {
             <div className="mt-2 font-semibold text-foreground text-xs">
               No activity yet
             </div>
-            <p className="mt-1 text-[0.62rem] text-muted-foreground">
+            <p className="mt-1 text-[11px] text-muted-foreground">
               Launches, instance changes, and downloads appear here.
             </p>
           </div>

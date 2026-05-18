@@ -70,7 +70,7 @@ export function InstanceWarningPanel({
     <Card size="sm">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <ShieldAlertIcon className="size-4 text-amber-400" />
+          <ShieldAlertIcon className="size-4 text-warning" />
           Warnings
         </CardTitle>
         <CardAction>
@@ -92,7 +92,7 @@ export function InstanceWarningPanel({
                 className="flex items-start gap-2 text-muted-foreground text-xs"
                 key={warning}
               >
-                <ShieldAlertIcon className="mt-0.5 size-3.5 shrink-0 text-amber-400" />
+                <ShieldAlertIcon className="mt-0.5 size-3.5 shrink-0 text-warning" />
                 <span>{warning}</span>
               </div>
             ))}

@@ -98,7 +98,7 @@ export function InstanceIcon({
   return (
     <div
       className={cn(
-        "flex size-9 shrink-0 items-center justify-center rounded-md bg-gradient-to-br text-[0.68rem] font-black text-white shadow-inner",
+        "flex size-9 shrink-0 items-center justify-center rounded-md bg-gradient-to-br text-[11px] font-black text-white shadow-inner",
         art.sky,
         className,
       )}

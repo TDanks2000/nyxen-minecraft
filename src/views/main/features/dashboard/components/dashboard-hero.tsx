@@ -1,13 +1,19 @@
 import { Link } from "@tanstack/react-router";
 import {
   FolderOpenIcon,
+  MoreHorizontalIcon,
   PlayIcon,
   PlusIcon,
-  SearchIcon,
   WrenchIcon,
 } from "lucide-react";
 import type { LauncherInstance } from "@/shared/types";
 import { Button } from "@/views/main/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/views/main/components/ui/dropdown-menu";
 import { Skeleton } from "@/views/main/components/ui/skeleton";
 import { HeroBackground } from "@/views/main/features/dashboard/components/hero-background";
 import { InstanceIcon } from "@/views/main/features/instances/components/instance-artwork";
@@ -50,7 +56,7 @@ export function DashboardHero({
             <div className="flex min-w-0 flex-col">
               <div className="flex items-center gap-2">
                 <span className="inline-block size-1.5 shrink-0 rounded-full bg-primary shadow-[0_0_8px_2px_var(--primary)]" />
-                <span className="font-bold text-[0.58rem] text-primary uppercase tracking-[0.22em]">
+                <span className="text-[11px] font-bold text-primary uppercase tracking-[0.18em]">
                   {instance.lastLaunchedAt ? "Last Played" : "Ready to Play"}
                 </span>
               </div>
@@ -58,7 +64,7 @@ export function DashboardHero({
                 {instance.name}
               </h1>
               <div className="mt-3 flex flex-wrap items-center gap-2">
-                <span className="rounded-md bg-white/10 px-2 py-0.5 text-[0.65rem] font-semibold text-white/80 uppercase tracking-wide">
+                <span className="rounded-md bg-white/10 px-2 py-0.5 text-[11px] font-semibold text-white/80 uppercase tracking-wide">
                   {LOADER_LABELS[instance.loader]}
                 </span>
                 <span className="text-white/30 text-xs">·</span>
@@ -101,34 +107,35 @@ export function DashboardHero({
                   className="border-white/15 bg-white/[0.07] text-white/80 backdrop-blur-sm hover:bg-white/[0.13] hover:text-white"
                 >
                   <WrenchIcon data-icon="inline-start" />
-                  Manage Mods
+                  Manage
                 </Button>
 
-                <Button
-                  render={<Link to="/modpacks" />}
-                  nativeButton={false}
-                  size="lg"
-                  variant="outline"
-                  className="border-white/15 bg-white/[0.07] text-white/80 backdrop-blur-sm hover:bg-white/[0.13] hover:text-white"
-                >
-                  <SearchIcon data-icon="inline-start" />
-                  Browse Content
-                </Button>
-
-                <Button
-                  type="button"
-                  onClick={() => {
-                    void openLocalPath(instance.gameDirectory, {
-                      failureMessage: "Could not open the instance folder.",
-                    });
-                  }}
-                  size="lg"
-                  variant="outline"
-                  className="border-white/15 bg-white/[0.07] text-white/70 backdrop-blur-sm hover:bg-white/[0.13] hover:text-white"
-                >
-                  <FolderOpenIcon data-icon="inline-start" />
-                  Open Folder
-                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={
+                      <Button
+                        size="icon-lg"
+                        variant="outline"
+                        aria-label="More instance actions"
+                        className="border-white/15 bg-white/[0.07] text-white/70 backdrop-blur-sm hover:bg-white/[0.13] hover:text-white"
+                      />
+                    }
+                  >
+                    <MoreHorizontalIcon />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      onClick={() => {
+                        void openLocalPath(instance.gameDirectory, {
+                          failureMessage: "Could not open the instance folder.",
+                        });
+                      }}
+                    >
+                      <FolderOpenIcon />
+                      Open Folder
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
 

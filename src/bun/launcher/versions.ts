@@ -253,8 +253,12 @@ export const listMinecraftVersions = (
   const limit = normalizeLimit(input?.limit);
 
   const where = and(
-    includeSnapshots ? undefined : ne(schema.minecraftVersions.type, "snapshot"),
-    includeHistorical ? undefined : notLike(schema.minecraftVersions.type, "old_%"),
+    includeSnapshots
+      ? undefined
+      : ne(schema.minecraftVersions.type, "snapshot"),
+    includeHistorical
+      ? undefined
+      : notLike(schema.minecraftVersions.type, "old_%"),
   );
 
   return db

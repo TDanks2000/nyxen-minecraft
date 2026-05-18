@@ -757,7 +757,8 @@ export const waitForDownloadJob = (
   const checkDone = (): DownloadQueueJob | null => {
     const job = jobs.find((item) => item.id === jobId);
     if (!job) throw new Error("Download job no longer exists.");
-    if (job.status === "completed" || job.status === "failed") return snapshotJob(job);
+    if (job.status === "completed" || job.status === "failed")
+      return snapshotJob(job);
     return null;
   };
 
@@ -789,12 +790,19 @@ export const waitForDownloadJob = (
     };
 
     const timeoutId = setTimeout(
-      () => settle(() => reject(new Error("Timed out waiting for download to finish."))),
+      () =>
+        settle(() =>
+          reject(new Error("Timed out waiting for download to finish.")),
+        ),
       timeoutMs,
     );
 
-    if (!jobListeners.has(jobId)) jobListeners.set(jobId, new Set());
-    jobListeners.get(jobId)!.add(onNotify);
+    let listeners = jobListeners.get(jobId);
+    if (!listeners) {
+      listeners = new Set();
+      jobListeners.set(jobId, listeners);
+    }
+    listeners.add(onNotify);
 
     // Re-check in case job completed between the initial check and listener registration
     try {

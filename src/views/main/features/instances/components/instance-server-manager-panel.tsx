@@ -64,19 +64,19 @@ const requirementStyles: Record<
     label: "Missing",
   },
   ready: {
-    className: "border-emerald-500/25 bg-emerald-500/10 text-emerald-300",
+    className: "border-success/30 bg-success/10 text-success",
     label: "Ready",
   },
   warning: {
-    className: "border-amber-500/25 bg-amber-500/10 text-amber-300",
+    className: "border-warning/30 bg-warning/10 text-warning",
     label: "Review",
   },
 };
 
 const sideBorderStyles: Record<InstanceServerFileCandidate["side"], string> = {
-  clientOnly: "border-l-blue-500/40",
-  optional: "border-l-amber-500/40",
-  server: "border-l-emerald-500/60",
+  clientOnly: "border-l-chart-3/50",
+  optional: "border-l-warning/45",
+  server: "border-l-success/60",
   unknown: "border-l-muted-foreground/20",
 };
 
@@ -462,7 +462,7 @@ export function InstanceServerManagerPanel({
 
             {creating && (
               <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 md:col-span-2">
-                <p className="mb-2 font-medium text-primary/80 text-xs uppercase tracking-wider">
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-primary/80">
                   Setting up server
                 </p>
                 <div className="flex flex-col gap-1.5">
@@ -479,7 +479,7 @@ export function InstanceServerManagerPanel({
                       key={step}
                     >
                       {index < creationStep ? (
-                        <CheckCircle2Icon className="size-3 shrink-0 text-emerald-400" />
+                        <CheckCircle2Icon className="size-3 shrink-0 text-success" />
                       ) : index === creationStep ? (
                         <Loader2Icon className="size-3 shrink-0 animate-spin text-primary" />
                       ) : (

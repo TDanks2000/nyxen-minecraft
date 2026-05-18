@@ -1,6 +1,7 @@
 import { BanIcon, CrownIcon, PlusIcon, ShieldCheckIcon } from "lucide-react";
 import { useState } from "react";
 import type { LauncherProfile } from "@/shared/types";
+import { PageHeader } from "@/views/main/components/page-header";
 import { Avatar, AvatarFallback } from "@/views/main/components/ui/avatar";
 import { Badge } from "@/views/main/components/ui/badge";
 import { Button } from "@/views/main/components/ui/button";
@@ -47,7 +48,7 @@ const getProfileStatus = (
     return { label: "Blocked", tone: "destructive" };
   }
 
-  return { label: "Needs sign-in", tone: "outline" };
+  return { label: "Sign-in needed", tone: "outline" };
 };
 
 const formatAccountId = (accountId: string | null): string =>
@@ -68,20 +69,17 @@ export function ProfilesPage() {
 
   return (
     <div className="flex min-h-full w-full flex-col gap-5 p-4 sm:p-6">
-      <section className="flex items-end justify-between gap-4 max-sm:flex-col max-sm:items-start">
-        <div>
-          <span className="text-muted-foreground text-xs font-black uppercase">
-            Accounts
-          </span>
-          <h1 className="mt-2 font-heading font-black text-4xl leading-none">
-            Profiles
-          </h1>
-        </div>
-        <Button variant="outline" onClick={() => setDialogOpen(true)}>
-          <PlusIcon data-icon="inline-start" />
-          Add Microsoft Profile
-        </Button>
-      </section>
+      <PageHeader
+        eyebrow="Accounts"
+        title="Profiles"
+        description="Sign in with the Microsoft account that owns Minecraft to launch verified instances."
+        actions={
+          <Button variant="outline" onClick={() => setDialogOpen(true)}>
+            <PlusIcon data-icon="inline-start" />
+            Add Microsoft Profile
+          </Button>
+        }
+      />
 
       {profilesHook.error && (
         <div className="flex items-center justify-between rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">

@@ -1,5 +1,6 @@
 import { SearchIcon } from "lucide-react";
 import type { ComponentType, ReactNode, SVGProps } from "react";
+import { PageHeader } from "@/views/main/components/page-header";
 import { Badge } from "@/views/main/components/ui/badge";
 import {
   Card,
@@ -36,24 +37,12 @@ export function LibraryPageHeader({
   title: string;
 }) {
   return (
-    <section className="flex items-end justify-between gap-4 max-lg:flex-col max-lg:items-start">
-      <div className="max-w-3xl">
-        <span className="text-muted-foreground text-xs font-black uppercase tracking-widest">
-          {eyebrow}
-        </span>
-        <h1 className="mt-2 font-heading font-black text-4xl leading-none">
-          {title}
-        </h1>
-        <p className="mt-3 text-sm leading-6 text-muted-foreground">
-          {description}
-        </p>
-      </div>
-      {actions ? (
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
-          {actions}
-        </div>
-      ) : null}
-    </section>
+    <PageHeader
+      actions={actions}
+      description={description}
+      eyebrow={eyebrow}
+      title={title}
+    />
   );
 }
 

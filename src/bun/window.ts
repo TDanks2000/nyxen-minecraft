@@ -1,7 +1,11 @@
 import { existsSync, watch } from "node:fs";
 import { join } from "node:path";
 import { BrowserWindow, Screen, Utils } from "electrobun/bun";
-import { APP_NAME, MIN_WINDOW_HEIGHT, MIN_WINDOW_WIDTH } from "../shared/constants";
+import {
+  APP_NAME,
+  MIN_WINDOW_HEIGHT,
+  MIN_WINDOW_WIDTH,
+} from "../shared/constants";
 import { mainViewRPC } from "./rpc/router";
 import { setMainWindow } from "./window-controls";
 

@@ -31,7 +31,7 @@ export function InstallingInstanceListItem({
         <div className="truncate font-semibold text-foreground text-xs">
           {job.title}
         </div>
-        <div className="mt-0.5 truncate text-[0.6rem] text-muted-foreground">
+        <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
           {job.activeLabel ?? job.subtitle}
         </div>
         <Progress
@@ -42,7 +42,7 @@ export function InstallingInstanceListItem({
       </div>
       <div className="hidden shrink-0 flex-col items-end gap-0.5 sm:flex">
         <Badge variant="secondary">{getDownloadSourceLabel(job)}</Badge>
-        <span className="text-[0.58rem] text-muted-foreground tabular-nums">
+        <span className="text-[11px] text-muted-foreground tabular-nums">
           {completedItems}/{totalItems} files
         </span>
       </div>

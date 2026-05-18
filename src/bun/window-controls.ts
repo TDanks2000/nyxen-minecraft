@@ -1,5 +1,5 @@
-import { Screen } from "electrobun/bun";
 import type { BrowserWindow } from "electrobun/bun";
+import { Screen } from "electrobun/bun";
 
 type WindowState = {
   maximized: boolean;

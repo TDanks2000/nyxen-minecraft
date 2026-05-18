@@ -270,7 +270,7 @@ export function LaunchPlanSheet({
                   <PackageIcon className="size-4" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-[0.65rem] font-bold uppercase tracking-widest text-muted-foreground mb-0.5">
+                  <p className="text-[11px] font-semibold text-muted-foreground mb-1">
                     Instance
                   </p>
                   <p className="font-semibold truncate">{plan.instance.name}</p>
@@ -285,12 +285,12 @@ export function LaunchPlanSheet({
               {/* Profile */}
               <div className="flex items-start gap-3 px-5 py-4">
                 <div
-                  className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md ${plan.profile ? "bg-primary/10 text-primary" : "bg-amber-500/10 text-amber-500"}`}
+                  className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md ${plan.profile ? "bg-primary/10 text-primary" : "bg-warning/10 text-warning"}`}
                 >
                   <UserIcon className="size-4" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-[0.65rem] font-bold uppercase tracking-widest text-muted-foreground mb-0.5">
+                  <p className="text-[11px] font-semibold text-muted-foreground mb-1">
                     Account
                   </p>
                   {plan.profile ? (
@@ -298,7 +298,7 @@ export function LaunchPlanSheet({
                       {plan.profile.displayName}
                     </p>
                   ) : (
-                    <p className="text-sm text-amber-500 font-medium">
+                    <p className="text-sm text-warning font-medium">
                       No verified profile
                     </p>
                   )}
@@ -316,7 +316,7 @@ export function LaunchPlanSheet({
                   <MemoryStickIcon className="size-4" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-[0.65rem] font-bold uppercase tracking-widest text-muted-foreground mb-0.5">
+                  <p className="text-[11px] font-semibold text-muted-foreground mb-1">
                     Java
                   </p>
                   <p className="text-xs text-muted-foreground">
@@ -338,7 +338,7 @@ export function LaunchPlanSheet({
                     )}
                   {plan.java.management !== "app-controlled" &&
                     plan.java.detectionError && (
-                      <p className="text-amber-600 text-xs dark:text-amber-400">
+                      <p className="text-warning text-xs">
                         Detection failed: {plan.java.detectionError}
                       </p>
                     )}
@@ -353,7 +353,7 @@ export function LaunchPlanSheet({
                         <div className="flex items-start gap-2 rounded-md bg-muted/60 px-2 py-1.5">
                           <FolderDownIcon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
                           <div className="min-w-0">
-                            <p className="text-[0.65rem] font-bold uppercase tracking-widest text-muted-foreground">
+                            <p className="text-[11px] font-semibold text-muted-foreground">
                               Installed under
                             </p>
                             <p className="break-all font-mono text-muted-foreground text-xs">
@@ -383,18 +383,18 @@ export function LaunchPlanSheet({
               {/* Warnings */}
               {plan.warnings.length > 0 && (
                 <div className="flex items-start gap-3 px-5 py-4">
-                  <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-amber-500/10 text-amber-500">
+                  <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-warning/10 text-warning">
                     <TriangleAlertIcon className="size-4" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-[0.65rem] font-bold uppercase tracking-widest text-amber-500 mb-1.5">
+                    <p className="text-[11px] font-semibold text-warning mb-1.5">
                       Warnings ({plan.warnings.length})
                     </p>
                     <ul className="flex flex-col gap-1.5">
                       {plan.warnings.map((w) => (
                         <li
                           key={w}
-                          className="text-xs text-amber-600 dark:text-amber-400 bg-amber-500/10 rounded-md px-2.5 py-1.5 border border-amber-500/20"
+                          className="text-xs text-warning bg-warning/10 rounded-md px-2.5 py-1.5 border border-warning/25"
                         >
                           {w}
                         </li>
@@ -412,25 +412,25 @@ export function LaunchPlanSheet({
                       ? "bg-destructive/10 text-destructive"
                       : plan.missingArtifacts.length === 0 ||
                           launchState === "downloaded"
-                        ? "bg-green-500/10 text-green-600 dark:text-green-400"
+                        ? "bg-success/10 text-success"
                         : "bg-primary/10 text-primary"
                   }`}
                 >
                   <HardDriveIcon className="size-4" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-[0.65rem] font-bold uppercase tracking-widest text-muted-foreground mb-1">
+                  <p className="text-[11px] font-semibold text-muted-foreground mb-1">
                     Artifacts
                   </p>
 
                   {launchState === "downloaded" &&
                   failedArtifacts.length === 0 ? (
-                    <p className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400 font-medium">
+                    <p className="flex items-center gap-1.5 text-xs text-success font-medium">
                       <CheckCircle2Icon className="size-3.5 shrink-0" />
                       All artifacts downloaded
                     </p>
                   ) : plan.missingArtifacts.length === 0 ? (
-                    <p className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400 font-medium">
+                    <p className="flex items-center gap-1.5 text-xs text-success font-medium">
                       <CheckCircle2Icon className="size-3.5 shrink-0" />
                       All artifacts present
                     </p>
@@ -466,7 +466,7 @@ export function LaunchPlanSheet({
                             key={a.id}
                             className="text-xs text-muted-foreground flex items-center gap-2"
                           >
-                            <span className="shrink-0 rounded px-1 py-0.5 bg-muted text-[0.6rem] uppercase font-bold">
+                            <span className="shrink-0 rounded px-1 py-0.5 bg-muted text-[11px] uppercase font-semibold">
                               {a.kind}
                             </span>
                             <span className="truncate font-mono">
@@ -517,7 +517,7 @@ export function LaunchPlanSheet({
                   <HardDriveIcon className="size-4" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-[0.65rem] font-bold uppercase tracking-widest text-muted-foreground mb-0.5">
+                  <p className="text-[11px] font-semibold text-muted-foreground mb-1">
                     Game Directory
                   </p>
                   <p className="text-xs font-mono break-all text-muted-foreground">

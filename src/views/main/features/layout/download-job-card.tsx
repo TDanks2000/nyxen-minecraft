@@ -76,7 +76,7 @@ export function DownloadJobCard({
               <div className="truncate font-semibold text-foreground text-xs leading-none">
                 {job.title}
               </div>
-              <div className="mt-1 flex items-center gap-1.5 text-[0.62rem] text-muted-foreground">
+              <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
                 <span
                   className={cn(
                     "size-1.5 rounded-full",
@@ -108,7 +108,7 @@ export function DownloadJobCard({
           </div>
 
           <div className="mt-2">
-            <div className="flex items-center justify-between gap-2 text-[0.65rem]">
+            <div className="flex items-center justify-between gap-2 text-[11px]">
               <span className="font-medium text-foreground">{detailLabel}</span>
               <span className="shrink-0 text-muted-foreground tabular-nums">
                 {job.status === "queued"
@@ -132,7 +132,7 @@ export function DownloadJobCard({
           </div>
 
           <div className="mt-2 flex flex-wrap gap-1">
-            <span className="rounded border border-border bg-muted/45 px-1.5 py-0.5 text-[0.58rem] text-muted-foreground">
+            <span className="rounded border border-border bg-muted/45 px-1.5 py-0.5 text-[11px] text-muted-foreground">
               {job.source === "curseforge"
                 ? "CurseForge"
                 : job.source === "modrinth"
@@ -140,13 +140,13 @@ export function DownloadJobCard({
                   : "Launch"}
             </span>
             {targetInstanceId ? (
-              <span className="rounded border border-border bg-muted/45 px-1.5 py-0.5 text-[0.58rem] text-muted-foreground">
+              <span className="rounded border border-border bg-muted/45 px-1.5 py-0.5 text-[11px] text-muted-foreground">
                 {targetInstanceName ?? `Instance ${targetInstanceId}`}
               </span>
             ) : null}
             {groups.map((group) => (
               <span
-                className="rounded border border-border bg-muted/45 px-1.5 py-0.5 text-[0.58rem] text-muted-foreground"
+                className="rounded border border-border bg-muted/45 px-1.5 py-0.5 text-[11px] text-muted-foreground"
                 key={group.label}
               >
                 {group.label} {group.count}
@@ -157,7 +157,7 @@ export function DownloadJobCard({
           <ul className="mt-2 grid gap-1">
             {visibleItems.map((item) => (
               <li
-                className="flex min-w-0 items-center gap-1.5 text-[0.6rem] text-muted-foreground"
+                className="flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground"
                 key={item.id}
               >
                 <FilesIcon className="size-3 shrink-0" />
@@ -165,7 +165,7 @@ export function DownloadJobCard({
               </li>
             ))}
             {hiddenArtifactCount > 0 ? (
-              <li className="text-[0.6rem] text-muted-foreground/75">
+              <li className="text-[11px] text-muted-foreground/75">
                 +{hiddenArtifactCount} more file
                 {hiddenArtifactCount === 1 ? "" : "s"}
               </li>
@@ -173,7 +173,7 @@ export function DownloadJobCard({
           </ul>
 
           {job.status === "failed" ? (
-            <div className="mt-2 rounded-md border border-destructive/25 bg-destructive/10 px-2 py-1.5 text-[0.6rem] text-destructive">
+            <div className="mt-2 rounded-md border border-destructive/25 bg-destructive/10 px-2 py-1.5 text-[11px] text-destructive">
               {job.error ??
                 job.items.find((item) => item.error)?.error ??
                 "One or more files could not be downloaded."}

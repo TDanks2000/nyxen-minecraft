@@ -35,7 +35,7 @@ const styleForDir: Record<ResizeDir, React.CSSProperties> = {
   w: { top: EDGE, left: 0, bottom: EDGE, width: EDGE },
 };
 
-const ALL_DIRS: ResizeDir[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
+const ALL_DIRS: Array<ResizeDir> = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
 
 const computeFrame = (
   dir: ResizeDir,
@@ -54,7 +54,8 @@ const computeFrame = (
     width = Math.max(MIN_WINDOW_WIDTH, frame.width - dx);
     x = frame.x + frame.width - width;
   }
-  if (dir.includes("s")) height = Math.max(MIN_WINDOW_HEIGHT, frame.height + dy);
+  if (dir.includes("s"))
+    height = Math.max(MIN_WINDOW_HEIGHT, frame.height + dy);
   if (dir.includes("n")) {
     height = Math.max(MIN_WINDOW_HEIGHT, frame.height - dy);
     y = frame.y + frame.height - height;
@@ -66,7 +67,12 @@ const computeFrame = (
 function ResizeHandle({ dir }: { dir: ResizeDir }) {
   const drag = useRef<DragState | null>(null);
   const rafId = useRef<number | null>(null);
-  const pending = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
+  const pending = useRef<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>(null);
 
   const flush = useCallback(() => {
     rafId.current = null;
@@ -99,7 +105,12 @@ function ResizeHandle({ dir }: { dir: ResizeDir }) {
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (!drag.current) return;
       e.preventDefault();
-      pending.current = computeFrame(drag.current.dir, drag.current, e.screenX, e.screenY);
+      pending.current = computeFrame(
+        drag.current.dir,
+        drag.current,
+        e.screenX,
+        e.screenY,
+      );
       if (!rafId.current) {
         rafId.current = requestAnimationFrame(flush);
       }
@@ -107,23 +118,20 @@ function ResizeHandle({ dir }: { dir: ResizeDir }) {
     [flush],
   );
 
-  const onPointerUp = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      if (!drag.current) return;
-      (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId);
-      drag.current = null;
+  const onPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!drag.current) return;
+    (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId);
+    drag.current = null;
 
-      if (rafId.current !== null) {
-        cancelAnimationFrame(rafId.current);
-        rafId.current = null;
-      }
-      if (pending.current) {
-        rpc.requestProxy.setWindowFrame(pending.current).catch(console.error);
-        pending.current = null;
-      }
-    },
-    [],
-  );
+    if (rafId.current !== null) {
+      cancelAnimationFrame(rafId.current);
+      rafId.current = null;
+    }
+    if (pending.current) {
+      rpc.requestProxy.setWindowFrame(pending.current).catch(console.error);
+      pending.current = null;
+    }
+  }, []);
 
   return (
     <div

@@ -474,7 +474,7 @@ export function InstanceModsPanel({
                 <div className="contents" key={entry.id}>
                   {groupLabel ? (
                     <div className="col-span-full flex items-center gap-2 pt-1">
-                      <span className="text-muted-foreground text-xs font-black uppercase tracking-widest">
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                         {groupLabel}
                       </span>
                       <span className="h-px flex-1 bg-border" />

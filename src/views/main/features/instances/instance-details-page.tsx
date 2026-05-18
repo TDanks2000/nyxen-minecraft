@@ -152,9 +152,11 @@ export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
             (launch) => launch.instanceId !== runningLaunch.instanceId,
           ),
         );
-        toast.message(
-          result.stopped ? "Minecraft stopped" : "Minecraft is not running",
-        );
+        if (result.stopped) {
+          toast.success("Minecraft stopped");
+        } else {
+          toast.message("Minecraft is not running");
+        }
       } catch (e) {
         toast.error(
           e instanceof Error ? e.message : "Failed to stop Minecraft",

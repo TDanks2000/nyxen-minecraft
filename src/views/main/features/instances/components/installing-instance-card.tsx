@@ -50,7 +50,7 @@ export function InstallingInstanceCard({
         {imageUrl ? (
           <img
             alt=""
-            className="size-full object-cover opacity-80 blur-[1px] transition-transform duration-500 group-hover:scale-[1.03]"
+            className="size-full object-cover opacity-80 blur-[1px] transition-transform duration-300 group-hover:scale-[1.03]"
             src={imageUrl}
           />
         ) : (
@@ -70,7 +70,7 @@ export function InstallingInstanceCard({
         >
           {job.title}
         </CardTitle>
-        <CardDescription className={cn("truncate", compact && "text-[0.6rem]")}>
+        <CardDescription className={cn("truncate", compact && "text-[11px]")}>
           {job.activeLabel ?? job.subtitle}
         </CardDescription>
       </CardHeader>

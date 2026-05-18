@@ -118,11 +118,21 @@ export function Titlebar({
   useEffect(() => {
     syncWindowState().catch(console.error);
 
+    // Maximize/restore reliably triggers a window resize, so we can drop polling
+    // to a slow fallback (covers edge cases like OS-level shortcuts that may
+    // not always fire resize first).
+    const handleResize = () => {
+      syncWindowState().catch(console.error);
+    };
+    window.addEventListener("resize", handleResize);
     const interval = setInterval(() => {
       syncWindowState().catch(console.error);
-    }, 2_000);
+    }, 5_000);
 
-    return () => clearInterval(interval);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      clearInterval(interval);
+    };
   }, [syncWindowState]);
 
   useEffect(() => {
@@ -200,11 +210,8 @@ export function Titlebar({
         <div className="flex w-14 shrink-0 items-center gap-2.5 md:w-52">
           <TitlebarAppIcon />
           <div className="hidden flex-col leading-none md:flex">
-            <span className="font-black text-[0.68rem] text-foreground uppercase tracking-[0.18em]">
+            <span className="text-[11px] font-bold text-foreground uppercase tracking-[0.18em]">
               {APP_NAME}
-            </span>
-            <span className="mt-0.5 text-[0.52rem] text-muted-foreground uppercase tracking-wide">
-              Next Generation Minecraft Launcher
             </span>
           </div>
         </div>
@@ -215,7 +222,7 @@ export function Titlebar({
           <button
             type="button"
             onClick={() => setNewInstanceOpen(true)}
-            className="flex h-9 items-center gap-1.5 whitespace-nowrap rounded-md bg-primary px-2.5 font-semibold text-primary-foreground text-xs shadow-[0_0_14px_-4px_var(--primary)] transition-colors hover:bg-primary/90 sm:px-3.5"
+            className="flex h-9 items-center gap-1.5 whitespace-nowrap rounded-md bg-primary px-2.5 font-semibold text-primary-foreground text-xs shadow-[0_0_14px_-4px_var(--primary)] transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:px-3.5"
             aria-label="Add instance"
             title="Add instance"
           >
@@ -226,7 +233,7 @@ export function Titlebar({
           <button
             type="button"
             onClick={() => setContentBrowserOpen(true)}
-            className="flex h-9 items-center gap-1.5 whitespace-nowrap rounded-md border border-sidebar-border bg-background/55 px-2.5 font-semibold text-foreground text-xs transition-colors hover:bg-muted sm:px-3"
+            className="flex h-9 items-center gap-1.5 whitespace-nowrap rounded-md border border-sidebar-border bg-background/55 px-2.5 font-semibold text-foreground text-xs transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:px-3"
             aria-label="Browse content"
             title="Browse content"
           >
@@ -237,7 +244,7 @@ export function Titlebar({
           <button
             type="button"
             className={cn(
-              "flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground",
+              "flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
               isRightSidebarOpen && "bg-white/5 text-foreground",
             )}
             aria-label={rightSidebarToggleLabel}
@@ -254,7 +261,7 @@ export function Titlebar({
 
           <button
             type="button"
-            className="flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
+            className="flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
             aria-label="Settings"
             onClick={openSettings}
           >
@@ -285,7 +292,7 @@ export function Titlebar({
                   {activeProfile?.displayName ??
                     (profiles.loading ? "Loading..." : "No profile")}
                 </span>
-                <span className="truncate font-medium text-[0.6rem] text-primary">
+                <span className="truncate font-medium text-[11px] text-primary">
                   {profileStatusLabel}
                 </span>
               </div>
@@ -352,7 +359,7 @@ export function Titlebar({
 
           <button
             type="button"
-            className="flex size-6 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground"
+            className="flex size-6 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
             aria-label="Minimize"
             onClick={handleMinimize}
           >
@@ -360,7 +367,7 @@ export function Titlebar({
           </button>
           <button
             type="button"
-            className="flex size-6 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground"
+            className="flex size-6 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
             aria-label={isMaximized ? "Restore" : "Maximize"}
             onClick={() => {
               handleToggleMaximize().catch(console.error);
@@ -374,7 +381,7 @@ export function Titlebar({
           </button>
           <button
             type="button"
-            className="flex size-6 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-red-600 hover:text-white"
+            className="flex size-6 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-[#c42b1c] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
             aria-label="Close"
             onClick={handleClose}
           >

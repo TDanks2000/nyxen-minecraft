@@ -88,7 +88,9 @@ const getDownloadConcurrency = (options: DownloadOptions): number => {
 const getAssetConcurrency = (): number => {
   const setting = getAssetConcurrencySetting();
   if (setting !== null) return setting;
-  return isLowEndModeEnabled() ? LOW_END_ASSET_CONCURRENCY : DEFAULT_ASSET_CONCURRENCY;
+  return isLowEndModeEnabled()
+    ? LOW_END_ASSET_CONCURRENCY
+    : DEFAULT_ASSET_CONCURRENCY;
 };
 
 const getDownloadTimeoutMs = (options: DownloadOptions): number => {
@@ -378,7 +380,13 @@ const runModLoaderInstaller = async (
   }
 
   const proc = Bun.spawn(
-    [plan.java.executable, "-jar", installerPath, "--installClient", plan.directories.root],
+    [
+      plan.java.executable,
+      "-jar",
+      installerPath,
+      "--installClient",
+      plan.directories.root,
+    ],
     {
       cwd: plan.directories.root,
       stderr: "pipe",
