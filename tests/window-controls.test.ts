@@ -8,15 +8,29 @@ import {
   toggleMaximizeWindow,
 } from "../src/bun/window-controls";
 
+type Frame = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
 const createWindowStub = () => {
   let closed = false;
   let maximized = false;
   let minimized = false;
+  let frame: Frame = {
+    x: 100,
+    y: 100,
+    width: 1280,
+    height: 720,
+  };
 
   const window = {
     close: () => {
       closed = true;
     },
+    getFrame: () => frame,
     isMaximized: () => maximized,
     isMinimized: () => minimized,
     maximize: () => {
@@ -24,6 +38,14 @@ const createWindowStub = () => {
     },
     minimize: () => {
       minimized = true;
+    },
+    setFrame: (x: number, y: number, width: number, height: number) => {
+      frame = {
+        x,
+        y,
+        width,
+        height,
+      };
     },
     unmaximize: () => {
       maximized = false;
@@ -33,6 +55,9 @@ const createWindowStub = () => {
   return {
     get closed() {
       return closed;
+    },
+    get frame() {
+      return frame;
     },
     window,
   };
@@ -46,14 +71,17 @@ describe("window controls", () => {
 
     expect(getWindowState()).toEqual({ maximized: false, minimized: false });
     expect(minimizeWindow()).toEqual({ maximized: false, minimized: true });
+
     expect(toggleMaximizeWindow()).toEqual({
       maximized: true,
       minimized: true,
     });
+
     expect(toggleMaximizeWindow()).toEqual({
       maximized: false,
       minimized: true,
     });
+
     expect(closeWindow()).toBeNull();
     expect(stub.closed).toBe(true);
   });
