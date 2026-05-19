@@ -348,8 +348,18 @@ const toInstance = (row: InstanceRow): LauncherInstance => {
     versionId: row.versionId,
   };
 
-  writeInstanceMetadata(instance);
+  // Self-heal: only write the on-disk metadata if it's missing. Mutation paths
+  // call writeInstanceMetadata explicitly when fields actually change.
+  if (!existsSync(instance.metadataPath)) {
+    writeInstanceMetadata(instance);
+  }
 
+  return instance;
+};
+
+const persistInstance = (row: InstanceRow): LauncherInstance => {
+  const instance = toInstance(row);
+  writeInstanceMetadata(instance);
   return instance;
 };
 
@@ -463,7 +473,7 @@ export const createLauncherInstance = (
 
   db.insert(schema.launcherInstances).values(instance).run();
 
-  return toInstance(instance);
+  return persistInstance(instance);
 };
 
 export const updateLauncherInstance = (
@@ -550,7 +560,7 @@ export const updateLauncherInstance = (
     .where(eq(schema.launcherInstances.id, existing.id))
     .run();
 
-  return toInstance(updated);
+  return persistInstance(updated);
 };
 
 export const setLauncherInstanceModpack = ({
@@ -588,7 +598,7 @@ export const setLauncherInstanceModpack = ({
     .where(eq(schema.launcherInstances.id, existing.id))
     .run();
 
-  return toInstance(updated);
+  return persistInstance(updated);
 };
 
 export const deleteLauncherInstance = (

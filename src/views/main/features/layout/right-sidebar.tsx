@@ -110,20 +110,22 @@ export function RightSidebar({ open }: RightSidebarProps) {
   useEffect(() => {
     void refreshDownloadJobs().catch(() => undefined);
 
+    const intervalMs = hasActiveJobs ? 1_000 : open ? 4_000 : 8_000;
     const interval = setInterval(
       () => void refreshDownloadJobs().catch(() => undefined),
-      hasActiveJobs ? 1_000 : 4_000,
+      intervalMs,
     );
 
     return () => clearInterval(interval);
-  }, [hasActiveJobs, refreshDownloadJobs]);
+  }, [hasActiveJobs, open, refreshDownloadJobs]);
 
   return (
     <aside
       aria-hidden={!open}
       data-state={open ? "open" : "closed"}
+      style={{ top: "var(--titlebar-height)" }}
       className={cn(
-        "fixed top-12 right-0 bottom-0 z-40 flex w-72 shrink-0 flex-col overflow-x-hidden overflow-y-auto border-l border-sidebar-border bg-sidebar transition-[width,transform,opacity,box-shadow] duration-200 ease-out motion-reduce:transition-none 2xl:static 2xl:z-auto",
+        "fixed right-0 bottom-0 z-40 flex w-72 shrink-0 flex-col overflow-x-hidden overflow-y-auto border-l border-sidebar-border bg-sidebar transition-[width,transform,opacity,box-shadow] duration-200 ease-out motion-reduce:transition-none 2xl:static 2xl:z-auto",
         open
           ? "translate-x-0 opacity-100 shadow-xl 2xl:shadow-none"
           : "pointer-events-none translate-x-full opacity-0 2xl:w-0 2xl:translate-x-0 2xl:border-l-0",

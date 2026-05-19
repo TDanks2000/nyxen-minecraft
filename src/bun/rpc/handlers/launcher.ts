@@ -28,6 +28,8 @@ import { markLauncherInstanceLaunched } from "../../launcher/instances";
 import { persistLaunchAttempt } from "../../launcher/launch-diagnostics";
 import { createLaunchPlan } from "../../launcher/launch-plan";
 import { getLauncherProfileAuthSecrets } from "../../launcher/profiles";
+import { isKeepLauncherOpenAfterLaunchEnabled } from "../../settings/store";
+import { minimizeWindow } from "../../window-controls";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
@@ -221,6 +223,15 @@ export const launchInstance = async (
     startedAt: result.startedAt,
     status: "started",
   });
+
+  if (!isKeepLauncherOpenAfterLaunchEnabled()) {
+    try {
+      minimizeWindow();
+    } catch {
+      // Minimizing is a courtesy; never fail a launch because of it.
+    }
+  }
+
   return result;
 };
 

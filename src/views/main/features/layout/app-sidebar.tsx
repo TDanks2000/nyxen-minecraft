@@ -10,6 +10,16 @@ import {
 } from "lucide-react";
 import { type ComponentType, type SVGProps, useMemo } from "react";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/views/main/components/ui/alert-dialog";
+import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -18,7 +28,7 @@ import { InstanceIcon } from "@/views/main/features/instances/components/instanc
 import { InstanceQuickPlayItem } from "@/views/main/features/instances/components/instance-card";
 import { LOADER_LABELS } from "@/views/main/features/instances/components/instance-format";
 import { LaunchPlanSheet } from "@/views/main/features/instances/components/launch-plan-sheet";
-import { useLaunchPlan } from "@/views/main/features/instances/hooks/use-launch-plan";
+import { usePlayInstance } from "@/views/main/features/instances/hooks/use-play-instance";
 import { useInstances } from "@/views/main/hooks/use-instances";
 import { useIsMobile } from "@/views/main/hooks/use-mobile";
 import { cn } from "@/views/main/lib/utils";
@@ -68,7 +78,7 @@ const NAV_ITEMS: Array<NavItem> = [
 export function AppSidebar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const instancesHook = useInstances();
-  const launchPlan = useLaunchPlan();
+  const play = usePlayInstance({ onInstancesChanged: instancesHook.refresh });
   const isCollapsed = useIsMobile();
 
   const quickPlayInstances = useMemo(() => {
@@ -169,11 +179,9 @@ export function AppSidebar() {
             <InstanceQuickPlayItem
               key={item.id}
               instance={item}
-              launchDisabled={launchPlan.loadingInstanceId !== null}
-              launchLoading={launchPlan.loadingInstanceId === item.id}
-              onPlay={() => {
-                void launchPlan.createLaunchPlan(item.id);
-              }}
+              launchDisabled={play.playActionState !== "idle"}
+              launchLoading={play.activeInstanceId === item.id}
+              onPlay={() => play.playInstance(item.id)}
             />
           ))
         )}
@@ -208,10 +216,35 @@ export function AppSidebar() {
         </div>
       </div>
       <LaunchPlanSheet
-        open={launchPlan.sheetOpen}
-        onOpenChange={launchPlan.setSheetOpen}
-        plan={launchPlan.activePlan}
+        open={play.launchPlan.sheetOpen}
+        onOpenChange={play.launchPlan.setSheetOpen}
+        plan={play.launchPlan.activePlan}
       />
+      <AlertDialog
+        open={play.missingArtifactsDialogOpen}
+        onOpenChange={play.closeMissingArtifactsDialog}
+      >
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Download missing files?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {play.pendingMissingPlan
+                ? `${play.pendingMissingPlan.missingArtifacts.length} required file${
+                    play.pendingMissingPlan.missingArtifacts.length === 1
+                      ? ""
+                      : "s"
+                  } missing. Download now and start Minecraft?`
+                : "Required files are missing. Download now and start Minecraft?"}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>No</AlertDialogCancel>
+            <AlertDialogAction onClick={play.downloadMissingArtifactsAndLaunch}>
+              Yes
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </aside>
   );
 }

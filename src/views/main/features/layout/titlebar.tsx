@@ -206,7 +206,10 @@ export function Titlebar({
 
   return (
     <>
-      <div className="electrobun-webkit-app-region-drag relative z-9999 flex h-12 shrink-0 select-none items-center border-sidebar-border border-b bg-sidebar px-2 sm:px-4">
+      <div
+        className="electrobun-webkit-app-region-drag relative z-9999 flex shrink-0 select-none items-center border-sidebar-border border-b bg-sidebar px-2 sm:px-4"
+        style={{ height: "var(--titlebar-height)" }}
+      >
         <div className="flex w-14 shrink-0 items-center gap-2.5 md:w-52">
           <TitlebarAppIcon />
           <div className="hidden flex-col leading-none md:flex">

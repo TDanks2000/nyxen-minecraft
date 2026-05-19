@@ -83,7 +83,7 @@ export const useDownloadQueueStore = create<DownloadQueueStore>((set, get) => ({
   },
   waitForDownloadJob: async (jobId, options = {}) => {
     const pollMs = Math.max(250, options.pollMs ?? 750);
-    const timeoutMs = Math.max(1_000, options.timeoutMs ?? 5 * 60_000);
+    const timeoutMs = Math.max(1_000, options.timeoutMs ?? 30 * 60_000);
     const startedAt = Date.now();
 
     for (;;) {

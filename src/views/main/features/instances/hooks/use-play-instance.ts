@@ -141,23 +141,30 @@ export function usePlayInstance({
       void (async () => {
         setPlayActionState("preparing");
 
-        const plan = await launchPlan.createLaunchPlan(instanceId, {
-          openSheet: false,
-        });
+        try {
+          const plan = await launchPlan.createLaunchPlan(instanceId, {
+            openSheet: false,
+          });
 
-        if (!plan) {
+          if (!plan) {
+            resetState();
+            return;
+          }
+
+          if (plan.missingArtifacts.length > 0) {
+            setPendingMissingPlan(plan);
+            setMissingArtifactsDialogOpen(true);
+            setPlayActionState("idle");
+            return;
+          }
+
+          await launchInstance(plan.instance.id);
+        } catch (error) {
+          toast.error(
+            error instanceof Error ? error.message : "Failed to prepare launch",
+          );
           resetState();
-          return;
         }
-
-        if (plan.missingArtifacts.length > 0) {
-          setPendingMissingPlan(plan);
-          setMissingArtifactsDialogOpen(true);
-          setPlayActionState("idle");
-          return;
-        }
-
-        await launchInstance(plan.instance.id);
       })();
     },
     [playActionState, launchPlan.createLaunchPlan, launchInstance, resetState],

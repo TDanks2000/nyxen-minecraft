@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import {
   FolderOpenIcon,
+  Loader2Icon,
   MoreHorizontalIcon,
   PlayIcon,
   PlusIcon,
@@ -23,21 +24,34 @@ import {
 } from "@/views/main/features/instances/components/instance-format";
 import { openLocalPath } from "@/views/main/lib/open-local-path";
 
+type HeroLaunchState = "idle" | "preparing" | "downloading" | "launching";
+
 type DashboardHeroProps = {
   instance: LauncherInstance | null;
   launchDisabled: boolean;
+  launchState?: HeroLaunchState;
   loading: boolean;
   onCreateInstance: () => void;
   onPlayInstance: (instanceId: string) => void;
 };
 
+const HERO_LAUNCH_LABELS: Record<HeroLaunchState, string> = {
+  idle: "Play Now",
+  preparing: "Preparing…",
+  downloading: "Downloading…",
+  launching: "Launching…",
+};
+
 export function DashboardHero({
   instance,
   launchDisabled,
+  launchState = "idle",
   loading,
   onCreateInstance,
   onPlayInstance,
 }: DashboardHeroProps) {
+  const launchLoading = launchState !== "idle";
+  const launchLabel = HERO_LAUNCH_LABELS[launchState];
   return (
     <section className="relative min-h-[360px] overflow-hidden border-b border-border">
       <HeroBackground />
@@ -90,8 +104,18 @@ export function DashboardHero({
                   size="lg"
                   className="shadow-[0_6px_36px_-10px_var(--primary)]"
                 >
-                  <PlayIcon data-icon="inline-start" className="fill-current" />
-                  Play Now
+                  {launchLoading ? (
+                    <Loader2Icon
+                      data-icon="inline-start"
+                      className="animate-spin"
+                    />
+                  ) : (
+                    <PlayIcon
+                      data-icon="inline-start"
+                      className="fill-current"
+                    />
+                  )}
+                  {launchLabel}
                 </Button>
 
                 <Button

@@ -731,8 +731,9 @@ export function ContentBrowserDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="!top-12 !right-2 !bottom-2 !left-2 !h-auto !w-auto !max-w-none !translate-x-0 !translate-y-0 grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden rounded-lg bg-background p-0 text-foreground sm:!right-3 sm:!bottom-3 sm:!left-3 sm:!max-w-none"
+        className="!right-2 !bottom-2 !left-2 !h-auto !w-auto !max-w-none !translate-x-0 !translate-y-0 grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden rounded-lg bg-background p-0 text-foreground sm:!right-3 sm:!bottom-3 sm:!left-3 sm:!max-w-none"
         showCloseButton={false}
+        style={{ top: "var(--titlebar-height)" }}
       >
         <ContentBrowserHeader
           activeInstallActionsConfigured={activeInstallActionsConfigured}

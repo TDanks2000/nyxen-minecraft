@@ -14,6 +14,8 @@ import {
 
 export const JAVA_MANAGEMENT_SETTING_KEY = "launcher.javaManagement";
 export const LOW_END_MODE_SETTING_KEY = "launcher.lowEndMode";
+export const KEEP_OPEN_AFTER_LAUNCH_SETTING_KEY =
+  "launcher.keepOpenAfterLaunch";
 export const DOWNLOAD_CONCURRENCY_SETTING_KEY = "launcher.downloadConcurrency";
 export const ASSET_CONCURRENCY_SETTING_KEY = "launcher.assetConcurrency";
 export const DOWNLOAD_TIMEOUT_SETTING_KEY = "launcher.downloadTimeoutSeconds";
@@ -23,7 +25,7 @@ const defaultSettings: AppSettings = {
   "app.theme": "system",
   [JAVA_MANAGEMENT_SETTING_KEY]: "auto",
   [LOW_END_MODE_SETTING_KEY]: false,
-  "launcher.keepOpenAfterLaunch": false,
+  [KEEP_OPEN_AFTER_LAUNCH_SETTING_KEY]: true,
   "launcher.showSnapshots": false,
   [DOWNLOAD_CONCURRENCY_SETTING_KEY]: null,
   [ASSET_CONCURRENCY_SETTING_KEY]: null,
@@ -113,6 +115,13 @@ export const isLowEndModeEnabled = (): boolean => {
   const settings = readSettingsFile();
 
   return settings[LOW_END_MODE_SETTING_KEY] === true;
+};
+
+export const isKeepLauncherOpenAfterLaunchEnabled = (): boolean => {
+  const settings = readSettingsFile();
+  const value = settings[KEEP_OPEN_AFTER_LAUNCH_SETTING_KEY];
+
+  return typeof value === "boolean" ? value : true;
 };
 
 export const getSettingsStatus = (): SettingsStatus => {

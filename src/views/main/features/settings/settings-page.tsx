@@ -78,7 +78,10 @@ export function SettingsPage() {
     settings?.["launcher.javaManagement"] === "app-controlled"
       ? "app-controlled"
       : "auto";
-  const keepOpen = !!settings?.["launcher.keepOpenAfterLaunch"];
+  const keepOpen =
+    settings?.["launcher.keepOpenAfterLaunch"] === undefined
+      ? true
+      : !!settings["launcher.keepOpenAfterLaunch"];
   const lowEndMode = !!settings?.["launcher.lowEndMode"];
   const showSnapshots = !!settings?.["launcher.showSnapshots"];
 
@@ -371,7 +374,7 @@ export function SettingsPage() {
                 <>
                   <SettingRow
                     label="Keep launcher open"
-                    description="Don't close the launcher when a game starts"
+                    description="Keep the launcher visible after starting Minecraft. Disable to minimize it on launch."
                   >
                     <Switch
                       checked={keepOpen}

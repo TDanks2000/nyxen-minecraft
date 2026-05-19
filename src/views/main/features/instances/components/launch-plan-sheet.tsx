@@ -1,3 +1,4 @@
+import { useNavigate } from "@tanstack/react-router";
 import {
   AlertCircleIcon,
   CheckCircle2Icon,
@@ -10,6 +11,7 @@ import {
   PlayIcon,
   TriangleAlertIcon,
   UserIcon,
+  UserPlusIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -126,6 +128,7 @@ export function LaunchPlanSheet({
   onOpenChange,
   plan,
 }: Props) {
+  const navigate = useNavigate();
   const [launchState, setLaunchState] = useState<LaunchState>("idle");
   const [failedArtifacts, setFailedArtifacts] = useState<
     Array<{ error: string; id: string }>
@@ -245,8 +248,8 @@ export function LaunchPlanSheet({
         side="right"
         className="flex w-[440px] flex-col overflow-hidden p-0"
         style={{
-          height: "calc(100vh - 3rem)",
-          top: "3rem",
+          height: "calc(100vh - var(--titlebar-height))",
+          top: "var(--titlebar-height)",
         }}
       >
         {/* Header */}
@@ -303,9 +306,23 @@ export function LaunchPlanSheet({
                     </p>
                   )}
                   {!plan.profile && (
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Add a verified Microsoft profile before launching.
-                    </p>
+                    <>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Add a verified Microsoft profile before launching.
+                      </p>
+                      <Button
+                        className="mt-2"
+                        onClick={() => {
+                          onOpenChange(false);
+                          void navigate({ to: "/profiles" });
+                        }}
+                        size="xs"
+                        variant="outline"
+                      >
+                        <UserPlusIcon data-icon="inline-start" />
+                        Go to Profiles
+                      </Button>
+                    </>
                   )}
                 </div>
               </div>

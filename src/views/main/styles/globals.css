@@ -6,6 +6,7 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  --titlebar-height: 3rem;
   --background: oklch(0.985 0.006 105);
   --foreground: oklch(0.15 0.018 126);
   --card: oklch(0.99 0.007 105);
