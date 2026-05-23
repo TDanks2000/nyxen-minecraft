@@ -13,7 +13,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { gzipSync } from "node:zlib";
 import type {
@@ -1865,6 +1865,7 @@ describe("launcher backend", () => {
     const saved = readFileSync(result.path, "utf8");
 
     expect(existsSync(result.path)).toBe(true);
+    expect(basename(result.path).length).toBeLessThanOrEqual(35);
     expect(result.bundle.redacted).toBe(true);
     expect(result.bundle.redactions.count).toBeGreaterThanOrEqual(3);
     expect(result.bundle.redactions.kinds).toEqual(

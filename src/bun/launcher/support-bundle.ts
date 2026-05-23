@@ -1,4 +1,4 @@
-import { existsSync, renameSync, unlinkSync } from "node:fs";
+import { existsSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type {
@@ -28,6 +28,9 @@ const defaultSupportBundleLogs = 2;
 const maxSupportBundleLogLines = 200;
 const defaultSupportBundleLogLines = 80;
 const maxSupportBundleLogBytes = 64 * 1024;
+
+const createShortFileId = (): string =>
+  crypto.randomUUID().replaceAll("-", "").slice(0, 12);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
@@ -138,6 +141,9 @@ const createSupportBundleRedactor = () => {
   };
 };
 
+const compactIsoTimestamp = (value: string): string =>
+  value.replaceAll(/\D/g, "");
+
 const getInstanceOrThrow = (instanceId: string): LauncherInstance => {
   const instance = getLauncherInstance(instanceId);
 
@@ -245,17 +251,22 @@ export const exportInstanceSupportBundle = async ({
   };
 
   const directory = join(instance.folders.metadata, "support-bundles");
-  const safeCreatedAt = createdAt.replaceAll(":", "-");
+  const compactCreatedAt = compactIsoTimestamp(createdAt);
   const path = join(
     directory,
-    `${safeCreatedAt}-support-${crypto.randomUUID()}.json`,
+    `${compactCreatedAt}-${createShortFileId()}.json`,
   );
-  const tempPath = `${path}.write-${process.pid}-${crypto.randomUUID()}.tmp`;
+  const tempPath = join(
+    directory,
+    `.${compactCreatedAt}-${process.pid}-${createShortFileId()}.tmp`,
+  );
 
   ensurePrivateDirectory(dirname(path));
 
   try {
-    await Bun.write(tempPath, `${JSON.stringify(bundle, null, 2)}\n`);
+    writeFileSync(tempPath, `${JSON.stringify(bundle, null, 2)}\n`, {
+      flag: "wx",
+    });
     ensurePrivateFile(tempPath);
     renameSync(tempPath, path);
     ensurePrivateFile(path);
