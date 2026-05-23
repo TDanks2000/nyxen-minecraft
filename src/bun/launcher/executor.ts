@@ -1,7 +1,7 @@
-import { type ChildProcess, spawn } from "node:child_process";
-import { createWriteStream, mkdirSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { release } from "node:os";
 import { join } from "node:path";
+import type { Subprocess } from "bun";
 import type {
   LaunchInstanceResult,
   LaunchPlan,
@@ -141,7 +141,7 @@ export type LaunchOptions = {
 };
 
 type RunningLaunchEntry = RunningLaunch & {
-  child: ChildProcess;
+  child: Subprocess<"ignore", "pipe", "pipe">;
 };
 
 const runningLaunches = new Map<string, RunningLaunchEntry>();
@@ -197,7 +197,15 @@ export const stopMinecraftLaunch = (
     };
   }
 
-  const stopped = launch.child.kill("SIGTERM");
+  let stopped = false;
+
+  try {
+    launch.child.kill("SIGTERM");
+    stopped = true;
+  } catch {
+    stopped = false;
+  }
+
   runningLaunches.delete(normalizedInstanceId);
 
   return {
@@ -324,9 +332,9 @@ const createLauncherProcessLog = (plan: LaunchPlan) => {
     plan.directories.instanceLogs,
     `nyxen-launch-${timestamp}.log`,
   );
-  const stream = createWriteStream(path, { flags: "wx", mode: 0o600 });
+  const writer = Bun.file(path).writer();
 
-  stream.write(
+  writer.write(
     [
       `Nyxen launch log for ${plan.instance.name}`,
       `Instance: ${plan.instance.id}`,
@@ -337,7 +345,22 @@ const createLauncherProcessLog = (plan: LaunchPlan) => {
     ].join("\n"),
   );
 
-  return { path, stream };
+  return { path, writer };
+};
+
+const pipeStreamToLog = async (
+  stream: ReadableStream<Uint8Array> | undefined | null,
+  appendToLog: (chunk: Uint8Array) => void,
+): Promise<void> => {
+  if (!stream) return;
+
+  try {
+    for await (const chunk of stream as unknown as AsyncIterable<Uint8Array>) {
+      appendToLog(chunk);
+    }
+  } catch {
+    // The reader may close abruptly when the process exits; ignore.
+  }
 };
 
 export const launchMinecraft = (
@@ -360,29 +383,42 @@ export const launchMinecraft = (
   const { executable, args } = buildCommand(plan, options);
   const processLog = createLauncherProcessLog(plan);
   let processLogClosed = false;
-  const writeProcessLog = (chunk: Buffer | string): void => {
-    if (!processLogClosed && processLog.stream.writable) {
-      processLog.stream.write(chunk);
+  const writeProcessLog = (chunk: Uint8Array | string): void => {
+    if (processLogClosed) return;
+    try {
+      processLog.writer.write(chunk);
+    } catch {
+      processLogClosed = true;
     }
   };
   const endProcessLog = (message = ""): void => {
-    if (processLogClosed) {
-      return;
-    }
+    if (processLogClosed) return;
 
     processLogClosed = true;
-    processLog.stream.end(message);
+    try {
+      if (message) processLog.writer.write(message);
+    } catch {
+      // Ignore — the file may already be closed.
+    }
+    void Promise.resolve(processLog.writer.end()).catch(() => {
+      // Closing the writer may race with the process exit; safe to ignore.
+    });
   };
-
-  let child: ChildProcess;
 
   extractNatives(plan.nativeArtifactPaths, plan.directories.natives);
 
+  let child: Subprocess<"ignore", "pipe", "pipe">;
+
   try {
-    child = spawn(executable, args, {
+    child = Bun.spawn({
+      cmd: [executable, ...args],
       cwd: plan.directories.game,
+      // Detach the Minecraft process from the launcher so closing the
+      // launcher does not terminate the game.
       detached: true,
-      stdio: ["ignore", "pipe", "pipe"],
+      stderr: "pipe",
+      stdin: "ignore",
+      stdout: "pipe",
     });
   } catch (error) {
     endProcessLog();
@@ -393,16 +429,6 @@ export const launchMinecraft = (
     );
   }
 
-  child.stdout?.on("data", writeProcessLog);
-  child.stderr?.on("data", writeProcessLog);
-
-  child.once("error", () => {
-    endProcessLog("\nJava process failed to start.\n");
-    if (runningLaunches.get(plan.instance.id)?.child === child) {
-      runningLaunches.delete(plan.instance.id);
-    }
-  });
-
   if (!child.pid) {
     endProcessLog();
     throw new Error(
@@ -412,6 +438,9 @@ export const launchMinecraft = (
 
   child.unref();
 
+  void pipeStreamToLog(child.stdout, writeProcessLog);
+  void pipeStreamToLog(child.stderr, writeProcessLog);
+
   const launch: RunningLaunchEntry = {
     child,
     instanceId: plan.instance.id,
@@ -420,16 +449,20 @@ export const launchMinecraft = (
   };
 
   runningLaunches.set(plan.instance.id, launch);
-  child.once("exit", (code, signal) => {
-    endProcessLog(
-      `\nJava process exited with code ${code ?? "null"} and signal ${
-        signal ?? "null"
-      }.\n`,
-    );
-    if (runningLaunches.get(plan.instance.id)?.child === child) {
-      runningLaunches.delete(plan.instance.id);
-    }
-  });
+
+  child.exited
+    .then((code) => {
+      endProcessLog(`\nJava process exited with code ${code ?? "null"}.\n`);
+      if (runningLaunches.get(plan.instance.id)?.child === child) {
+        runningLaunches.delete(plan.instance.id);
+      }
+    })
+    .catch(() => {
+      endProcessLog("\nJava process failed to start.\n");
+      if (runningLaunches.get(plan.instance.id)?.child === child) {
+        runningLaunches.delete(plan.instance.id);
+      }
+    });
 
   return {
     instanceId: launch.instanceId,

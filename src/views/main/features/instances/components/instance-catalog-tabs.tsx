@@ -3,7 +3,6 @@ import {
   CameraIcon,
   GaugeIcon,
   HardDriveIcon,
-  MoreHorizontalIcon,
   SearchIcon,
 } from "lucide-react";
 import type {
@@ -12,29 +11,16 @@ import type {
   LauncherInstance,
 } from "@/shared/types";
 import { Button } from "@/views/main/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/views/main/components/ui/dropdown-menu";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/views/main/components/ui/tabs";
 import { InstanceCatalogFileListPanel } from "@/views/main/features/instances/components/instance-catalog-file-list-panel";
-import {
-  INSTANCE_TAB_ITEMS,
-  PRIMARY_INSTANCE_TAB_VALUES,
-} from "@/views/main/features/instances/components/instance-catalog-options";
+import { INSTANCE_TAB_ITEMS } from "@/views/main/features/instances/components/instance-catalog-options";
+import type { InstanceTabValue } from "@/views/main/features/instances/components/instance-catalog-types";
 import { InstanceLogsPanel } from "@/views/main/features/instances/components/instance-logs-panel";
 import { InstanceModpackPanel } from "@/views/main/features/instances/components/instance-modpack-panel";
 import { InstanceModsPanel } from "@/views/main/features/instances/components/instance-mods-panel";
 import { InstanceServerManagerPanel } from "@/views/main/features/instances/components/instance-server-manager-panel";
 import { InstanceSettingsPanel } from "@/views/main/features/instances/components/instance-settings-panel";
 import { InstanceVersionsPanel } from "@/views/main/features/instances/components/instance-versions-panel";
+import { cn } from "@/views/main/lib/utils";
 
 type InstanceCatalogTabsProps = {
   activeTab: string;
@@ -104,15 +90,24 @@ export function InstanceCatalogTabs({
   )
     ? activeTab
     : "mods";
-  const primaryTabs = INSTANCE_TAB_ITEMS.filter((item) =>
-    PRIMARY_INSTANCE_TAB_VALUES.includes(item.value),
-  );
-  const moreTabs = INSTANCE_TAB_ITEMS.filter(
-    (item) => !PRIMARY_INSTANCE_TAB_VALUES.includes(item.value),
-  );
-  const activeMoreTab = moreTabs.find(
-    (item) => item.value === activePanelValue,
-  );
+
+  const getTabCount = (value: InstanceTabValue): number | null => {
+    switch (value) {
+      case "mods":
+        return enabledModsCount > 0 ? enabledModsCount : null;
+      case "resource-packs":
+        return resourcePacks.length > 0 ? resourcePacks.length : null;
+      case "shader-packs":
+        return shaderPacks.length > 0 ? shaderPacks.length : null;
+      case "worlds":
+        return worlds.length > 0 ? worlds.length : null;
+      case "screenshots":
+        return screenshots.length > 0 ? screenshots.length : null;
+      default:
+        return null;
+    }
+  };
+
   const activePanelContent = (() => {
     switch (activePanelValue) {
       case "servers":
@@ -212,88 +207,76 @@ export function InstanceCatalogTabs({
             instance={instance}
             latestLog={latestLog}
             mods={mods}
+            modpackUpdateAvailable={modpackUpdateAvailable}
             mutating={mutating}
             onRefreshContent={onRefreshContent}
             onSetActiveTab={onSetActiveTab}
             onSetAllModsEnabled={onSetAllModsEnabled}
             onToggleMod={onToggleMod}
+            onUpdateModpack={onUpdateModpack}
+            updatingModpack={updatingModpack}
           />
         );
     }
   })();
 
   return (
-    <Tabs
-      className="min-w-0 flex-col gap-3"
-      onValueChange={onSetActiveTab}
-      value={activeTab}
-    >
-      <div className="flex min-w-0 flex-col gap-2 border-border border-b pb-2 sm:flex-row sm:items-end sm:justify-between">
-        <div className="min-w-0 overflow-x-auto">
-          <TabsList
-            className="h-10 w-max gap-3 bg-transparent p-0"
-            variant="line"
-          >
-            {primaryTabs.map((item) => {
+    <div className="flex min-w-0 flex-col gap-4">
+      {/* Tab bar — all tabs visible, horizontally scrollable */}
+      <div className="flex min-w-0 items-end gap-2 border-b border-border px-1">
+        <div className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden">
+          <div className="flex">
+            {INSTANCE_TAB_ITEMS.map((item) => {
               const Icon = item.icon;
+              const isActive = activePanelValue === item.value;
+              const count = getTabCount(item.value as InstanceTabValue);
 
               return (
-                <TabsTrigger
-                  className="h-10 px-3 text-xs"
+                <button
+                  type="button"
                   key={item.value}
-                  value={item.value}
+                  onClick={() => onSetActiveTab(item.value)}
+                  className={cn(
+                    "relative flex shrink-0 items-center gap-1.5 whitespace-nowrap border-none bg-transparent px-3.5 py-3 text-[12.5px] transition-colors focus-visible:outline-none",
+                    isActive
+                      ? "font-semibold text-primary"
+                      : "font-medium text-muted-foreground hover:text-foreground",
+                  )}
                 >
-                  <Icon />
+                  <Icon className="size-3.5 shrink-0" />
                   {item.label}
-                </TabsTrigger>
+                  {count !== null ? (
+                    <span
+                      className={cn(
+                        "rounded-[3px] px-[5px] py-px font-mono text-[10px] font-semibold tabular-nums",
+                        isActive
+                          ? "bg-[oklch(0.25_0.08_145)] text-primary"
+                          : "bg-muted text-muted-foreground",
+                      )}
+                    >
+                      {count}
+                    </span>
+                  ) : null}
+                  {isActive ? (
+                    <span className="absolute bottom-[-1px] left-2 right-2 h-0.5 rounded-sm bg-primary" />
+                  ) : null}
+                </button>
               );
             })}
-          </TabsList>
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button
-                  className="w-full sm:w-auto"
-                  size="sm"
-                  variant={activeMoreTab ? "secondary" : "outline"}
-                />
-              }
-            >
-              <MoreHorizontalIcon data-icon="inline-start" />
-              {activeMoreTab?.label ?? "More"}
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {moreTabs.map((item) => {
-                const Icon = item.icon;
 
-                return (
-                  <DropdownMenuItem
-                    key={item.value}
-                    onClick={() => onSetActiveTab(item.value)}
-                  >
-                    <Icon />
-                    {item.label}
-                  </DropdownMenuItem>
-                );
-              })}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <Button
-            className="w-full sm:w-auto"
-            onClick={onBrowseContent}
-            size="sm"
-          >
+        {/* Browse Content — outside the scroll container */}
+        <div className="mb-1.5 shrink-0">
+          <Button size="sm" onClick={onBrowseContent}>
             <SearchIcon data-icon="inline-start" />
             Browse Content
           </Button>
         </div>
       </div>
 
-      <TabsContent className="w-full min-w-0" value={activePanelValue}>
-        {activePanelContent}
-      </TabsContent>
-    </Tabs>
+      {/* Panel content */}
+      <div className="w-full min-w-0">{activePanelContent}</div>
+    </div>
   );
 }

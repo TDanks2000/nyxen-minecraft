@@ -1,5 +1,3 @@
-import { spawnSync } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
 import {
   chmodSync,
   existsSync,
@@ -140,6 +138,12 @@ const parseJavaMajorVersion = (version: string): number | null => {
   return modernMatch?.[1] ? Number.parseInt(modernMatch[1], 10) : null;
 };
 
+const formatTimeoutSeconds = (timeoutMs: number): string => {
+  const seconds = Math.max(1, Math.ceil(timeoutMs / 1000));
+
+  return `${seconds} second${seconds === 1 ? "" : "s"}`;
+};
+
 export const parseJavaRuntimeVersion = (
   output: string,
 ): Pick<DetectedJavaRuntime, "majorVersion" | "version"> | null => {
@@ -160,18 +164,59 @@ const runJavaVersionProbe = (
   executable: string,
   timeoutMs: number,
 ): JavaVersionProbeResult => {
-  const result = spawnSync(executable, ["-version"], {
-    encoding: "utf8",
-    timeout: timeoutMs,
-    windowsHide: true,
-  });
+  try {
+    const result = Bun.spawnSync({
+      cmd: [executable, "-version"],
+      killSignal: "SIGKILL",
+      maxBuffer: 256 * 1024,
+      stderr: "pipe",
+      stdout: "pipe",
+      timeout: Math.max(1, timeoutMs),
+      windowsHide: true,
+    });
+    const stdout = result.stdout?.toString("utf8") ?? "";
+    const stderr = result.stderr?.toString("utf8") ?? "";
 
-  return {
-    error: result.error ? { message: result.error.message } : null,
-    status: result.status,
-    stderr: result.stderr ?? "",
-    stdout: result.stdout ?? "",
-  };
+    if (result.exitedDueToTimeout) {
+      return {
+        error: {
+          message: `Java version probe timed out after ${formatTimeoutSeconds(
+            timeoutMs,
+          )}.`,
+        },
+        status: null,
+        stderr,
+        stdout,
+      };
+    }
+
+    if (result.exitedDueToMaxBuffer) {
+      return {
+        error: {
+          message: "Java version probe produced too much output.",
+        },
+        status: result.exitCode ?? null,
+        stderr,
+        stdout,
+      };
+    }
+
+    return {
+      error: null,
+      status: result.exitCode ?? null,
+      stderr,
+      stdout,
+    };
+  } catch (error) {
+    return {
+      error: {
+        message: error instanceof Error ? error.message : String(error),
+      },
+      status: null,
+      stderr: "",
+      stdout: "",
+    };
+  }
 };
 
 export const detectInstalledJavaRuntime = (
@@ -319,7 +364,10 @@ const cacheNameForUrl = (url: string): string => {
     return "java-runtime-all.json";
   }
 
-  const hash = createHash("sha1").update(url).digest("hex").slice(0, 12);
+  const hash = new Bun.CryptoHasher("sha1")
+    .update(url)
+    .digest("hex")
+    .slice(0, 12);
 
   return `java-runtime-all-${hash}.json`;
 };
@@ -385,7 +433,7 @@ const readUsableCache = (
 const writeCachedJson = (path: string, value: unknown): void => {
   ensurePrivateDirectory(dirname(path));
 
-  const tempPath = `${path}.write-${process.pid}-${randomUUID()}.tmp`;
+  const tempPath = `${path}.write-${process.pid}-${crypto.randomUUID()}.tmp`;
 
   try {
     writeFileSync(tempPath, `${JSON.stringify(value, null, 2)}\n`, {

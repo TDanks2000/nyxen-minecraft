@@ -1,7 +1,15 @@
-import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import type {
   AppSettings,
+  AppTheme,
   JavaManagementMode,
   SettingsStatus,
   SettingValue,
@@ -16,16 +24,28 @@ export const JAVA_MANAGEMENT_SETTING_KEY = "launcher.javaManagement";
 export const LOW_END_MODE_SETTING_KEY = "launcher.lowEndMode";
 export const KEEP_OPEN_AFTER_LAUNCH_SETTING_KEY =
   "launcher.keepOpenAfterLaunch";
+export const ON_LAUNCH_SETTING_KEY = "launcher.onLaunch";
 export const DOWNLOAD_CONCURRENCY_SETTING_KEY = "launcher.downloadConcurrency";
 export const ASSET_CONCURRENCY_SETTING_KEY = "launcher.assetConcurrency";
 export const DOWNLOAD_TIMEOUT_SETTING_KEY = "launcher.downloadTimeoutSeconds";
 export const DOWNLOAD_RETRIES_SETTING_KEY = "launcher.downloadRetries";
+export const APP_THEME_SETTING_KEY = "app.theme";
+
+const appThemes = new Set<AppTheme>([
+  "dark",
+  "midnight",
+  "forest",
+  "amber",
+  "light",
+  "system",
+]);
 
 const defaultSettings: AppSettings = {
-  "app.theme": "system",
+  [APP_THEME_SETTING_KEY]: "dark",
   [JAVA_MANAGEMENT_SETTING_KEY]: "auto",
   [LOW_END_MODE_SETTING_KEY]: false,
   [KEEP_OPEN_AFTER_LAUNCH_SETTING_KEY]: true,
+  [ON_LAUNCH_SETTING_KEY]: "keep",
   "launcher.showSnapshots": false,
   [DOWNLOAD_CONCURRENCY_SETTING_KEY]: null,
   [ASSET_CONCURRENCY_SETTING_KEY]: null,
@@ -37,6 +57,9 @@ export const isJavaManagementMode = (
   value: unknown,
 ): value is JavaManagementMode =>
   value === "auto" || value === "app-controlled";
+
+export const isAppTheme = (value: unknown): value is AppTheme =>
+  typeof value === "string" && appThemes.has(value as AppTheme);
 
 export const settingsPath = join(getDataRoot(), "settings.json");
 
@@ -61,6 +84,10 @@ const normalizeSettings = (value: unknown): AppSettings => {
 
   const normalized = { ...defaultSettings, ...settings };
 
+  if (!isAppTheme(normalized[APP_THEME_SETTING_KEY])) {
+    normalized[APP_THEME_SETTING_KEY] = "dark";
+  }
+
   if (!isJavaManagementMode(normalized[JAVA_MANAGEMENT_SETTING_KEY])) {
     normalized[JAVA_MANAGEMENT_SETTING_KEY] = "auto";
   }
@@ -76,8 +103,22 @@ let settingsCache: AppSettings | null = null;
 
 const writeSettingsFile = (settings: AppSettings): void => {
   ensurePrivateDirectory(dirname(settingsPath));
-  writeFileSync(settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
-  ensurePrivateFile(settingsPath);
+
+  const tempPath = `${settingsPath}.write-${process.pid}-${crypto.randomUUID()}.tmp`;
+
+  try {
+    writeFileSync(tempPath, `${JSON.stringify(settings, null, 2)}\n`, {
+      flag: "wx",
+    });
+    ensurePrivateFile(tempPath);
+    renameSync(tempPath, settingsPath);
+    ensurePrivateFile(settingsPath);
+  } finally {
+    if (existsSync(tempPath)) {
+      unlinkSync(tempPath);
+    }
+  }
+
   settingsCache = settings;
 };
 
@@ -119,8 +160,13 @@ export const isLowEndModeEnabled = (): boolean => {
 
 export const isKeepLauncherOpenAfterLaunchEnabled = (): boolean => {
   const settings = readSettingsFile();
-  const value = settings[KEEP_OPEN_AFTER_LAUNCH_SETTING_KEY];
 
+  const onLaunch = settings[ON_LAUNCH_SETTING_KEY];
+  if (typeof onLaunch === "string") {
+    return onLaunch === "keep";
+  }
+
+  const value = settings[KEEP_OPEN_AFTER_LAUNCH_SETTING_KEY];
   return typeof value === "boolean" ? value : true;
 };
 
@@ -175,6 +221,12 @@ export const updateSetting = ({
     !isJavaManagementMode(value)
   ) {
     throw new Error("Java management mode must be auto or app-controlled.");
+  }
+
+  if (normalizedKey === APP_THEME_SETTING_KEY && !isAppTheme(value)) {
+    throw new Error(
+      "Theme must be dark, midnight, forest, amber, light, or system.",
+    );
   }
 
   const values = readSettingsFile();

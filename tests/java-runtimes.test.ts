@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   detectInstalledJavaRuntime,
   parseJavaRuntimeVersion,
@@ -62,5 +65,35 @@ describe("java runtime detection", () => {
       majorVersion: null,
       version: null,
     });
+  });
+
+  test("times out hung Java version probes", () => {
+    if (process.platform === "win32") {
+      return;
+    }
+
+    const directory = mkdtempSync(join(tmpdir(), "nyxen-java-probe-"));
+    const executable = join(directory, "java");
+
+    try {
+      writeFileSync(executable, "#!/bin/sh\nsleep 2\n");
+      chmodSync(executable, 0o755);
+
+      const startedAt = performance.now();
+      const detected = detectInstalledJavaRuntime(executable, {
+        timeoutMs: 25,
+      });
+      const elapsedMs = performance.now() - startedAt;
+
+      expect(elapsedMs).toBeLessThan(1_000);
+      expect(detected).toMatchObject({
+        error: "Java version probe timed out after 1 second.",
+        executable,
+        majorVersion: null,
+        version: null,
+      });
+    } finally {
+      rmSync(directory, { force: true, recursive: true });
+    }
   });
 });

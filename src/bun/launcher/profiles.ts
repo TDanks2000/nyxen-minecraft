@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { and, asc, eq } from "drizzle-orm";
 import type {
   CreateLauncherProfileInput,
@@ -179,7 +178,7 @@ export const createLauncherProfile = (
     createdAt: now,
     displayName: normalizeDisplayName(input.displayName),
     entitlements: null,
-    id: `profile_${randomUUID()}`,
+    id: `profile_${crypto.randomUUID()}`,
     kind: normalizeProfileKind(input.kind),
     minecraftAccessToken: null,
     minecraftAccessTokenExpiresAt: null,
@@ -242,7 +241,7 @@ export const upsertVerifiedMicrosoftProfile = (
   const profile = {
     ...values,
     createdAt: now,
-    id: `profile_${randomUUID()}`,
+    id: `profile_${crypto.randomUUID()}`,
   };
 
   db.insert(schema.launcherProfiles).values(profile).run();

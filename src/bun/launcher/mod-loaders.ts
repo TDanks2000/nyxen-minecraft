@@ -1,13 +1,5 @@
-import { randomUUID } from "node:crypto";
-import {
-  existsSync,
-  readFileSync,
-  renameSync,
-  unlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, posix } from "node:path";
-import { inflateRawSync } from "node:zlib";
 import { z } from "zod";
 import type {
   LauncherInstance,
@@ -183,7 +175,7 @@ const fetchJson = async (
 const writeFileAtomic = (path: string, data: Uint8Array): void => {
   ensurePrivateDirectory(dirname(path));
 
-  const tempPath = `${path}.write-${process.pid}-${randomUUID()}.tmp`;
+  const tempPath = `${path}.write-${process.pid}-${crypto.randomUUID()}.tmp`;
 
   try {
     writeFileSync(tempPath, data, { flag: "wx" });
@@ -203,7 +195,7 @@ const fetchBinary = async (
   options: ModLoaderResolutionOptions,
 ): Promise<Uint8Array> => {
   if (existsSync(path)) {
-    return new Uint8Array(readFileSync(path));
+    return await Bun.file(path).bytes();
   }
 
   const response = await fetchWithTimeout(url, options);
@@ -467,7 +459,9 @@ const readZipEntry = (
       }
 
       if (compressionMethod === 8) {
-        return inflateRawSync(compressedData);
+        const slice = compressedData as unknown as Uint8Array<ArrayBuffer>;
+
+        return Buffer.from(Bun.inflateSync(slice, { windowBits: -15 }));
       }
 
       throw new Error(

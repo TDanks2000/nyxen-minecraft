@@ -12,6 +12,14 @@ export type DatabaseStatus = {
 
 export type SettingValue = string | number | boolean | null;
 
+export type AppTheme =
+  | "dark"
+  | "midnight"
+  | "forest"
+  | "amber"
+  | "light"
+  | "system";
+
 export type AppSettings = Record<string, SettingValue>;
 
 export type JavaManagementMode = "app-controlled" | "auto";

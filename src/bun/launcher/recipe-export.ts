@@ -1,4 +1,3 @@
-import { createHash, randomUUID } from "node:crypto";
 import { existsSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type {
@@ -139,7 +138,9 @@ const createRecipeChecksum = (
 ): ExportedInstanceRecipe["checksum"] => ({
   algorithm: "sha256",
   covers: "recipe",
-  value: createHash("sha256").update(stableJsonStringify(recipe)).digest("hex"),
+  value: new Bun.CryptoHasher("sha256")
+    .update(stableJsonStringify(recipe))
+    .digest("hex"),
 });
 
 export const exportInstanceRecipe = ({
@@ -185,9 +186,9 @@ export const exportInstanceRecipe = ({
   const directory = join(instance.folders.metadata, "recipe-exports");
   const path = join(
     directory,
-    `${safeExportName(instance.name)}-${safeExportName(revision.id)}-${randomUUID()}.json`,
+    `${safeExportName(instance.name)}-${safeExportName(revision.id)}-${crypto.randomUUID()}.json`,
   );
-  const tempPath = `${path}.write-${process.pid}-${randomUUID()}.tmp`;
+  const tempPath = `${path}.write-${process.pid}-${crypto.randomUUID()}.tmp`;
 
   ensurePrivateDirectory(dirname(path));
 

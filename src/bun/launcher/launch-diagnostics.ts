@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import {
   existsSync,
   readdirSync,
@@ -278,7 +277,7 @@ export const summarizeLaunchPlan = (plan: LaunchPlan): LaunchPlanSummary => ({
     warnings: plan.warnings.length,
   },
   createdAt: plan.createdAt,
-  id: `plan_${randomUUID()}`,
+  id: `plan_${crypto.randomUUID()}`,
   instance: {
     id: plan.instance.id,
     loader: plan.instance.loader,
@@ -318,7 +317,7 @@ export const persistLaunchPlanSummary = (
 ): LaunchPlanSummary => {
   const summary = summarizeLaunchPlan(plan);
   const path = getLaunchPlanSummaryPath(plan.instance);
-  const tempPath = `${path}.write-${process.pid}-${randomUUID()}.tmp`;
+  const tempPath = `${path}.write-${process.pid}-${crypto.randomUUID()}.tmp`;
 
   ensurePrivateDirectory(dirname(path));
 
@@ -370,7 +369,7 @@ export const persistLaunchAttempt = (
   const planSummary = summarizeLaunchPlan(plan);
   const record: LaunchAttemptRecord = {
     createdAt,
-    id: `attempt_${randomUUID()}`,
+    id: `attempt_${crypto.randomUUID()}`,
     instance: {
       id: plan.instance.id,
       loader: plan.instance.loader,
@@ -386,7 +385,7 @@ export const persistLaunchAttempt = (
   const directory = getLaunchAttemptsDirectory(plan.instance);
   const safeCreatedAt = createdAt.replaceAll(":", "-");
   const path = join(directory, `${safeCreatedAt}-${record.id}.json`);
-  const tempPath = `${path}.write-${process.pid}-${randomUUID()}.tmp`;
+  const tempPath = `${path}.write-${process.pid}-${crypto.randomUUID()}.tmp`;
 
   ensurePrivateDirectory(directory);
 

@@ -1,8 +1,12 @@
-import { inflateRawSync } from "node:zlib";
-
 export type ZipEntry = {
   data: Buffer;
   name: string;
+};
+
+const inflateRawDeflate = (compressed: Buffer): Buffer => {
+  const input = compressed as unknown as Uint8Array<ArrayBuffer>;
+
+  return Buffer.from(Bun.inflateSync(input, { windowBits: -15 }));
 };
 
 const findEndOfCentralDirectory = (archive: Buffer): number => {
@@ -46,7 +50,7 @@ const readEntryData = ({
   }
 
   if (compressionMethod === 8) {
-    return inflateRawSync(compressedData);
+    return inflateRawDeflate(Buffer.from(compressedData));
   }
 
   throw new Error(`Unsupported ZIP compression method ${compressionMethod}.`);

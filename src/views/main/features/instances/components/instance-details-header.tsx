@@ -1,18 +1,17 @@
 import { Link } from "@tanstack/react-router";
 import {
-  ArrowLeftIcon,
+  CheckIcon,
   ChevronDownIcon,
   FileArchiveIcon,
   FileTextIcon,
   FolderOpenIcon,
+  LinkIcon,
   Loader2Icon,
   MoreHorizontalIcon,
   PlayIcon,
   SquareIcon,
 } from "lucide-react";
-import type { LauncherInstance, ModLoader } from "@/shared/types";
-import { Badge } from "@/views/main/components/ui/badge";
-import { Button } from "@/views/main/components/ui/button";
+import type { LauncherInstance } from "@/shared/types";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,6 +25,14 @@ import {
   LOADER_LABELS,
 } from "@/views/main/features/instances/components/instance-format";
 import { openLocalPath } from "@/views/main/lib/open-local-path";
+import { cn } from "@/views/main/lib/utils";
+
+type LaunchActionState =
+  | "idle"
+  | "preparing"
+  | "downloading"
+  | "launching"
+  | "stopping";
 
 type InstanceDetailsHeaderProps = {
   enabledModsCount: number;
@@ -42,42 +49,51 @@ type InstanceDetailsHeaderProps = {
   shaderPackCount: number;
   supportBundleExporting: boolean;
   warningCount: number;
+  worldCount: number;
 };
 
-type LaunchActionState =
-  | "idle"
-  | "preparing"
-  | "downloading"
-  | "launching"
-  | "stopping";
+const PILL_VARIANTS = {
+  default:
+    "bg-[oklch(0.21_0.014_124)] border-[oklch(0.27_0.014_124)] text-[oklch(0.66_0.012_112)]",
+  green:
+    "bg-[oklch(0.2_0.06_145)] border-[oklch(0.4_0.14_145)] text-[oklch(0.78_0.18_145)]",
+  orange:
+    "bg-[oklch(0.22_0.06_50)] border-[oklch(0.4_0.14_50)] text-[oklch(0.76_0.16_50)]",
+  amber:
+    "bg-[oklch(0.22_0.06_80)] border-[oklch(0.4_0.14_80)] text-[oklch(0.82_0.16_80)]",
+  purple:
+    "bg-[oklch(0.22_0.06_280)] border-[oklch(0.4_0.1_280)] text-[oklch(0.78_0.14_280)]",
+} as const;
 
-type LoaderColors = {
-  accent: string;
-  glow: string;
-};
+function HeroPill({
+  children,
+  variant = "default",
+}: {
+  children: React.ReactNode;
+  variant?: keyof typeof PILL_VARIANTS;
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 whitespace-nowrap rounded border px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase tracking-[0.06em]",
+        PILL_VARIANTS[variant],
+      )}
+    >
+      {children}
+    </span>
+  );
+}
 
-const LOADER_COLORS: Record<ModLoader, LoaderColors> = {
-  fabric: {
-    accent: "text-primary",
-    glow: "from-primary/14 via-primary/4 to-transparent",
-  },
-  forge: {
-    accent: "text-amber-400",
-    glow: "from-amber-500/14 via-amber-500/5 to-transparent",
-  },
-  neoforge: {
-    accent: "text-orange-400",
-    glow: "from-orange-500/16 via-orange-500/5 to-transparent",
-  },
-  quilt: {
-    accent: "text-violet-300",
-    glow: "from-violet-500/14 via-violet-500/5 to-transparent",
-  },
-  vanilla: {
-    accent: "text-emerald-300",
-    glow: "from-emerald-500/14 via-emerald-500/5 to-transparent",
-  },
-};
+const STAR_POSITIONS = Array.from({ length: 24 }, (_, i) => ({
+  cx: (i * 97) % 1600,
+  cy: (i * 37) % 80,
+  r: i % 4 === 0 ? 1.2 : 0.6,
+}));
+
+const HILL_POINTS_BACK =
+  "0,220 0,160 120,140 220,150 320,110 440,140 540,90 660,140 780,110 900,150 1020,100 1160,140 1280,120 1400,150 1520,130 1600,150 1600,220";
+const HILL_POINTS_FRONT =
+  "0,220 0,180 80,170 180,178 280,160 400,178 520,162 640,180 760,170 880,180 1000,165 1120,180 1240,170 1360,180 1480,170 1600,178 1600,220";
 
 export function InstanceDetailsHeader({
   enabledModsCount,
@@ -94,13 +110,14 @@ export function InstanceDetailsHeader({
   shaderPackCount,
   supportBundleExporting,
   warningCount,
+  worldCount,
 }: InstanceDetailsHeaderProps) {
-  const colors = LOADER_COLORS[instance.loader];
   const loaderLabel = LOADER_LABELS[instance.loader];
   const lastPlayed = formatInstanceLastPlayed(instance.lastLaunchedAt);
   const busy = planLoading || launchActionState !== "idle";
   const primaryDisabled = isRunning ? launchActionState === "stopping" : busy;
   const dropdownDisabled = busy;
+
   const primaryLabel = isRunning
     ? launchActionState === "stopping"
       ? "Stopping..."
@@ -112,6 +129,7 @@ export function InstanceDetailsHeader({
         : launchActionState === "launching"
           ? "Launching..."
           : "Play";
+
   const showBusyIcon =
     planLoading ||
     launchActionState === "preparing" ||
@@ -119,134 +137,174 @@ export function InstanceDetailsHeader({
     launchActionState === "launching" ||
     launchActionState === "stopping";
 
-  const openFolder = () => {
-    void openLocalPath(instance.gameDirectory, {
-      failureMessage: "Could not open the instance folder.",
-    });
-  };
-  const openMetadata = () => {
-    void openLocalPath(instance.metadataPath, {
-      failureMessage: "Could not open instance metadata.",
-    });
-  };
-  const contentSummary = [
-    `${enabledModsCount} mod${enabledModsCount === 1 ? "" : "s"}`,
-    `${resourcePackCount} resource pack${resourcePackCount === 1 ? "" : "s"}`,
-    `${shaderPackCount} shader${shaderPackCount === 1 ? "" : "s"}`,
-  ].join(" / ");
-
   return (
-    <section className="relative overflow-hidden border-b border-border bg-card/40">
-      <div
-        className={`pointer-events-none absolute inset-x-0 top-0 h-48 bg-gradient-to-b ${colors.glow}`}
-        aria-hidden="true"
-      />
-      <div
-        className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,color-mix(in_oklch,var(--foreground)_7%,transparent)_0_1px,transparent_1px_24px)] opacity-20"
-        aria-hidden="true"
-      />
+    <div className="relative h-[220px] shrink-0 overflow-hidden rounded-[10px] border border-border">
+      {/* Sky gradient base */}
+      <div className="absolute inset-0 bg-[linear-gradient(180deg,oklch(0.22_0.04_250)_0%,oklch(0.16_0.06_30)_70%,oklch(0.1_0.04_30)_100%)]" />
 
-      <div className="relative flex w-full min-w-0 flex-col gap-4 px-4 py-4 sm:px-5">
-        <div className="flex flex-col gap-3">
-          <Button
-            render={<Link to="/instances" />}
-            nativeButton={false}
-            size="sm"
-            variant="ghost"
-            className="w-fit text-muted-foreground"
-          >
-            <ArrowLeftIcon data-icon="inline-start" />
-            Back to Instances
-          </Button>
+      {/* SVG horizon + stars */}
+      <svg
+        viewBox="0 0 1600 220"
+        preserveAspectRatio="none"
+        className="absolute inset-0 size-full opacity-90"
+        aria-hidden="true"
+      >
+        <defs>
+          <linearGradient id="hero-hill-grad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#1d1e15" />
+            <stop offset="100%" stopColor="#0a0a07" />
+          </linearGradient>
+        </defs>
+        <polygon fill="url(#hero-hill-grad)" points={HILL_POINTS_BACK} />
+        <polygon fill="#070605" opacity="0.85" points={HILL_POINTS_FRONT} />
+        {STAR_POSITIONS.map((s) => (
+          <circle
+            key={`${s.cx}-${s.cy}-${s.r}`}
+            cx={s.cx}
+            cy={s.cy}
+            r={s.r}
+            fill="#fff"
+            opacity="0.5"
+          />
+        ))}
+      </svg>
 
-          <div className="flex min-w-0 items-center gap-4 sm:gap-5">
-            <div className="relative shrink-0">
-              <div
-                className="absolute inset-0 scale-[1.6] rounded-full bg-primary/15 blur-2xl"
-                aria-hidden="true"
-              />
-              <InstanceIcon
-                instance={instance}
-                className="relative size-14 rounded-xl ring-1 ring-border shadow-lg [image-rendering:pixelated] sm:size-16"
-              />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex min-w-0 items-start gap-3">
-                <h1 className="min-w-0 flex-1 truncate font-heading text-3xl font-black leading-none text-foreground sm:text-4xl">
-                  {instance.name}
-                </h1>
-                <Badge
-                  variant={warningCount > 0 ? "outline" : "default"}
-                  className="mt-0.5 shrink-0"
-                >
-                  {warningCount > 0
-                    ? `${warningCount} warning${warningCount === 1 ? "" : "s"}`
-                    : "Ready"}
-                </Badge>
-              </div>
-            </div>
+      {/* Horizontal vignette */}
+      <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(10,13,10,0.9)_0%,rgba(10,13,10,0.5)_60%,rgba(10,13,10,0.85)_100%)]" />
+
+      {/* Content row */}
+      <div className="relative flex h-full items-center gap-4 px-[22px] py-[18px]">
+        {/* Instance icon */}
+        <InstanceIcon
+          instance={instance}
+          className="size-[100px] shrink-0 self-center rounded-lg shadow-[0_6px_20px_rgba(0,0,0,0.5)] ring-2 ring-white/10 [image-rendering:pixelated]"
+        />
+
+        {/* Center column */}
+        <div className="flex min-w-0 flex-1 flex-col justify-center gap-1.5">
+          {/* Status pills */}
+          <div className="flex flex-wrap items-center gap-2">
+            {isRunning ? (
+              <HeroPill variant="green">
+                <span className="size-1.5 animate-pulse rounded-full bg-[oklch(0.78_0.18_145)]" />
+                Running
+              </HeroPill>
+            ) : warningCount > 0 ? (
+              <HeroPill variant="amber">{warningCount} warnings</HeroPill>
+            ) : (
+              <HeroPill variant="green">
+                <CheckIcon className="size-2.5" />
+                Ready
+              </HeroPill>
+            )}
+            {instance.loader !== "vanilla" && (
+              <HeroPill variant="orange">
+                {loaderLabel}
+                {instance.loaderVersion ? ` ${instance.loaderVersion}` : ""}
+              </HeroPill>
+            )}
+            <HeroPill>Minecraft {instance.versionId}</HeroPill>
+            {modpackUpdateAvailable && (
+              <HeroPill variant="amber">Updates available</HeroPill>
+            )}
+            {instance.modpack?.locked && (
+              <HeroPill variant="purple">
+                <LinkIcon className="size-2.5" />
+                Modpack linked
+              </HeroPill>
+            )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground sm:text-sm">
-            <span className={`font-semibold ${colors.accent}`}>
-              {loaderLabel}
+          {/* Instance name */}
+          <h1 className="m-0 truncate font-heading text-[30px] font-bold leading-[1.05] tracking-[-0.02em] text-white">
+            {instance.name}
+          </h1>
+
+          {/* Stats */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-[oklch(0.7_0.012_112)]">
+            <span>
+              <strong className="font-semibold text-white">
+                {enabledModsCount}
+              </strong>{" "}
+              {enabledModsCount === 1 ? "mod" : "mods"}
             </span>
-            <span className="text-primary">•</span>
-            <span>Loader {instance.loaderVersion ?? "managed"}</span>
-            <span className="text-primary">•</span>
-            <span>Minecraft {instance.versionId}</span>
-            <span className="text-primary">•</span>
-            <span>Last played: {lastPlayed}</span>
-            <span className="text-primary">•</span>
-            <span>{contentSummary}</span>
-            {instance.modpack?.locked ? (
-              <>
-                <span className="text-primary">•</span>
-                <span>
-                  {modpackUpdateAvailable
-                    ? "Modpack update available"
-                    : "Modpack linked"}
-                </span>
-              </>
-            ) : null}
+            <span className="text-white/30" aria-hidden="true">
+              ·
+            </span>
+            <span>
+              <strong className="font-semibold text-white">
+                {resourcePackCount}
+              </strong>{" "}
+              resource packs
+            </span>
+            <span className="text-white/30" aria-hidden="true">
+              ·
+            </span>
+            <span>
+              <strong className="font-semibold text-white">
+                {shaderPackCount}
+              </strong>{" "}
+              shaders
+            </span>
+            <span className="text-white/30" aria-hidden="true">
+              ·
+            </span>
+            <span>
+              <strong className="font-semibold text-white">{worldCount}</strong>{" "}
+              worlds
+            </span>
+            <span className="text-white/30" aria-hidden="true">
+              ·
+            </span>
+            <span>
+              Last played{" "}
+              <strong className="font-semibold text-white">{lastPlayed}</strong>
+            </span>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:items-center">
-          <div className="flex w-full overflow-hidden rounded-md shadow-[0_18px_50px_-32px_var(--primary)] sm:w-auto">
-            <Button
-              className="flex-1 rounded-r-none sm:flex-none"
+        {/* Actions */}
+        <div className="flex shrink-0 items-center gap-2">
+          {/* Play button group with green shadow */}
+          <div className="flex items-stretch overflow-hidden rounded-md shadow-[0_6px_20px_oklch(0.5_0.18_145_/_0.4)]">
+            <button
+              type="button"
               disabled={primaryDisabled}
               onClick={isRunning ? onStop : onPlay}
-              size="lg"
-              variant={isRunning ? "destructive" : "default"}
+              className={cn(
+                "inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60",
+                isRunning
+                  ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  : "bg-primary text-primary-foreground hover:bg-primary/90",
+              )}
             >
               {showBusyIcon ? (
-                <Loader2Icon
-                  data-icon="inline-start"
-                  className="animate-spin"
-                />
+                <Loader2Icon className="size-4 animate-spin" />
               ) : isRunning ? (
-                <SquareIcon data-icon="inline-start" className="fill-current" />
+                <SquareIcon className="size-4 fill-current" />
               ) : (
-                <PlayIcon data-icon="inline-start" className="fill-current" />
+                <PlayIcon className="size-4 fill-current" />
               )}
               {primaryLabel}
-            </Button>
+            </button>
             <DropdownMenu>
               <DropdownMenuTrigger
                 disabled={dropdownDisabled}
                 render={
-                  <Button
+                  <button
+                    type="button"
                     aria-label="Choose launch option"
-                    className="rounded-l-none border-l border-primary-foreground/20 px-0"
                     disabled={dropdownDisabled}
-                    size="icon-lg"
-                    variant={isRunning ? "destructive" : "default"}
+                    className={cn(
+                      "inline-flex items-center justify-center border-l border-white/15 px-2.5 py-3 transition-colors disabled:cursor-not-allowed disabled:opacity-60",
+                      isRunning
+                        ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        : "bg-primary text-primary-foreground hover:bg-primary/90",
+                    )}
                   />
                 }
               >
-                <ChevronDownIcon />
+                <ChevronDownIcon className="size-3" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-44">
                 <DropdownMenuGroup>
@@ -259,23 +317,29 @@ export function InstanceDetailsHeader({
             </DropdownMenu>
           </div>
 
+          {/* Tools button */}
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
-                <Button
+                <button
+                  type="button"
                   aria-label="Open instance tools"
-                  className="w-full sm:w-auto"
-                  size="lg"
-                  variant="outline"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-black/40 px-3.5 py-2.5 text-xs text-white/80 transition-colors hover:bg-black/60 hover:text-white"
                 />
               }
             >
-              <MoreHorizontalIcon data-icon="inline-start" />
+              <MoreHorizontalIcon className="size-3.5" />
               Tools
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
               <DropdownMenuGroup>
-                <DropdownMenuItem onClick={openFolder}>
+                <DropdownMenuItem
+                  onClick={() =>
+                    void openLocalPath(instance.gameDirectory, {
+                      failureMessage: "Could not open the instance folder.",
+                    })
+                  }
+                >
                   <FolderOpenIcon />
                   Open game folder
                 </DropdownMenuItem>
@@ -292,7 +356,13 @@ export function InstanceDetailsHeader({
                     ? "Exporting bundle..."
                     : "Export support bundle"}
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={openMetadata}>
+                <DropdownMenuItem
+                  onClick={() =>
+                    void openLocalPath(instance.metadataPath, {
+                      failureMessage: "Could not open instance metadata.",
+                    })
+                  }
+                >
                   <FileTextIcon />
                   Open metadata
                 </DropdownMenuItem>
@@ -301,6 +371,14 @@ export function InstanceDetailsHeader({
           </DropdownMenu>
         </div>
       </div>
-    </section>
+
+      {/* Back link overlay */}
+      <Link
+        to="/instances"
+        className="absolute left-[14px] top-[12px] inline-flex items-center gap-1 rounded border border-white/10 bg-black/50 px-2.5 py-1 text-[11.5px] text-white/70 no-underline transition-colors hover:text-white"
+      >
+        ← Library
+      </Link>
+    </div>
   );
 }

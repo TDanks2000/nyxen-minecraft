@@ -123,7 +123,6 @@ export function DashboardPage() {
 
       <DashboardInstanceGrid
         downloadJobs={downloadJobs}
-        featuredInstanceId={heroInstance?.id ?? null}
         instanceCount={instances.length}
         instances={instances}
         launchLoadingId={play.activeInstanceId}

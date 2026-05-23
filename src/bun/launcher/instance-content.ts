@@ -1,4 +1,3 @@
-import { createHash, randomUUID } from "node:crypto";
 import {
   chmodSync,
   closeSync,
@@ -18,6 +17,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
+import { readdir as readdirAsync, stat as statAsync } from "node:fs/promises";
 import { homedir } from "node:os";
 import {
   basename,
@@ -28,8 +28,6 @@ import {
   relative,
   resolve,
 } from "node:path";
-import { pathToFileURL } from "node:url";
-import { gunzipSync } from "node:zlib";
 import type {
   CreateInstanceServerInput,
   CreateInstanceServerResult,
@@ -585,7 +583,7 @@ const writeCurseForgeMetadata = (
   const path = getCurseForgeMetadataPath(instance);
   mkdirSync(dirname(path), { recursive: true });
 
-  const tempPath = `${path}.write-${process.pid}-${randomUUID()}.tmp`;
+  const tempPath = `${path}.write-${process.pid}-${crypto.randomUUID()}.tmp`;
 
   try {
     writeFileSync(tempPath, `${JSON.stringify(metadata, null, 2)}\n`, {
@@ -769,6 +767,73 @@ const listFolderEntries = ({
         }),
       ];
     })
+    .sort((a, b) => a.displayName.localeCompare(b.displayName));
+};
+
+const listFolderEntriesAsync = async ({
+  allowDirectories = false,
+  enabled,
+  extensions,
+  folder,
+  kind,
+}: {
+  allowDirectories?: boolean;
+  enabled?: (fileName: string) => boolean | null;
+  extensions?: Set<string>;
+  folder: string;
+  kind: InstanceFileKind;
+}): Promise<Array<InstanceFileEntry>> => {
+  if (!existsSync(folder)) return [];
+
+  let dirents: Array<Dirent>;
+  try {
+    dirents = await readdirAsync(folder, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  const filtered = dirents.filter((entry) => {
+    const fileName = entry.name;
+    if (!isSafeFileName(fileName)) return false;
+
+    const isDirectory = entry.isDirectory();
+    if (isDirectory && !allowDirectories) return false;
+
+    if (!isDirectory && extensions) {
+      const extension = extname(fileName).toLowerCase();
+      const matchesDisabledMod =
+        kind === "mod" &&
+        fileName.toLowerCase().endsWith(`.jar${disabledSuffix}`);
+      if (!extensions.has(extension) && !matchesDisabledMod) return false;
+    }
+
+    return true;
+  });
+
+  const results = await Promise.all(
+    filtered.map(async (entry): Promise<InstanceFileEntry | null> => {
+      const fileName = entry.name;
+      const isDirectory = entry.isDirectory();
+      const path = join(folder, fileName);
+
+      try {
+        const stats = await statAsync(path);
+        return createEntry({
+          enabled: enabled?.(fileName) ?? null,
+          fileName,
+          folder,
+          isDirectory,
+          kind,
+          stats: stats as unknown as Stats,
+        });
+      } catch {
+        return null;
+      }
+    }),
+  );
+
+  return results
+    .filter((entry): entry is InstanceFileEntry => entry !== null)
     .sort((a, b) => a.displayName.localeCompare(b.displayName));
 };
 
@@ -1354,7 +1419,7 @@ const readCompressedLogPreview = (
     };
   }
 
-  const decompressed = gunzipSync(readFileSync(path));
+  const decompressed = Bun.gunzipSync(readFileSync(path));
   const readBytes = Math.min(decompressed.byteLength, maxBytes);
   const start = Math.max(0, decompressed.byteLength - readBytes);
 
@@ -1364,6 +1429,11 @@ const readCompressedLogPreview = (
     truncated: start > 0,
   };
 };
+
+const computeHash = (
+  data: Uint8Array,
+  algorithm: "sha1" | "sha256" | "sha512",
+): string => new Bun.CryptoHasher(algorithm).update(data).digest("hex");
 
 const formatBytesForMessage = (bytes: number): string => {
   if (bytes <= 0) return "0 B";
@@ -2655,7 +2725,7 @@ const fetchModrinthDownload = async (
 const writeDownloadedFile = (path: string, data: Uint8Array): void => {
   mkdirSync(dirname(path), { recursive: true });
 
-  const tempPath = `${path}.download-${process.pid}-${randomUUID()}.tmp`;
+  const tempPath = `${path}.download-${process.pid}-${crypto.randomUUID()}.tmp`;
 
   try {
     writeFileSync(tempPath, data, { flag: "wx" });
@@ -2747,7 +2817,7 @@ const saveCurseForgeMediaAsset = async (
     const path = join(instance.folders.media, `${baseName}${asset.extension}`);
     writeDownloadedFile(path, asset.data);
 
-    return pathToFileURL(path).toString();
+    return Bun.pathToFileURL(path).toString();
   } catch {
     return null;
   }
@@ -3013,7 +3083,7 @@ const writeInstanceUpdateSnapshot = ({
       saves: listSnapshotFiles(instance, instance.folders.saves),
       shaderPacks: listSnapshotFiles(instance, instance.folders.shaderPacks),
     },
-    id: `snapshot_${randomUUID()}`,
+    id: `snapshot_${crypto.randomUUID()}`,
     instanceId: instance.id,
     modpack: instance.modpack,
     reason: {
@@ -3335,7 +3405,7 @@ const installCurseForgeModpackData = async (
 
   return {
     category: "modpacks",
-    content: getInstanceContent({ instanceId: instance.id }),
+    content: await getInstanceContent({ instanceId: instance.id }),
     fileName,
     instance,
     installedItem,
@@ -3403,7 +3473,7 @@ const installCurseForgeFileData = async (
 
   return {
     category,
-    content: getInstanceContent({ instanceId: instance.id }),
+    content: await getInstanceContent({ instanceId: instance.id }),
     fileName,
     instance: null,
     installedItem,
@@ -3471,7 +3541,7 @@ const verifyModrinthFileHash = (
 
   if (!algorithm || !expected) return;
 
-  const actual = createHash(algorithm).update(data).digest("hex");
+  const actual = computeHash(data, algorithm);
 
   if (actual.toLowerCase() !== expected.toLowerCase()) {
     throw new Error(`${file.path} failed Modrinth hash verification.`);
@@ -3612,7 +3682,7 @@ const installModrinthModpackData = async (
 
   return {
     category: "modpacks",
-    content: getInstanceContent({ instanceId: instance.id }),
+    content: await getInstanceContent({ instanceId: instance.id }),
     fileName,
     instance,
     path: artifactPath,
@@ -3649,55 +3719,76 @@ const installModrinthFileData = async (
 
   return {
     category,
-    content: getInstanceContent({ instanceId: instance.id }),
+    content: await getInstanceContent({ instanceId: instance.id }),
     fileName: options.fileName,
     instance: null,
     path,
   };
 };
 
-export const getInstanceContent = ({
+export const getInstanceContent = async ({
   instanceId,
-}: GetInstanceContentInput): InstanceContent => {
+}: GetInstanceContentInput): Promise<InstanceContent> => {
   const instance = getInstanceOrThrow(instanceId);
-  const mods = listFolderEntries({
-    enabled: isEnabledModFile,
-    extensions: fileExtensions.mods,
-    folder: instance.folders.mods,
-    kind: "mod",
-  }).filter((entry) => entry.enabled !== null);
-  const resourcePacks = listFolderEntries({
-    allowDirectories: true,
-    extensions: fileExtensions.resourcePacks,
-    folder: instance.folders.resourcePacks,
-    kind: "resourcePack",
-  });
-  const shaderPacks = listFolderEntries({
-    allowDirectories: true,
-    extensions: fileExtensions.shaderPacks,
-    folder: instance.folders.shaderPacks,
-    kind: "shaderPack",
-  });
-  const screenshots = listFolderEntries({
-    extensions: fileExtensions.screenshots,
-    folder: instance.folders.screenshots,
-    kind: "screenshot",
-  }).sort(
-    (a, b) =>
-      new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime(),
-  );
-  const logFolders = listInstanceLogFolders(instance);
+
+  const [
+    mods,
+    resourcePacks,
+    shaderPacks,
+    screenshots,
+    worlds,
+    logFolders,
+    curseForge,
+    launchAttempts,
+  ] = await Promise.all([
+    listFolderEntriesAsync({
+      enabled: isEnabledModFile,
+      extensions: fileExtensions.mods,
+      folder: instance.folders.mods,
+      kind: "mod",
+    }).then((entries) => entries.filter((entry) => entry.enabled !== null)),
+    listFolderEntriesAsync({
+      allowDirectories: true,
+      extensions: fileExtensions.resourcePacks,
+      folder: instance.folders.resourcePacks,
+      kind: "resourcePack",
+    }),
+    listFolderEntriesAsync({
+      allowDirectories: true,
+      extensions: fileExtensions.shaderPacks,
+      folder: instance.folders.shaderPacks,
+      kind: "shaderPack",
+    }),
+    listFolderEntriesAsync({
+      extensions: fileExtensions.screenshots,
+      folder: instance.folders.screenshots,
+      kind: "screenshot",
+    }).then((entries) =>
+      entries.sort(
+        (a, b) =>
+          new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime(),
+      ),
+    ),
+    listFolderEntriesAsync({
+      allowDirectories: true,
+      folder: instance.folders.saves,
+      kind: "world",
+    }),
+    Promise.resolve(listInstanceLogFolders(instance)),
+    Promise.resolve(readCurseForgeMetadata(instance)),
+    Promise.resolve(
+      readLaunchAttemptRecords(instance, {
+        limit: maxLaunchAttemptsInContent,
+      }),
+    ),
+  ]);
+
   const logs = logFolders
     .flatMap((folder) => folder.files)
     .sort(
       (a, b) =>
         new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime(),
     );
-  const worlds = listFolderEntries({
-    allowDirectories: true,
-    folder: instance.folders.saves,
-    kind: "world",
-  });
   const serverManager = getInstanceServerManager({
     instance,
     mods,
@@ -3715,11 +3806,9 @@ export const getInstanceContent = ({
       shaderPacks: shaderPacks.length,
       worlds: worlds.length,
     },
-    curseForge: readCurseForgeMetadata(instance),
+    curseForge,
     instanceId: instance.id,
-    launchAttempts: readLaunchAttemptRecords(instance, {
-      limit: maxLaunchAttemptsInContent,
-    }),
+    launchAttempts,
     logFolders,
     logs,
     mods,
@@ -3745,7 +3834,7 @@ export const createInstanceServer = async (
   mkdirSync(serverPath, { recursive: true });
 
   try {
-    const content = getInstanceContent({ instanceId: instance.id });
+    const content = await getInstanceContent({ instanceId: instance.id });
     const candidates = content.serverManager.candidates;
     const selectedCandidates = candidates.filter(
       (candidate) =>
@@ -3815,7 +3904,7 @@ export const createInstanceServer = async (
     const launcherFileName = await setupModLoaderServer(instance, serverPath);
     writeServerScripts(instance, serverPath, launcherFileName);
 
-    const nextContent = getInstanceContent({ instanceId: instance.id });
+    const nextContent = await getInstanceContent({ instanceId: instance.id });
     const server =
       nextContent.serverManager.workspaces.find(
         (workspace) => workspace.path === serverPath,
@@ -3843,10 +3932,10 @@ export const createInstanceServer = async (
   }
 };
 
-export const deleteInstanceServer = ({
+export const deleteInstanceServer = async ({
   instanceId,
   serverId,
-}: DeleteInstanceServerInput): DeleteInstanceServerResult => {
+}: DeleteInstanceServerInput): Promise<DeleteInstanceServerResult> => {
   const instance = getInstanceOrThrow(instanceId);
   const normalizedServerId = assertSafeFileName(serverId);
   const serverRoot = getServerWorkspaceRoot(instance);
@@ -3858,7 +3947,7 @@ export const deleteInstanceServer = ({
 
   if (!existsSync(serverPath)) {
     return {
-      content: getInstanceContent({ instanceId: instance.id }),
+      content: await getInstanceContent({ instanceId: instance.id }),
       deleted: false,
       serverId: normalizedServerId,
     };
@@ -3873,7 +3962,7 @@ export const deleteInstanceServer = ({
   rmSync(serverPath, { force: true, recursive: true });
 
   return {
-    content: getInstanceContent({ instanceId: instance.id }),
+    content: await getInstanceContent({ instanceId: instance.id }),
     deleted: true,
     serverId: normalizedServerId,
   };
@@ -3980,11 +4069,11 @@ export const installDownloadedCurseForgeFile = async (
   };
 };
 
-export const setInstanceModEnabled = ({
+export const setInstanceModEnabled = async ({
   enabled,
   fileName,
   instanceId,
-}: SetInstanceModEnabledInput): InstanceContent => {
+}: SetInstanceModEnabledInput): Promise<InstanceContent> => {
   const instance = getInstanceOrThrow(instanceId);
 
   if (instance.modpack?.locked) {
@@ -4066,7 +4155,7 @@ export const updateInstanceModpack = async (
 
   if (!latest || !latestFile || !update.updateAvailable) {
     return {
-      content: getInstanceContent({ instanceId }),
+      content: await getInstanceContent({ instanceId }),
       instance,
       update,
     };
@@ -4098,7 +4187,7 @@ export const updateInstanceModpack = async (
   }
 
   return {
-    content: result.content ?? getInstanceContent({ instanceId }),
+    content: result.content ?? (await getInstanceContent({ instanceId })),
     instance: updatedInstance,
     update: {
       checkedAt: new Date().toISOString(),

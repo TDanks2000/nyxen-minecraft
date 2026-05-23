@@ -5,7 +5,6 @@ import { InstanceCollection } from "@/views/main/features/instances/components/i
 
 type DashboardInstanceGridProps = {
   downloadJobs: Array<DownloadQueueJob>;
-  featuredInstanceId: string | null;
   instanceCount: number | undefined;
   instances: Array<LauncherInstance>;
   launchLoadingId: string | null;
@@ -17,7 +16,6 @@ type DashboardInstanceGridProps = {
 
 export function DashboardInstanceGrid({
   downloadJobs,
-  featuredInstanceId,
   instanceCount,
   instances,
   launchLoadingId,
@@ -32,7 +30,6 @@ export function DashboardInstanceGrid({
         cardDensity="compact"
         className="px-4 pt-5 pb-4 sm:px-5"
         downloadJobs={downloadJobs}
-        featuredInstanceId={featuredInstanceId}
         gridClassName="grid grid-cols-[repeat(auto-fill,minmax(10.5rem,1fr))] gap-3"
         instanceCount={instanceCount}
         instances={instances}

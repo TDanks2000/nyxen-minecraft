@@ -1,7 +1,5 @@
-import { createHash, randomUUID } from "node:crypto";
 import {
   chmodSync,
-  createWriteStream,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -159,7 +157,7 @@ const writeArtifactFile = (
 ): void => {
   mkdirSync(dirname(path), { recursive: true });
 
-  const tempPath = `${path}.download-${process.pid}-${randomUUID()}.tmp`;
+  const tempPath = `${path}.download-${process.pid}-${crypto.randomUUID()}.tmp`;
 
   try {
     writeFileSync(tempPath, data, { flag: "wx" });
@@ -191,23 +189,30 @@ const downloadAndWrite = async (
 
   mkdirSync(dirname(artifact.path), { recursive: true });
 
-  const tempPath = `${artifact.path}.download-${process.pid}-${randomUUID()}.tmp`;
+  const tempPath = `${artifact.path}.download-${process.pid}-${crypto.randomUUID()}.tmp`;
+  const hash = artifact.sha1 ? new Bun.CryptoHasher("sha1") : null;
+  const writer = Bun.file(tempPath).writer();
+  let writerClosed = false;
+
+  const closeWriter = async (): Promise<void> => {
+    if (writerClosed) return;
+    writerClosed = true;
+    try {
+      await writer.end();
+    } catch {
+      // Ignore errors closing the writer; the temp file is cleaned up below.
+    }
+  };
 
   try {
-    const hash = artifact.sha1 ? createHash("sha1") : null;
-    const writer = createWriteStream(tempPath, { flags: "wx" });
-
     if (response.body) {
       for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
         hash?.update(chunk);
-        const ok = writer.write(chunk);
-        if (!ok) await new Promise<void>((r) => writer.once("drain", r));
+        writer.write(chunk);
       }
     }
 
-    await new Promise<void>((resolve, reject) =>
-      writer.end((err?: Error | null) => (err ? reject(err) : resolve())),
-    );
+    await closeWriter();
 
     if (hash && hash.digest("hex") !== artifact.sha1) {
       throw new Error(`Checksum mismatch for ${artifact.id}`);
@@ -215,6 +220,7 @@ const downloadAndWrite = async (
 
     renameSync(tempPath, artifact.path);
   } finally {
+    await closeWriter();
     if (existsSync(tempPath)) unlinkSync(tempPath);
   }
 

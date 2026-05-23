@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import {
   existsSync,
   readdirSync,
@@ -8,7 +7,6 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, isAbsolute } from "node:path";
-import { pathToFileURL } from "node:url";
 import { asc, eq } from "drizzle-orm";
 import type {
   CreateLauncherInstanceInput,
@@ -130,7 +128,7 @@ const normalizeMediaUrl = (
   }
 
   const url = isAbsolute(normalized)
-    ? pathToFileURL(normalized)
+    ? Bun.pathToFileURL(normalized)
     : new URL(normalized);
 
   if (url.protocol !== "https:" && url.protocol !== "file:") {
@@ -286,7 +284,7 @@ const getLauncherInstanceRowOrThrow = (instanceId: string): InstanceRow => {
 
 const writeInstanceMetadata = (instance: LauncherInstance): void => {
   const metadataPath = instance.metadataPath;
-  const tempPath = `${metadataPath}.write-${process.pid}-${randomUUID()}.tmp`;
+  const tempPath = `${metadataPath}.write-${process.pid}-${crypto.randomUUID()}.tmp`;
   const metadata = {
     app: {
       name: "nyxen",
@@ -448,7 +446,7 @@ export const createLauncherInstance = (
     normalizeMemory(input.memoryMaxMb, 4096),
   );
   const now = new Date().toISOString();
-  const instanceId = `instance_${randomUUID()}`;
+  const instanceId = `instance_${crypto.randomUUID()}`;
   const folders = ensureInstanceFolders(instanceId);
   const instance = {
     bannerUrl: normalizeBannerUrl(input.bannerUrl),

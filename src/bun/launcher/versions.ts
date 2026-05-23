@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import {
   existsSync,
   readFileSync,
@@ -402,7 +401,7 @@ const readVersionDetails = (
 };
 
 const writeVersionDetails = (path: string, document: unknown): void => {
-  const tempPath = `${path}.write-${process.pid}-${randomUUID()}.tmp`;
+  const tempPath = `${path}.write-${process.pid}-${crypto.randomUUID()}.tmp`;
 
   ensurePrivateDirectory(dirname(path));
 

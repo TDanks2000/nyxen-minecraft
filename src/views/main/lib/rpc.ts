@@ -460,6 +460,7 @@ let previewSettings: SettingsStatus = {
   storage: "json",
   updatedAt: isoHoursAgo(1),
   values: {
+    "app.theme": "dark",
     "launcher.javaManagement": "app-controlled",
     "launcher.lowEndMode": false,
     "launcher.showSnapshots": false,
@@ -760,6 +761,13 @@ const createPreviewRpc = (): ViewRpcClient => {
       );
       return clone(previewDownloads);
     },
+    detectSystemJava: async () => ({
+      error: null,
+      executable: "/usr/lib/jvm/java-21-openjdk/bin/java",
+      majorVersion: 21,
+      output: 'openjdk version "21.0.3" 2024-04-16',
+      version: "21.0.3",
+    }),
     clearLauncherCache: async () => ({
       clearedAt: new Date().toISOString(),
       kind: "cache",

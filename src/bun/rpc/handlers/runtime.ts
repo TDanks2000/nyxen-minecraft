@@ -1,14 +1,13 @@
-import { Buffer } from "node:buffer";
 import { readFileSync, realpathSync, statSync } from "node:fs";
 import os from "node:os";
 import { extname } from "node:path";
-import { fileURLToPath } from "node:url";
 import { APP_NAME } from "../../../shared/constants";
 import type {
   AppEnvironment,
   ResolveMediaUrlInput,
   ResolveMediaUrlResult,
 } from "../../../shared/types";
+import { detectInstalledJavaRuntime } from "../../launcher/java-runtimes";
 import { getDataRoot } from "../../launcher/paths";
 import { isPathInsideDirectory } from "../../launcher/validation";
 
@@ -62,7 +61,7 @@ const getRendererMediaMimeType = (path: string): string => {
 
 const fileUrlToPath = (url: URL, errorMessage: string): string => {
   try {
-    return fileURLToPath(url);
+    return Bun.fileURLToPath(url);
   } catch {
     throw new Error(errorMessage);
   }
@@ -208,9 +207,11 @@ export const resolveMediaUrl = ({
   const data = readFileSync(realPath);
 
   return {
-    url: `data:${mimeType};base64,${Buffer.from(data).toString("base64")}`,
+    url: `data:${mimeType};base64,${data.toString("base64")}`,
   };
 };
+
+export const detectSystemJava = () => detectInstalledJavaRuntime();
 
 export { getDatabaseStatus } from "../../db/client";
 export { getSettingsStatus, updateSetting } from "../../settings/store";

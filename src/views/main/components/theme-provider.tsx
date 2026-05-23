@@ -1,16 +1,33 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
+import type { AppTheme } from "@/shared/types";
+import { rpc } from "@/views/main/lib/rpc";
 
-type Theme = "dark" | "light" | "system";
+const appThemes = new Set<AppTheme>([
+  "dark",
+  "midnight",
+  "forest",
+  "amber",
+  "light",
+  "system",
+]);
+
+export const isAppTheme = (value: unknown): value is AppTheme =>
+  typeof value === "string" && appThemes.has(value as AppTheme);
+
+export const normalizeAppTheme = (
+  value: unknown,
+  fallback: AppTheme,
+): AppTheme => (isAppTheme(value) ? value : fallback);
 
 type ThemeProviderProps = {
   children: React.ReactNode;
-  defaultTheme?: Theme;
+  defaultTheme?: AppTheme;
   storageKey?: string;
 };
 
 type ThemeProviderState = {
-  theme: Theme;
-  setTheme: (theme: Theme) => void;
+  theme: AppTheme;
+  setTheme: (theme: AppTheme) => void;
 };
 
 const initialState: ThemeProviderState = {
@@ -26,33 +43,71 @@ export function ThemeProvider({
   storageKey = "vite-ui-theme",
   ...props
 }: ThemeProviderProps) {
-  const [theme, setTheme] = useState<Theme>(
-    () => (localStorage.getItem(storageKey) as Theme) || defaultTheme,
+  const [theme, setThemeState] = useState<AppTheme>(() =>
+    normalizeAppTheme(localStorage.getItem(storageKey), defaultTheme),
   );
+  const localThemeChangedRef = useRef(false);
 
   useEffect(() => {
     const root = window.document.documentElement;
+    const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
 
-    root.classList.remove("light", "dark");
+    const applyTheme = () => {
+      root.classList.remove("light", "dark");
+      root.dataset.theme = theme;
 
-    if (theme === "system") {
-      const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
-        .matches
-        ? "dark"
-        : "light";
+      const resolvedTheme =
+        theme === "system"
+          ? darkQuery.matches
+            ? "dark"
+            : "light"
+          : theme === "light"
+            ? "light"
+            : "dark";
 
-      root.classList.add(systemTheme);
-      return;
+      root.classList.add(resolvedTheme);
+    };
+
+    applyTheme();
+
+    if (theme !== "system") return undefined;
+
+    darkQuery.addEventListener("change", applyTheme);
+
+    return () => darkQuery.removeEventListener("change", applyTheme);
+  }, [theme]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadSavedTheme() {
+      try {
+        const status = await rpc.requestProxy.getSettingsStatus(null);
+        const savedTheme = status.values["app.theme"];
+
+        if (!mounted || !isAppTheme(savedTheme) || localThemeChangedRef.current)
+          return;
+
+        localStorage.setItem(storageKey, savedTheme);
+        setThemeState(savedTheme);
+      } catch {
+        // The local fallback keeps the renderer usable in preview or early startup.
+      }
     }
 
-    root.classList.add(theme);
-  }, [theme]);
+    void loadSavedTheme();
+
+    return () => {
+      mounted = false;
+    };
+  }, [storageKey]);
 
   const value = {
     theme,
-    setTheme: (theme: Theme) => {
+    setTheme: (theme: AppTheme) => {
+      localThemeChangedRef.current = true;
       localStorage.setItem(storageKey, theme);
-      setTheme(theme);
+      setThemeState(theme);
     },
   };
 

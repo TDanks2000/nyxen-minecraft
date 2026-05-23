@@ -261,6 +261,16 @@ export type MainViewRPC = {
         params: null;
         response: SettingsStatus;
       };
+      detectSystemJava: {
+        params: null;
+        response: {
+          error: string | null;
+          executable: string;
+          majorVersion: number | null;
+          output: string;
+          version: string | null;
+        };
+      };
       updateSetting: {
         params: {
           key: string;

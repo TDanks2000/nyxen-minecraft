@@ -1632,7 +1632,7 @@ describe("launcher backend", () => {
     );
     writeFileSync(join(instance.gameDirectory, "servers.dat"), "servers");
 
-    const content = getInstanceContent({ instanceId: instance.id });
+    const content = await getInstanceContent({ instanceId: instance.id });
 
     expect(content.instanceId).toBe(instance.id);
     expect(content.counts).toMatchObject({
@@ -1724,7 +1724,7 @@ describe("launcher backend", () => {
       ],
     ]);
 
-    const afterDisable = setInstanceModEnabled({
+    const afterDisable = await setInstanceModEnabled({
       enabled: false,
       fileName: "enabled-mod.jar",
       instanceId: instance.id,
@@ -1741,7 +1741,7 @@ describe("launcher backend", () => {
       enabledMods: 0,
     });
 
-    const afterEnable = setInstanceModEnabled({
+    const afterEnable = await setInstanceModEnabled({
       enabled: true,
       fileName: "enabled-mod.jar.disabled",
       instanceId: instance.id,
@@ -1754,20 +1754,20 @@ describe("launcher backend", () => {
       disabledMods: 1,
       enabledMods: 1,
     });
-    expect(() =>
+    await expect(
       setInstanceModEnabled({
         enabled: false,
         fileName: "../enabled-mod.jar",
         instanceId: instance.id,
       }),
-    ).toThrow("File name is invalid.");
-    expect(() =>
+    ).rejects.toThrow("File name is invalid.");
+    await expect(
       setInstanceModEnabled({
         enabled: false,
         fileName: "..\\enabled-mod.jar",
         instanceId: instance.id,
       }),
-    ).toThrow("File name is invalid.");
+    ).rejects.toThrow("File name is invalid.");
   });
 
   test("classifies common launch failure log categories", async () => {
@@ -1801,7 +1801,7 @@ describe("launcher backend", () => {
       ].join("\n"),
     );
 
-    const content = getInstanceContent({ instanceId: instance.id });
+    const content = await getInstanceContent({ instanceId: instance.id });
     const latestLog = content.logs.find((log) => log.fileName === "latest.log");
 
     expect(latestLog).toBeDefined();
@@ -1857,7 +1857,7 @@ describe("launcher backend", () => {
       ].join("\n"),
     );
 
-    const result = exportInstanceSupportBundle({
+    const result = await exportInstanceSupportBundle({
       instanceId: instance.id,
       maxLogLines: 10,
       maxLogs: 1,
@@ -2467,9 +2467,9 @@ describe("launcher backend", () => {
       "changed",
     );
     rmSync(join(instance.folders.mods, "dependency.jar"), { force: true });
-    const driftedRecipe = getInstanceContent({
-      instanceId: instance.id,
-    }).recipe;
+    const driftedRecipe = (
+      await getInstanceContent({ instanceId: instance.id })
+    ).recipe;
     expect(driftedRecipe?.status).toBe("drifted");
     expect(
       driftedRecipe?.drift.map((item) => `${item.status}:${item.path}`),
@@ -2495,13 +2495,13 @@ describe("launcher backend", () => {
     const originalIconUrl = instance.iconUrl;
     const originalBannerUrl = instance.bannerUrl;
 
-    expect(() =>
+    await expect(
       setInstanceModEnabled({
         enabled: false,
         fileName: "dependency.jar",
         instanceId: instance.id,
       }),
-    ).toThrow("managed by its linked modpack");
+    ).rejects.toThrow("managed by its linked modpack");
     await expect(
       downloadCurseForgeFile(
         {
@@ -3984,7 +3984,7 @@ describe("launcher backend", () => {
       force: true,
     });
 
-    const content = getInstanceContent({ instanceId: instance.id });
+    const content = await getInstanceContent({ instanceId: instance.id });
 
     expect(content.recipe?.status).toBe("drifted");
     expect(content.recipe?.counts).toMatchObject({
@@ -5561,21 +5561,24 @@ describe("launcher backend", () => {
         schemaVersion: 1,
       },
     ]);
-    expect(getInstanceContent({ instanceId: instance.id })).toMatchObject({
-      launchAttempts: [
-        {
-          outcome: {
-            reason: "missingArtifacts",
-            status: "blocked",
+    expect(await getInstanceContent({ instanceId: instance.id })).toMatchObject(
+      {
+        launchAttempts: [
+          {
+            outcome: {
+              reason: "missingArtifacts",
+              status: "blocked",
+            },
+            repair: {
+              actionId: "downloadMissingArtifacts",
+              category: "missingFiles",
+              nextAction:
+                "Download the missing launch files, then retry launch.",
+            },
           },
-          repair: {
-            actionId: "downloadMissingArtifacts",
-            category: "missingFiles",
-            nextAction: "Download the missing launch files, then retry launch.",
-          },
-        },
-      ],
-    });
+        ],
+      },
+    );
 
     expect(
       classifyLaunchAttempt({

@@ -1,4 +1,3 @@
-import { createHash, randomUUID } from "node:crypto";
 import {
   type Dirent,
   existsSync,
@@ -133,7 +132,7 @@ const toGameRelativePath = (
 };
 
 const hashBytes = (data: Uint8Array, algorithm: "sha1" | "sha512"): string =>
-  createHash(algorithm).update(data).digest("hex");
+  new Bun.CryptoHasher(algorithm).update(data).digest("hex");
 
 const hashFile = (path: string): { sha1: string; sha512: string } => {
   const data = readFileSync(path);
@@ -152,7 +151,7 @@ const writeRecipeRevision = (
   revision: InstanceRecipeRevision,
 ): void => {
   const path = getRecipeRevisionPath(instance);
-  const tempPath = `${path}.write-${process.pid}-${randomUUID()}.tmp`;
+  const tempPath = `${path}.write-${process.pid}-${crypto.randomUUID()}.tmp`;
 
   ensurePrivateDirectory(dirname(path));
 
@@ -309,7 +308,7 @@ export const writeCurseForgeRecipeRevision = ({
   const revision: InstanceRecipeRevision = {
     createdAt: now,
     files,
-    id: `recipe_${randomUUID()}`,
+    id: `recipe_${crypto.randomUUID()}`,
     instanceId: instance.id,
     overrides: getOverrideEntries(archiveData, manifest.overrides ?? undefined),
     previousRevisionId: previousRevision?.id ?? null,
@@ -359,7 +358,7 @@ export const writeModrinthRecipeRevision = ({
       sizeBytes: file.fileSize,
       source: "modrinth",
     })),
-    id: `recipe_${randomUUID()}`,
+    id: `recipe_${crypto.randomUUID()}`,
     instanceId: instance.id,
     overrides: getOverrideEntries(archiveData),
     previousRevisionId: previousRevision?.id ?? null,

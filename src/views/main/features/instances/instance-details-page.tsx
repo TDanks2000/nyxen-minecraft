@@ -240,24 +240,25 @@ export function InstanceDetailsPage({ instanceId }: { instanceId: string }) {
 
   return (
     <div className="min-h-full bg-background">
-      <InstanceDetailsHeader
-        enabledModsCount={catalog.enabledMods.length}
-        instance={instance}
-        isRunning={!!runningLaunch}
-        launchActionState={launchActionState}
-        modpackUpdateAvailable={modpackUpdate?.updateAvailable ?? false}
-        onExportSupportBundle={exportSupportBundle}
-        onPlay={() => play.playInstance(instance.id)}
-        onStop={stopInstance}
-        onViewLaunchPlan={() => play.viewLaunchPlan(instance.id)}
-        planLoading={planLoading}
-        resourcePackCount={catalog.resourcePacks.length}
-        shaderPackCount={catalog.shaderPacks.length}
-        supportBundleExporting={exportingSupportBundle}
-        warningCount={warningCount}
-      />
-
       <div className="flex w-full min-w-0 flex-col gap-4 px-4 pt-4 pb-8 sm:px-5">
+        <InstanceDetailsHeader
+          enabledModsCount={catalog.enabledMods.length}
+          instance={instance}
+          isRunning={!!runningLaunch}
+          launchActionState={launchActionState}
+          modpackUpdateAvailable={modpackUpdate?.updateAvailable ?? false}
+          onExportSupportBundle={exportSupportBundle}
+          onPlay={() => play.playInstance(instance.id)}
+          onStop={stopInstance}
+          onViewLaunchPlan={() => play.viewLaunchPlan(instance.id)}
+          planLoading={planLoading}
+          resourcePackCount={catalog.resourcePacks.length}
+          shaderPackCount={catalog.shaderPacks.length}
+          supportBundleExporting={exportingSupportBundle}
+          warningCount={warningCount}
+          worldCount={catalog.worlds.length}
+        />
+
         <InstanceCatalogTabs
           activeTab={activeTab}
           content={catalog.content}

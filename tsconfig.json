@@ -13,7 +13,7 @@
     "skipLibCheck": true,
     "strict": true,
     "target": "ESNext",
-    "types": ["bun"]
+    "types": ["bun", "vite/client"]
   },
   "include": ["src", "electrobun.config.ts", "vite.config.ts", "tests"]
 }

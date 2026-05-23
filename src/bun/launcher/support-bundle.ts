@@ -1,5 +1,4 @@
-import { randomUUID } from "node:crypto";
-import { existsSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, renameSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type {
@@ -187,13 +186,13 @@ const getLogPreview = (
   };
 };
 
-export const exportInstanceSupportBundle = ({
+export const exportInstanceSupportBundle = async ({
   instanceId,
   maxLogLines,
   maxLogs,
-}: ExportInstanceSupportBundleInput): ExportInstanceSupportBundleResult => {
+}: ExportInstanceSupportBundleInput): Promise<ExportInstanceSupportBundleResult> => {
   const instance = getInstanceOrThrow(instanceId.trim());
-  const content = getInstanceContent({ instanceId: instance.id });
+  const content = await getInstanceContent({ instanceId: instance.id });
   const logLimit = normalizeLimit(
     maxLogs,
     defaultSupportBundleLogs,
@@ -247,15 +246,16 @@ export const exportInstanceSupportBundle = ({
 
   const directory = join(instance.folders.metadata, "support-bundles");
   const safeCreatedAt = createdAt.replaceAll(":", "-");
-  const path = join(directory, `${safeCreatedAt}-support-${randomUUID()}.json`);
-  const tempPath = `${path}.write-${process.pid}-${randomUUID()}.tmp`;
+  const path = join(
+    directory,
+    `${safeCreatedAt}-support-${crypto.randomUUID()}.json`,
+  );
+  const tempPath = `${path}.write-${process.pid}-${crypto.randomUUID()}.tmp`;
 
   ensurePrivateDirectory(dirname(path));
 
   try {
-    writeFileSync(tempPath, `${JSON.stringify(bundle, null, 2)}\n`, {
-      flag: "wx",
-    });
+    await Bun.write(tempPath, `${JSON.stringify(bundle, null, 2)}\n`);
     ensurePrivateFile(tempPath);
     renameSync(tempPath, path);
     ensurePrivateFile(path);
