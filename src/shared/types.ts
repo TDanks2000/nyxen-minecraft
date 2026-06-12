@@ -24,6 +24,8 @@ export type AppSettings = Record<string, SettingValue>;
 
 export type JavaManagementMode = "app-controlled" | "auto";
 
+export type LauncherOnLaunchAction = "keep" | "minimize" | "hide" | "close";
+
 export type SettingsStatus = {
   path: string;
   storage: "json" | "database";

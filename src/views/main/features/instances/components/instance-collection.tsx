@@ -1,4 +1,10 @@
-import { LayoutGridIcon, ListIcon, PlusIcon, SearchIcon } from "lucide-react";
+import {
+  ChevronDownIcon,
+  LayoutGridIcon,
+  ListIcon,
+  PlusIcon,
+  SearchIcon,
+} from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DownloadQueueJob, LauncherInstance } from "@/shared/types";
 import { Button } from "@/views/main/components/ui/button";
@@ -31,12 +37,19 @@ import type {
   InstanceCollectionViewMode,
 } from "@/views/main/features/instances/components/instance-collection-types";
 import {
+  getInitialVisibleInstanceLimit,
+  getNextVisibleInstanceLimit,
+  getPreferredInstanceCollectionViewMode,
+  LOW_END_INSTANCE_BATCH_SIZE,
+} from "@/views/main/features/instances/instance-collection-model";
+import {
   getActiveModpackInstallJobs,
   isCompletedModpackDownloadJob,
 } from "@/views/main/features/instances/modpack-install-jobs";
 import { cn } from "@/views/main/lib/utils";
 
 type InstanceCardWrapperProps = {
+  animationsDisabled: boolean;
   density: InstanceCardDensity;
   featured: boolean;
   installJob: DownloadQueueJob | undefined;
@@ -48,6 +61,7 @@ type InstanceCardWrapperProps = {
 };
 
 const InstanceCardWrapper = memo(function InstanceCardWrapper({
+  animationsDisabled,
   density,
   featured,
   installJob,
@@ -67,6 +81,7 @@ const InstanceCardWrapper = memo(function InstanceCardWrapper({
         featured={featured}
         installJob={installJob}
         instance={instance}
+        animationsDisabled={animationsDisabled}
         launchDisabled={launchDisabled}
         launchLoading={launchLoading}
         onPlay={onPlay}
@@ -80,6 +95,7 @@ const InstanceCardWrapper = memo(function InstanceCardWrapper({
       featured={featured}
       installJob={installJob}
       instance={instance}
+      animationsDisabled={animationsDisabled}
       launchDisabled={launchDisabled}
       launchLoading={launchLoading}
       onPlay={onPlay}
@@ -100,6 +116,7 @@ type InstanceCollectionProps = {
   launchLoadingId: string | null;
   listClassName?: string;
   loading: boolean;
+  lowEndMode?: boolean;
   onCreateInstance?: () => void;
   onInstallCompleted?: () => void;
   onPlayInstance: (instanceId: string) => void;
@@ -157,6 +174,7 @@ export function InstanceCollection({
   launchLoadingId,
   listClassName,
   loading,
+  lowEndMode = false,
   onCreateInstance,
   onInstallCompleted,
   onPlayInstance,
@@ -168,8 +186,11 @@ export function InstanceCollection({
   viewModeDefault = "grid",
 }: InstanceCollectionProps) {
   const [query, setQuery] = useState("");
-  const [viewMode, setViewMode] =
-    useState<InstanceCollectionViewMode>(viewModeDefault);
+  const [viewMode, setViewMode] = useState<InstanceCollectionViewMode>(() =>
+    getPreferredInstanceCollectionViewMode({ lowEndMode, viewModeDefault }),
+  );
+  const [visibleItemLimit, setVisibleItemLimit] = useState(0);
+  const viewModeChangedRef = useRef(false);
   const refreshedInstallJobsRef = useRef<Set<string>>(new Set());
   const { byInstanceId: activeInstallJobByInstanceId, unmatchedJobs } = useMemo(
     () => getActiveModpackInstallJobs(downloadJobs, instances),
@@ -201,6 +222,60 @@ export function InstanceCollection({
     Boolean(title) ||
     (showSearch && hasContent) ||
     (showViewToggle && hasContent);
+  const effectiveViewMode = viewModeChangedRef.current
+    ? viewMode
+    : getPreferredInstanceCollectionViewMode({ lowEndMode, viewModeDefault });
+  const totalFilteredItems =
+    filteredInstallJobs.length + filteredInstances.length;
+  const visibleLimit = lowEndMode
+    ? visibleItemLimit ||
+      getInitialVisibleInstanceLimit({
+        lowEndMode,
+        totalItems: totalFilteredItems,
+      })
+    : totalFilteredItems;
+  const visibleInstallJobs = lowEndMode
+    ? filteredInstallJobs.slice(0, visibleLimit)
+    : filteredInstallJobs;
+  const visibleInstanceLimit = Math.max(
+    0,
+    visibleLimit - visibleInstallJobs.length,
+  );
+  const visibleInstances = lowEndMode
+    ? filteredInstances.slice(0, visibleInstanceLimit)
+    : filteredInstances;
+  const hiddenItemCount =
+    totalFilteredItems - visibleInstallJobs.length - visibleInstances.length;
+  const showMoreItemCount = Math.min(
+    hiddenItemCount,
+    LOW_END_INSTANCE_BATCH_SIZE,
+  );
+
+  const showMoreItems = useCallback(() => {
+    setVisibleItemLimit((currentLimit) =>
+      getNextVisibleInstanceLimit({
+        currentLimit: currentLimit || visibleLimit,
+        totalItems: totalFilteredItems,
+      }),
+    );
+  }, [totalFilteredItems, visibleLimit]);
+
+  useEffect(() => {
+    if (viewModeChangedRef.current) return;
+
+    setViewMode(
+      getPreferredInstanceCollectionViewMode({ lowEndMode, viewModeDefault }),
+    );
+  }, [lowEndMode, viewModeDefault]);
+
+  useEffect(() => {
+    setVisibleItemLimit(
+      getInitialVisibleInstanceLimit({
+        lowEndMode,
+        totalItems: totalFilteredItems,
+      }),
+    );
+  }, [lowEndMode, totalFilteredItems]);
 
   useEffect(() => {
     if (!onInstallCompleted) return;
@@ -261,12 +336,13 @@ export function InstanceCollection({
               onValueChange={(value) => {
                 const nextMode = value[0];
                 if (nextMode === "grid" || nextMode === "list") {
+                  viewModeChangedRef.current = true;
                   setViewMode(nextMode);
                 }
               }}
               size="sm"
               spacing={0}
-              value={[viewMode]}
+              value={[effectiveViewMode]}
               variant="outline"
             >
               <ToggleGroupItem
@@ -291,7 +367,10 @@ export function InstanceCollection({
       ) : null}
 
       {loading ? (
-        <InstanceCollectionLoading skeleton={skeleton} viewMode={viewMode} />
+        <InstanceCollectionLoading
+          skeleton={skeleton}
+          viewMode={effectiveViewMode}
+        />
       ) : filteredInstances.length === 0 && filteredInstallJobs.length === 0 ? (
         <Empty
           className={cn(
@@ -323,49 +402,86 @@ export function InstanceCollection({
             </EmptyContent>
           ) : null}
         </Empty>
-      ) : viewMode === "grid" ? (
-        <div
-          className={
-            gridClassName ??
-            "grid grid-cols-[repeat(auto-fill,minmax(17rem,1fr))] gap-3"
-          }
-        >
-          {filteredInstallJobs.map((job) => (
-            <InstanceCard density={cardDensity} installJob={job} key={job.id} />
-          ))}
-          {filteredInstances.map((instance) => (
-            <InstanceCardWrapper
-              density={cardDensity}
-              featured={instance.id === featuredInstanceId}
-              installJob={activeInstallJobByInstanceId.get(instance.id)}
-              instance={instance}
-              key={instance.id}
-              launchDisabled={launchLoadingId !== null}
-              launchLoading={launchLoadingId === instance.id}
-              onPlayInstance={onPlayInstance}
-              viewMode={viewMode}
-            />
-          ))}
-        </div>
+      ) : effectiveViewMode === "grid" ? (
+        <>
+          <div
+            className={
+              gridClassName ??
+              "grid grid-cols-[repeat(auto-fill,minmax(17rem,1fr))] gap-3"
+            }
+          >
+            {visibleInstallJobs.map((job) => (
+              <InstanceCard
+                animationsDisabled={lowEndMode}
+                density={cardDensity}
+                installJob={job}
+                key={job.id}
+              />
+            ))}
+            {visibleInstances.map((instance) => (
+              <InstanceCardWrapper
+                animationsDisabled={lowEndMode}
+                density={cardDensity}
+                featured={instance.id === featuredInstanceId}
+                installJob={activeInstallJobByInstanceId.get(instance.id)}
+                instance={instance}
+                key={instance.id}
+                launchDisabled={launchLoadingId !== null}
+                launchLoading={launchLoadingId === instance.id}
+                onPlayInstance={onPlayInstance}
+                viewMode={effectiveViewMode}
+              />
+            ))}
+          </div>
+          {hiddenItemCount > 0 ? (
+            <div className="mt-4 flex justify-center">
+              <Button
+                onClick={showMoreItems}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                <ChevronDownIcon data-icon="inline-start" />
+                Show {showMoreItemCount} more
+              </Button>
+            </div>
+          ) : null}
+        </>
       ) : (
-        <div className={listClassName ?? "flex flex-col gap-1"}>
-          {filteredInstallJobs.map((job) => (
-            <InstallingInstanceListItem installJob={job} key={job.id} />
-          ))}
-          {filteredInstances.map((instance) => (
-            <InstanceCardWrapper
-              density={cardDensity}
-              featured={instance.id === featuredInstanceId}
-              installJob={activeInstallJobByInstanceId.get(instance.id)}
-              instance={instance}
-              key={instance.id}
-              launchDisabled={launchLoadingId !== null}
-              launchLoading={launchLoadingId === instance.id}
-              onPlayInstance={onPlayInstance}
-              viewMode={viewMode}
-            />
-          ))}
-        </div>
+        <>
+          <div className={listClassName ?? "flex flex-col gap-1"}>
+            {visibleInstallJobs.map((job) => (
+              <InstallingInstanceListItem installJob={job} key={job.id} />
+            ))}
+            {visibleInstances.map((instance) => (
+              <InstanceCardWrapper
+                animationsDisabled={lowEndMode}
+                density={cardDensity}
+                featured={instance.id === featuredInstanceId}
+                installJob={activeInstallJobByInstanceId.get(instance.id)}
+                instance={instance}
+                key={instance.id}
+                launchDisabled={launchLoadingId !== null}
+                launchLoading={launchLoadingId === instance.id}
+                onPlayInstance={onPlayInstance}
+                viewMode={effectiveViewMode}
+              />
+            ))}
+          </div>
+          {hiddenItemCount > 0 ? (
+            <div className="mt-4 flex justify-center">
+              <Button
+                onClick={showMoreItems}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                <ChevronDownIcon data-icon="inline-start" />
+                Show {showMoreItemCount} more
+              </Button>
+            </div>
+          ) : null}
+        </>
       )}
     </section>
   );

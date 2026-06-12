@@ -7,7 +7,7 @@ import {
   MIN_WINDOW_WIDTH,
 } from "../shared/constants";
 import { mainViewRPC } from "./rpc/router";
-import { setMainWindow } from "./window-controls";
+import { setMainWindow, setWindowScreenProvider } from "./window-controls";
 
 const WINDOW_PADDING = 48;
 const MAX_WINDOW_WIDTH = 1280;
@@ -16,6 +16,8 @@ const MAIN_VIEW_URL = "views://main/index.html";
 const DEV_VIEW_DIRECTORY = join(process.cwd(), ".electrobun", "views", "main");
 const DEV_RELOAD_DELAY_MS = 120;
 const LOCAL_NAVIGATION_RULES = ["^*", "views://*", "about:blank"];
+
+setWindowScreenProvider(Screen);
 
 const clamp = (value: number, min: number, max: number): number =>
   Math.min(Math.max(value, min), max);

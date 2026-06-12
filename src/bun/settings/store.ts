@@ -11,6 +11,7 @@ import type {
   AppSettings,
   AppTheme,
   JavaManagementMode,
+  LauncherOnLaunchAction,
   SettingsStatus,
   SettingValue,
 } from "../../shared/types";
@@ -40,6 +41,13 @@ const appThemes = new Set<AppTheme>([
   "system",
 ]);
 
+const onLaunchActions = new Set<LauncherOnLaunchAction>([
+  "keep",
+  "minimize",
+  "hide",
+  "close",
+]);
+
 const defaultSettings: AppSettings = {
   [APP_THEME_SETTING_KEY]: "dark",
   [JAVA_MANAGEMENT_SETTING_KEY]: "auto",
@@ -60,6 +68,12 @@ export const isJavaManagementMode = (
 
 export const isAppTheme = (value: unknown): value is AppTheme =>
   typeof value === "string" && appThemes.has(value as AppTheme);
+
+export const isLauncherOnLaunchAction = (
+  value: unknown,
+): value is LauncherOnLaunchAction =>
+  typeof value === "string" &&
+  onLaunchActions.has(value as LauncherOnLaunchAction);
 
 export const settingsPath = join(getDataRoot(), "settings.json");
 
@@ -82,6 +96,7 @@ const normalizeSettings = (value: unknown): AppSettings => {
     }
   }
 
+  const hasExplicitOnLaunch = Object.hasOwn(settings, ON_LAUNCH_SETTING_KEY);
   const normalized = { ...defaultSettings, ...settings };
 
   if (!isAppTheme(normalized[APP_THEME_SETTING_KEY])) {
@@ -90,6 +105,17 @@ const normalizeSettings = (value: unknown): AppSettings => {
 
   if (!isJavaManagementMode(normalized[JAVA_MANAGEMENT_SETTING_KEY])) {
     normalized[JAVA_MANAGEMENT_SETTING_KEY] = "auto";
+  }
+
+  if (!hasExplicitOnLaunch) {
+    normalized[ON_LAUNCH_SETTING_KEY] =
+      settings[KEEP_OPEN_AFTER_LAUNCH_SETTING_KEY] === false
+        ? "minimize"
+        : "keep";
+  }
+
+  if (!isLauncherOnLaunchAction(normalized[ON_LAUNCH_SETTING_KEY])) {
+    normalized[ON_LAUNCH_SETTING_KEY] = "keep";
   }
 
   if (typeof normalized[LOW_END_MODE_SETTING_KEY] !== "boolean") {
@@ -159,15 +185,14 @@ export const isLowEndModeEnabled = (): boolean => {
 };
 
 export const isKeepLauncherOpenAfterLaunchEnabled = (): boolean => {
+  return getOnLaunchAction() === "keep";
+};
+
+export const getOnLaunchAction = (): LauncherOnLaunchAction => {
   const settings = readSettingsFile();
+  const value = settings[ON_LAUNCH_SETTING_KEY];
 
-  const onLaunch = settings[ON_LAUNCH_SETTING_KEY];
-  if (typeof onLaunch === "string") {
-    return onLaunch === "keep";
-  }
-
-  const value = settings[KEEP_OPEN_AFTER_LAUNCH_SETTING_KEY];
-  return typeof value === "boolean" ? value : true;
+  return isLauncherOnLaunchAction(value) ? value : "keep";
 };
 
 export const getSettingsStatus = (): SettingsStatus => {
@@ -227,6 +252,13 @@ export const updateSetting = ({
     throw new Error(
       "Theme must be dark, midnight, forest, amber, light, or system.",
     );
+  }
+
+  if (
+    normalizedKey === ON_LAUNCH_SETTING_KEY &&
+    !isLauncherOnLaunchAction(value)
+  ) {
+    throw new Error("Launch behavior must be keep, minimize, hide, or close.");
   }
 
   const values = readSettingsFile();

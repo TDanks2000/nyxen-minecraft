@@ -1,16 +1,28 @@
 import type { BrowserWindow } from "electrobun/bun";
-import { Screen } from "electrobun/bun";
 
 type WindowState = {
   maximized: boolean;
   minimized: boolean;
 };
 
+type WindowFrame = {
+  height: number;
+  width: number;
+  x: number;
+  y: number;
+};
+
+type WindowScreenProvider = {
+  getPrimaryDisplay: () => {
+    workArea: WindowFrame;
+  };
+};
+
 let mainWindow: BrowserWindow | null = null;
+let screenProvider: WindowScreenProvider | null = null;
 // On Windows, window.maximize() goes fullscreen — we simulate it manually.
 let windowsMaximized = false;
-let savedFrame: { x: number; y: number; width: number; height: number } | null =
-  null;
+let savedFrame: WindowFrame | null = null;
 const isWindows = process.platform === "win32";
 
 const getMainWindow = (): BrowserWindow => {
@@ -21,8 +33,22 @@ const getMainWindow = (): BrowserWindow => {
   return mainWindow;
 };
 
+const getScreenProvider = (): WindowScreenProvider => {
+  if (!screenProvider) {
+    throw new Error("Window screen provider is not ready.");
+  }
+
+  return screenProvider;
+};
+
 export const setMainWindow = (window: BrowserWindow): void => {
   mainWindow = window;
+};
+
+export const setWindowScreenProvider = (
+  provider: WindowScreenProvider,
+): void => {
+  screenProvider = provider;
 };
 
 export const getWindowState = (): WindowState => {
@@ -38,6 +64,18 @@ export const minimizeWindow = (): WindowState => {
   const window = getMainWindow();
 
   window.minimize();
+
+  return getWindowState();
+};
+
+export const hideWindow = (): null => {
+  getMainWindow().hide();
+
+  return null;
+};
+
+export const showWindow = (): WindowState => {
+  getMainWindow().show();
 
   return getWindowState();
 };
@@ -58,7 +96,7 @@ export const toggleMaximizeWindow = (): WindowState => {
       windowsMaximized = false;
     } else {
       savedFrame = window.getFrame();
-      const { workArea } = Screen.getPrimaryDisplay();
+      const { workArea } = getScreenProvider().getPrimaryDisplay();
       window.setFrame(workArea.x, workArea.y, workArea.width, workArea.height);
       windowsMaximized = true;
     }

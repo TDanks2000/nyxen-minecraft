@@ -24,9 +24,11 @@ import { LaunchPlanSheet } from "@/views/main/features/instances/components/laun
 import { NewInstanceDialog } from "@/views/main/features/instances/components/new-instance-dialog";
 import { usePlayInstance } from "@/views/main/features/instances/hooks/use-play-instance";
 import { useInstances } from "@/views/main/hooks/use-instances";
+import { useSettings } from "@/views/main/hooks/use-settings";
 
 export function InstancesPage() {
   const instancesHook = useInstances();
+  const settingsHook = useSettings();
   const play = usePlayInstance({ onInstancesChanged: instancesHook.refresh });
   const downloadJobs = useDownloadQueueStore((state) => state.jobs);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -40,6 +42,7 @@ export function InstancesPage() {
 
   const instances = instancesHook.data ?? [];
   const loading = instancesHook.loading && instancesHook.data === null;
+  const lowEndMode = settingsHook.data?.values["launcher.lowEndMode"] === true;
 
   const featuredInstance = useMemo(() => {
     return (
@@ -97,6 +100,7 @@ export function InstancesPage() {
         instances={instances}
         launchLoadingId={play.activeInstanceId}
         loading={loading}
+        lowEndMode={lowEndMode}
         onInstallCompleted={instancesHook.refresh}
         onPlayInstance={onPlayInstance}
       />

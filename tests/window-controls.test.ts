@@ -3,8 +3,10 @@ import type { BrowserWindow } from "electrobun/bun";
 import {
   closeWindow,
   getWindowState,
+  hideWindow,
   minimizeWindow,
   setMainWindow,
+  showWindow,
   toggleMaximizeWindow,
 } from "../src/bun/window-controls";
 
@@ -17,6 +19,7 @@ type Frame = {
 
 const createWindowStub = () => {
   let closed = false;
+  let hidden = false;
   let maximized = false;
   let minimized = false;
   let frame: Frame = {
@@ -31,6 +34,9 @@ const createWindowStub = () => {
       closed = true;
     },
     getFrame: () => frame,
+    hide: () => {
+      hidden = true;
+    },
     isMaximized: () => maximized,
     isMinimized: () => minimized,
     maximize: () => {
@@ -47,6 +53,9 @@ const createWindowStub = () => {
         height,
       };
     },
+    show: () => {
+      hidden = false;
+    },
     unmaximize: () => {
       maximized = false;
     },
@@ -58,6 +67,9 @@ const createWindowStub = () => {
     },
     get frame() {
       return frame;
+    },
+    get hidden() {
+      return hidden;
     },
     window,
   };
@@ -81,6 +93,15 @@ describe("window controls", () => {
       maximized: false,
       minimized: true,
     });
+
+    expect(hideWindow()).toBeNull();
+    expect(stub.hidden).toBe(true);
+
+    expect(showWindow()).toEqual({
+      maximized: false,
+      minimized: true,
+    });
+    expect(stub.hidden).toBe(false);
 
     expect(closeWindow()).toBeNull();
     expect(stub.closed).toBe(true);

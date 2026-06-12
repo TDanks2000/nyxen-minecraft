@@ -32,6 +32,7 @@ export function InstanceCard(props: InstanceCardRenderProps) {
   }
 
   const {
+    animationsDisabled = false,
     className,
     density = "standard",
     featured = false,
@@ -60,7 +61,10 @@ export function InstanceCard(props: InstanceCardRenderProps) {
   return (
     <Card
       className={cn(
-        "group pt-0 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_24px_72px_-48px_black] data-[size=sm]:pt-0",
+        "group pt-0 data-[size=sm]:pt-0",
+        animationsDisabled
+          ? "transition-colors"
+          : "transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_24px_72px_-48px_black]",
         featured && "border-primary/60 ring-1 ring-primary/30",
         installing && "ring-1 ring-primary/30",
         className,
@@ -73,7 +77,11 @@ export function InstanceCard(props: InstanceCardRenderProps) {
         to="/instances/$instanceId"
       >
         <InstanceArtwork
-          className="h-full transition-transform duration-300 group-hover:scale-[1.03]"
+          className={cn(
+            "h-full",
+            !animationsDisabled &&
+              "transition-transform duration-300 group-hover:scale-[1.03]",
+          )}
           instance={instance}
           showBadge={!compact}
         />

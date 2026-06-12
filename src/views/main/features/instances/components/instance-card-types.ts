@@ -10,6 +10,7 @@ export type InstanceActionProps = {
 export type InstanceCardDensity = "compact" | "standard";
 
 export type InstanceCardProps = InstanceActionProps & {
+  animationsDisabled?: boolean;
   className?: string;
   density?: InstanceCardDensity;
   featured?: boolean;
@@ -17,6 +18,7 @@ export type InstanceCardProps = InstanceActionProps & {
 };
 
 export type InstallingInstanceCardProps = {
+  animationsDisabled?: boolean;
   className?: string;
   density?: InstanceCardDensity;
   installJob: DownloadQueueJob;
@@ -27,6 +29,7 @@ export type InstanceCardRenderProps =
   | InstallingInstanceCardProps;
 
 export type InstanceListItemProps = InstanceActionProps & {
+  animationsDisabled?: boolean;
   className?: string;
   featured?: boolean;
   installJob?: DownloadQueueJob;

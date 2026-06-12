@@ -138,6 +138,7 @@ const includeBaseClientJarInIgnoreList = (
 
 export type LaunchOptions = {
   accessToken?: string;
+  onExit?: (code: number | null) => void;
 };
 
 type RunningLaunchEntry = RunningLaunch & {
@@ -456,12 +457,14 @@ export const launchMinecraft = (
       if (runningLaunches.get(plan.instance.id)?.child === child) {
         runningLaunches.delete(plan.instance.id);
       }
+      options.onExit?.(code);
     })
     .catch(() => {
       endProcessLog("\nJava process failed to start.\n");
       if (runningLaunches.get(plan.instance.id)?.child === child) {
         runningLaunches.delete(plan.instance.id);
       }
+      options.onExit?.(null);
     });
 
   return {

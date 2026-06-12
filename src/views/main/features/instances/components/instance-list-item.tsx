@@ -12,6 +12,7 @@ import { InstancePlayButton } from "@/views/main/features/instances/components/i
 import { cn } from "@/views/main/lib/utils";
 
 export function InstanceListItem({
+  animationsDisabled = false,
   className,
   featured = false,
   installJob,
@@ -28,7 +29,8 @@ export function InstanceListItem({
   return (
     <div
       className={cn(
-        "flex min-h-12 items-center gap-3 rounded-md border bg-card px-3 py-2 transition-colors hover:bg-accent/40",
+        "flex min-h-12 items-center gap-3 rounded-md border bg-card px-3 py-2",
+        !animationsDisabled && "transition-colors hover:bg-accent/40",
         featured && "border-primary/40 bg-primary/5",
         !featured && !installing && "border-border",
         installing && "border-primary/35 bg-primary/5 hover:bg-primary/10",

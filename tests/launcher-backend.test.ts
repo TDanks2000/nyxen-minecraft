@@ -5123,6 +5123,24 @@ describe("launcher backend", () => {
     }
   });
 
+  test("normalizes launch window behavior settings", async () => {
+    const { getOnLaunchAction, updateSetting } = await import(
+      "../src/bun/settings/store"
+    );
+
+    updateSetting({ key: "launcher.onLaunch", value: "hide" });
+    expect(getOnLaunchAction()).toBe("hide");
+
+    updateSetting({ key: "launcher.onLaunch", value: "close" });
+    expect(getOnLaunchAction()).toBe("close");
+
+    expect(() =>
+      updateSetting({ key: "launcher.onLaunch", value: "dock" }),
+    ).toThrow("Launch behavior");
+
+    updateSetting({ key: "launcher.onLaunch", value: "keep" });
+  });
+
   test("marks downloaded managed Java executables as runnable", async () => {
     const { existsSync, statSync } = await import("node:fs");
     const { downloadArtifacts } = await import("../src/bun/launcher/download");

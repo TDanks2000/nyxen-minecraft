@@ -27,10 +27,12 @@ import { usePlayInstance } from "@/views/main/features/instances/hooks/use-play-
 import { hasMinecraftOwnership } from "@/views/main/features/profiles/profile-health-model";
 import { useInstances } from "@/views/main/hooks/use-instances";
 import { useProfiles } from "@/views/main/hooks/use-profiles";
+import { useSettings } from "@/views/main/hooks/use-settings";
 
 export function DashboardPage() {
   const instancesHook = useInstances();
   const profilesHook = useProfiles();
+  const settingsHook = useSettings();
   const play = usePlayInstance({ onInstancesChanged: instancesHook.refresh });
   const downloadJobs = useDownloadQueueStore((state) => state.jobs);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -73,6 +75,7 @@ export function DashboardPage() {
   }, [instancesHook.refresh]);
   const initialInstancesLoading =
     instancesHook.loading && instancesHook.data === null;
+  const lowEndMode = settingsHook.data?.values["launcher.lowEndMode"] === true;
 
   return (
     <div className="flex flex-col">
@@ -127,6 +130,7 @@ export function DashboardPage() {
         instances={instances}
         launchLoadingId={play.activeInstanceId}
         loading={initialInstancesLoading}
+        lowEndMode={lowEndMode}
         onCreateInstance={openNewInstanceDialog}
         onInstallCompleted={refreshDashboardData}
         onPlayInstance={playInstance}

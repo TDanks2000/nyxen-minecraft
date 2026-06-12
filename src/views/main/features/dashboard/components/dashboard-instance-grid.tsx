@@ -9,6 +9,7 @@ type DashboardInstanceGridProps = {
   instances: Array<LauncherInstance>;
   launchLoadingId: string | null;
   loading: boolean;
+  lowEndMode: boolean;
   onCreateInstance: () => void;
   onInstallCompleted: () => void;
   onPlayInstance: (instanceId: string) => void;
@@ -20,6 +21,7 @@ export function DashboardInstanceGrid({
   instances,
   launchLoadingId,
   loading,
+  lowEndMode,
   onCreateInstance,
   onInstallCompleted,
   onPlayInstance,
@@ -36,6 +38,7 @@ export function DashboardInstanceGrid({
         launchLoadingId={launchLoadingId}
         listClassName="flex flex-col gap-1"
         loading={loading}
+        lowEndMode={lowEndMode}
         onCreateInstance={onCreateInstance}
         onInstallCompleted={onInstallCompleted}
         onPlayInstance={onPlayInstance}

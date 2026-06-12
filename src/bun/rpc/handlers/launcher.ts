@@ -6,6 +6,7 @@ import type {
   DownloadCurseForgeFileResult,
   DownloadModrinthFileInput,
   DownloadModrinthFileResult,
+  LauncherOnLaunchAction,
   LaunchInstanceInput,
   LaunchInstanceResult,
   LaunchPlan,
@@ -28,8 +29,13 @@ import { markLauncherInstanceLaunched } from "../../launcher/instances";
 import { persistLaunchAttempt } from "../../launcher/launch-diagnostics";
 import { createLaunchPlan } from "../../launcher/launch-plan";
 import { getLauncherProfileAuthSecrets } from "../../launcher/profiles";
-import { isKeepLauncherOpenAfterLaunchEnabled } from "../../settings/store";
-import { minimizeWindow } from "../../window-controls";
+import { getOnLaunchAction } from "../../settings/store";
+import {
+  closeWindow,
+  hideWindow,
+  minimizeWindow,
+  showWindow,
+} from "../../window-controls";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
@@ -68,6 +74,32 @@ const getLaunchPlanRequest = (
   }
 
   return { instanceId: plannedInstanceId };
+};
+
+const scheduleLaunchWindowAction = (action: LauncherOnLaunchAction): void => {
+  if (action === "keep") return;
+
+  setTimeout(() => {
+    try {
+      if (action === "minimize") {
+        minimizeWindow();
+      } else if (action === "hide") {
+        hideWindow();
+      } else {
+        closeWindow();
+      }
+    } catch {
+      // Window actions are a launch courtesy; never fail a successful launch.
+    }
+  }, 50);
+};
+
+const showWindowAfterHiddenLaunch = (): void => {
+  try {
+    showWindow();
+  } catch {
+    // The user may have closed the launcher while the game was running.
+  }
 };
 
 export const refreshMinecraftVersionManifest =
@@ -199,9 +231,17 @@ export const launchInstance = async (
   }
 
   let result: LaunchInstanceResult;
+  const alreadyRunning = listTrackedRunningLaunches().some(
+    (launch) => launch.instanceId === plan.instance.id,
+  );
+  const onLaunchAction = alreadyRunning ? "keep" : getOnLaunchAction();
 
   try {
-    result = launchMinecraft(plan, { accessToken });
+    result = launchMinecraft(plan, {
+      accessToken,
+      onExit:
+        onLaunchAction === "hide" ? showWindowAfterHiddenLaunch : undefined,
+    });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to launch Minecraft.";
@@ -224,13 +264,7 @@ export const launchInstance = async (
     status: "started",
   });
 
-  if (!isKeepLauncherOpenAfterLaunchEnabled()) {
-    try {
-      minimizeWindow();
-    } catch {
-      // Minimizing is a courtesy; never fail a launch because of it.
-    }
-  }
+  scheduleLaunchWindowAction(onLaunchAction);
 
   return result;
 };

@@ -18,6 +18,7 @@ import {
 import { cn } from "@/views/main/lib/utils";
 
 export function InstallingInstanceCard({
+  animationsDisabled = false,
   className,
   density = "standard",
   installJob: job,
@@ -35,7 +36,10 @@ export function InstallingInstanceCard({
   return (
     <Card
       className={cn(
-        "group pt-0 ring-1 ring-primary/20 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_24px_72px_-48px_black]",
+        "group pt-0 ring-1 ring-primary/20",
+        animationsDisabled
+          ? "transition-colors"
+          : "transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_24px_72px_-48px_black]",
         compact && "data-[size=sm]:pt-0",
         className,
       )}
@@ -50,7 +54,11 @@ export function InstallingInstanceCard({
         {imageUrl ? (
           <img
             alt=""
-            className="size-full object-cover opacity-80 blur-[1px] transition-transform duration-300 group-hover:scale-[1.03]"
+            className={cn(
+              "size-full object-cover opacity-80 blur-[1px]",
+              !animationsDisabled &&
+                "transition-transform duration-300 group-hover:scale-[1.03]",
+            )}
             src={imageUrl}
           />
         ) : (
